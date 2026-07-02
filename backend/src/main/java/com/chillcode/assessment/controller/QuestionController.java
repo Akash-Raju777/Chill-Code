@@ -18,12 +18,12 @@ public class QuestionController {
 
     // Both Admin and Student can get questions list of a subject
     @GetMapping({"/admin/subjects/{subjectId}/questions", "/student/subjects/{subjectId}/questions"})
-    public ResponseEntity<List<QuestionDto>> getQuestionsBySubject(@PathVariable Long subjectId) {
+    public ResponseEntity<List<QuestionDto>> getQuestionsBySubject(@PathVariable("subjectId") Long subjectId) {
         return ResponseEntity.ok(questionService.getQuestionsBySubject(subjectId));
     }
 
     @GetMapping({"/admin/questions/{id}", "/student/questions/{id}"})
-    public ResponseEntity<QuestionDto> getQuestionById(@PathVariable Long id) {
+    public ResponseEntity<QuestionDto> getQuestionById(@PathVariable("id") Long id) {
         return ResponseEntity.ok(questionService.getQuestionById(id));
     }
 
@@ -35,13 +35,13 @@ public class QuestionController {
 
     @PutMapping("/admin/questions/{id}")
     @PreAuthorize("hasRole('ADMIN')")
-    public ResponseEntity<QuestionDto> updateQuestion(@PathVariable Long id, @RequestBody QuestionDto questionDto) {
+    public ResponseEntity<QuestionDto> updateQuestion(@PathVariable("id") Long id, @RequestBody QuestionDto questionDto) {
         return ResponseEntity.ok(questionService.updateQuestion(id, questionDto));
     }
 
     @DeleteMapping("/admin/questions/{id}")
     @PreAuthorize("hasRole('ADMIN')")
-    public ResponseEntity<String> deleteQuestion(@PathVariable Long id) {
+    public ResponseEntity<String> deleteQuestion(@PathVariable("id") Long id) {
         questionService.deleteQuestion(id);
         return ResponseEntity.ok("Question deleted successfully");
     }

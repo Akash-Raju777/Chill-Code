@@ -30,14 +30,20 @@ public class SubjectController {
 
     @PutMapping("/admin/subjects/{id}")
     @PreAuthorize("hasRole('ADMIN')")
-    public ResponseEntity<Subject> updateSubject(@PathVariable Long id, @RequestBody Subject subjectDetails) {
+    public ResponseEntity<Subject> updateSubject(@PathVariable("id") Long id, @RequestBody Subject subjectDetails) {
         return ResponseEntity.ok(subjectService.updateSubject(id, subjectDetails));
     }
 
     @DeleteMapping("/admin/subjects/{id}")
     @PreAuthorize("hasRole('ADMIN')")
-    public ResponseEntity<String> deleteSubject(@PathVariable Long id) {
+    public ResponseEntity<String> deleteSubject(@PathVariable("id") Long id) {
         subjectService.deleteSubject(id);
         return ResponseEntity.ok("Subject deleted successfully");
+    }
+
+    @GetMapping("/admin/subjects/{id}/stats")
+    @PreAuthorize("hasRole('ADMIN')")
+    public ResponseEntity<com.chillcode.assessment.dto.SubjectStatsDto> getSubjectStats(@PathVariable("id") Long id) {
+        return ResponseEntity.ok(subjectService.getSubjectStats(id));
     }
 }
