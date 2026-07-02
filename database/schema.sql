@@ -1,9 +1,6 @@
-CREATE DATABASE IF NOT EXISTS chill_code;
-USE chill_code;
-
 -- Users Table (Admins and Students)
 CREATE TABLE IF NOT EXISTS users (
-    id BIGINT AUTO_INCREMENT PRIMARY KEY,
+    id BIGSERIAL PRIMARY KEY,
     register_number VARCHAR(50) UNIQUE NULL, -- For students
     username VARCHAR(50) UNIQUE NULL,         -- For admins
     name VARCHAR(100) NOT NULL,
@@ -14,12 +11,12 @@ CREATE TABLE IF NOT EXISTS users (
     status VARCHAR(20) DEFAULT 'ACTIVE', -- 'ACTIVE', 'SUSPENDED', 'INACTIVE'
     suspension_end_time TIMESTAMP NULL,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
 -- Subjects Table
 CREATE TABLE IF NOT EXISTS subjects (
-    id BIGINT AUTO_INCREMENT PRIMARY KEY,
+    id BIGSERIAL PRIMARY KEY,
     name VARCHAR(100) NOT NULL UNIQUE,
     description TEXT NULL,
     icon VARCHAR(50) DEFAULT 'BookOpen',
@@ -30,7 +27,7 @@ CREATE TABLE IF NOT EXISTS subjects (
 
 -- Questions Table
 CREATE TABLE IF NOT EXISTS questions (
-    id BIGINT AUTO_INCREMENT PRIMARY KEY,
+    id BIGSERIAL PRIMARY KEY,
     subject_id BIGINT NOT NULL,
     title VARCHAR(150) NOT NULL,
     difficulty VARCHAR(20) NOT NULL, -- 'EASY', 'MEDIUM', 'HARD'
@@ -50,7 +47,7 @@ CREATE TABLE IF NOT EXISTS questions (
 
 -- Test Cases Table
 CREATE TABLE IF NOT EXISTS test_cases (
-    id BIGINT AUTO_INCREMENT PRIMARY KEY,
+    id BIGSERIAL PRIMARY KEY,
     question_id BIGINT NOT NULL,
     input_data TEXT NOT NULL,
     expected_output TEXT NOT NULL,
@@ -61,7 +58,7 @@ CREATE TABLE IF NOT EXISTS test_cases (
 
 -- Tests Table
 CREATE TABLE IF NOT EXISTS tests (
-    id BIGINT AUTO_INCREMENT PRIMARY KEY,
+    id BIGSERIAL PRIMARY KEY,
     subject_id BIGINT NOT NULL,
     name VARCHAR(150) NOT NULL,
     duration_minutes INT NOT NULL,
@@ -87,7 +84,7 @@ CREATE TABLE IF NOT EXISTS test_questions (
 
 -- Student-Test Association (Enrollment / Attempts)
 CREATE TABLE IF NOT EXISTS student_tests (
-    id BIGINT AUTO_INCREMENT PRIMARY KEY,
+    id BIGSERIAL PRIMARY KEY,
     student_id BIGINT NOT NULL,
     test_id BIGINT NOT NULL,
     score INT DEFAULT 0,
@@ -99,12 +96,12 @@ CREATE TABLE IF NOT EXISTS student_tests (
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (student_id) REFERENCES users(id) ON DELETE CASCADE,
     FOREIGN KEY (test_id) REFERENCES tests(id) ON DELETE CASCADE,
-    UNIQUE KEY unique_student_test (student_id, test_id)
+    CONSTRAINT unique_student_test UNIQUE (student_id, test_id)
 );
 
 -- Code Submissions
 CREATE TABLE IF NOT EXISTS submissions (
-    id BIGINT AUTO_INCREMENT PRIMARY KEY,
+    id BIGSERIAL PRIMARY KEY,
     student_test_id BIGINT NOT NULL,
     question_id BIGINT NOT NULL,
     language VARCHAR(20) NOT NULL,
@@ -121,7 +118,7 @@ CREATE TABLE IF NOT EXISTS submissions (
 
 -- Submission Test Cases details
 CREATE TABLE IF NOT EXISTS submission_test_cases (
-    id BIGINT AUTO_INCREMENT PRIMARY KEY,
+    id BIGSERIAL PRIMARY KEY,
     submission_id BIGINT NOT NULL,
     test_case_id BIGINT NOT NULL,
     status VARCHAR(30) NOT NULL, -- 'PASSED', 'FAILED', 'TLE', 'RTE'
@@ -134,7 +131,7 @@ CREATE TABLE IF NOT EXISTS submission_test_cases (
 
 -- Warnings Table
 CREATE TABLE IF NOT EXISTS warnings (
-    id BIGINT AUTO_INCREMENT PRIMARY KEY,
+    id BIGSERIAL PRIMARY KEY,
     student_test_id BIGINT NOT NULL,
     type VARCHAR(50) NOT NULL, -- 'TAB_SWITCH', 'FULLSCREEN_EXIT', 'DEVTOOLS_OPEN'
     reason VARCHAR(255) NOT NULL,
@@ -144,7 +141,7 @@ CREATE TABLE IF NOT EXISTS warnings (
 
 -- Achievements Table
 CREATE TABLE IF NOT EXISTS achievements (
-    id BIGINT AUTO_INCREMENT PRIMARY KEY,
+    id BIGSERIAL PRIMARY KEY,
     student_id BIGINT NOT NULL,
     title VARCHAR(100) NOT NULL,
     type VARCHAR(50) NOT NULL, -- 'GOLD', 'SILVER', 'BRONZE', 'LANGUAGE_SPECIALIST', 'CONSISTENCY'
@@ -155,7 +152,7 @@ CREATE TABLE IF NOT EXISTS achievements (
 
 -- Notifications Table
 CREATE TABLE IF NOT EXISTS notifications (
-    id BIGINT AUTO_INCREMENT PRIMARY KEY,
+    id BIGSERIAL PRIMARY KEY,
     user_id BIGINT NOT NULL,
     title VARCHAR(150) NOT NULL,
     message TEXT NOT NULL,
@@ -167,7 +164,7 @@ CREATE TABLE IF NOT EXISTS notifications (
 
 -- Activity/Audit Logs Table
 CREATE TABLE IF NOT EXISTS activity_logs (
-    id BIGINT AUTO_INCREMENT PRIMARY KEY,
+    id BIGSERIAL PRIMARY KEY,
     user_id BIGINT NOT NULL,
     action VARCHAR(100) NOT NULL,
     details TEXT NULL,
