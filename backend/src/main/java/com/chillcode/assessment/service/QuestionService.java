@@ -27,6 +27,9 @@ public class QuestionService {
     @Autowired
     private TestCaseRepository testCaseRepository;
 
+    @Autowired
+    private com.chillcode.assessment.repository.TestRepository testRepository;
+
     public List<QuestionDto> getQuestionsBySubject(Long subjectId) {
         return questionRepository.findBySubjectId(subjectId).stream()
                 .map(this::convertToDto)
@@ -124,6 +127,15 @@ public class QuestionService {
     public void deleteQuestion(Long id) {
         Question question = questionRepository.findById(id)
                 .orElseThrow(() -> new RuntimeException("Question not found with id: " + id));
+
+        // Clear references from tests
+        java.util.List<com.chillcode.assessment.entity.Test> tests = testRepository.findAll();
+        for (com.chillcode.assessment.entity.Test test : tests) {
+            if (test.getQuestions().remove(question)) {
+                testRepository.save(test);
+            }
+        }
+
         questionRepository.delete(question);
     }
 
