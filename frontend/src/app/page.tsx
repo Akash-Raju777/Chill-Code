@@ -54,23 +54,33 @@ export default function LoginPage() {
     }
   }, [isAuthenticated, user, router]);
 
-  const handleSubmit = async (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     setLoading(true);
     setError('');
     setSuccess('');
 
     try {
+      const formData = new FormData(e.currentTarget);
+      const activeRole = role;
+      
+      const formName = (formData.get('name') as string) || '';
+      const formEmail = (formData.get('email') as string) || '';
+      const formPhone = (formData.get('phone') as string) || '';
+      
+      const formIdentifier = (formData.get(activeRole === 'STUDENT' ? 'student_register_number' : 'admin_username') as string) || '';
+      const formPassword = (formData.get(activeRole === 'STUDENT' ? 'student_password' : 'admin_password') as string) || '';
+
       if (isRegister) {
         // Register flow
         const registerPayload = {
-          name,
-          email,
-          phone,
-          password,
-          role,
-          registerNumber: role === 'STUDENT' ? registerNumber : undefined,
-          username: role === 'ADMIN' ? username : undefined,
+          name: formName,
+          email: formEmail,
+          phone: formPhone,
+          password: formPassword,
+          role: activeRole,
+          registerNumber: activeRole === 'STUDENT' ? formIdentifier : undefined,
+          username: activeRole === 'ADMIN' ? formIdentifier : undefined,
         };
         await apiCall('/api/auth/register', {
           method: 'POST',
@@ -78,16 +88,23 @@ export default function LoginPage() {
         });
         setSuccess('Registration successful! Please log in.');
         setIsRegister(false);
-        setIdentifier(role === 'STUDENT' ? registerNumber : username);
+        setIdentifier(formIdentifier);
         setPassword('');
       } else {
         // Login flow
+        if (!formIdentifier || !formPassword) {
+          setError('Please enter both your identifier and password.');
+          setLoading(false);
+          return;
+        }
+
         const loginResponse = await apiCall('/api/auth/login', {
           method: 'POST',
-          body: JSON.stringify({ identifier, password }),
+          body: JSON.stringify({ identifier: formIdentifier, password: formPassword }),
         });
-        if (loginResponse.role !== role) {
-          setError(`Invalid credentials for ${role.toLowerCase()} portal.`);
+        if (loginResponse.role !== activeRole) {
+          setError(`Invalid credentials for ${activeRole.toLowerCase()} portal.`);
+          setLoading(false);
           return;
         }
         login(loginResponse, loginResponse.token);
@@ -192,6 +209,8 @@ export default function LoginPage() {
                   <input
                     type="text"
                     required
+                    name="name"
+                    id="name"
                     placeholder="Enter name"
                     className="w-full glass-input py-3 pl-10 pr-4 rounded-xl text-sm"
                     value={name}
@@ -208,6 +227,8 @@ export default function LoginPage() {
                   <input
                     type="email"
                     required
+                    name="email"
+                    id="email"
                     placeholder="name@college.edu"
                     className="w-full glass-input py-3 pl-10 pr-4 rounded-xl text-sm"
                     value={email}
@@ -223,6 +244,8 @@ export default function LoginPage() {
                   <Phone className="absolute left-3 top-3.5 w-4 h-4 text-gray-500" />
                   <input
                     type="tel"
+                    name="phone"
+                    id="phone"
                     placeholder="Phone number (optional)"
                     className="w-full glass-input py-3 pl-10 pr-4 rounded-xl text-sm"
                     value={phone}
