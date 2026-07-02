@@ -1,5 +1,5 @@
 -- Users Table (Admins and Students)
-CREATE TABLE IF NOT EXISTS users (
+CREATE TABLE IF NOT EXISTS app_users (
     id BIGSERIAL PRIMARY KEY,
     register_number VARCHAR(50) UNIQUE NULL, -- For students
     username VARCHAR(50) UNIQUE NULL,         -- For admins
@@ -94,7 +94,7 @@ CREATE TABLE IF NOT EXISTS student_tests (
     warnings_count INT DEFAULT 0,
     is_suspended BOOLEAN DEFAULT FALSE,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    FOREIGN KEY (student_id) REFERENCES users(id) ON DELETE CASCADE,
+    FOREIGN KEY (student_id) REFERENCES app_users(id) ON DELETE CASCADE,
     FOREIGN KEY (test_id) REFERENCES tests(id) ON DELETE CASCADE,
     CONSTRAINT unique_student_test UNIQUE (student_id, test_id)
 );
@@ -147,7 +147,7 @@ CREATE TABLE IF NOT EXISTS achievements (
     type VARCHAR(50) NOT NULL, -- 'GOLD', 'SILVER', 'BRONZE', 'LANGUAGE_SPECIALIST', 'CONSISTENCY'
     badge_icon VARCHAR(50) DEFAULT 'Award',
     earned_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    FOREIGN KEY (student_id) REFERENCES users(id) ON DELETE CASCADE
+    FOREIGN KEY (student_id) REFERENCES app_users(id) ON DELETE CASCADE
 );
 
 -- Notifications Table
@@ -159,7 +159,7 @@ CREATE TABLE IF NOT EXISTS notifications (
     type VARCHAR(30) DEFAULT 'GENERAL', -- 'TEST_ALERT', 'SUSPENSION', 'CHEATING', 'RESULT', 'ACHIEVEMENT'
     is_read BOOLEAN DEFAULT FALSE,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+    FOREIGN KEY (user_id) REFERENCES app_users(id) ON DELETE CASCADE
 );
 
 -- Activity/Audit Logs Table
@@ -170,5 +170,5 @@ CREATE TABLE IF NOT EXISTS activity_logs (
     details TEXT NULL,
     ip_address VARCHAR(45) NULL,
     timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+    FOREIGN KEY (user_id) REFERENCES app_users(id) ON DELETE CASCADE
 );
