@@ -30,6 +30,12 @@ public class QuestionService {
     @Autowired
     private com.chillcode.assessment.repository.TestRepository testRepository;
 
+    public List<QuestionDto> getAllQuestions() {
+        return questionRepository.findAll().stream()
+                .map(this::convertToDto)
+                .collect(Collectors.toList());
+    }
+
     public List<QuestionDto> getQuestionsBySubject(Long subjectId) {
         return questionRepository.findBySubjectId(subjectId).stream()
                 .map(this::convertToDto)
@@ -74,6 +80,15 @@ public class QuestionService {
                         .isHidden(tcDto.getIsHidden())
                         .build();
                 testCaseRepository.save(testCase);
+            }
+        }
+
+        // Link uploaded question to existing tests of the same subject automatically
+        java.util.List<com.chillcode.assessment.entity.Test> tests = testRepository.findAll();
+        for (com.chillcode.assessment.entity.Test test : tests) {
+            if (test.getSubject().getId().equals(subject.getId())) {
+                test.getQuestions().add(savedQuestion);
+                testRepository.save(test);
             }
         }
 

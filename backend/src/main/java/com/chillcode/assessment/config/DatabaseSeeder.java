@@ -7,6 +7,7 @@ import com.chillcode.assessment.repository.UserRepository;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.CommandLineRunner;
 import org.springframework.security.crypto.password.PasswordEncoder;
+import org.springframework.transaction.annotation.Transactional;
 import org.springframework.stereotype.Component;
 import java.time.LocalDateTime;
 
@@ -31,7 +32,11 @@ public class DatabaseSeeder implements CommandLineRunner {
     @Autowired
     private com.chillcode.assessment.repository.NotificationRepository notificationRepository;
 
+    @Autowired
+    private com.chillcode.assessment.repository.QuestionRepository questionRepository;
+
     @Override
+    @Transactional
     public void run(String... args) throws Exception {
         // Seed admin_demo if it doesn't exist
         if (userRepository.findByUsername("admin_demo").isEmpty() && userRepository.findByEmail("admin@chillcode.com").isEmpty()) {
@@ -87,45 +92,6 @@ public class DatabaseSeeder implements CommandLineRunner {
             System.out.println("Seeded default C Programming subject successfully.");
         }
 
-        // Seed default Python Programming subject if not exists
-        if (subjectRepository.findByName("Python Programming").isEmpty()) {
-            com.chillcode.assessment.entity.Subject pythonSubject = com.chillcode.assessment.entity.Subject.builder()
-                .name("Python Programming")
-                .description("Dynamic Python programming language, syntax, libraries, and logic.")
-                .icon("Terminal")
-                .color("#F59E0B")
-                .status("ACTIVE")
-                .build();
-            subjectRepository.save(pythonSubject);
-            System.out.println("Seeded default Python Programming subject successfully.");
-        }
-
-        // Seed default C++ Programming subject if not exists
-        if (subjectRepository.findByName("C++ Programming").isEmpty()) {
-            com.chillcode.assessment.entity.Subject cppSubject = com.chillcode.assessment.entity.Subject.builder()
-                .name("C++ Programming")
-                .description("Object oriented C++ concepts, templates, pointers, and STL containers.")
-                .icon("Code2")
-                .color("#EC4899")
-                .status("ACTIVE")
-                .build();
-            subjectRepository.save(cppSubject);
-            System.out.println("Seeded default C++ Programming subject successfully.");
-        }
-
-        // Seed default JavaScript Programming subject if not exists
-        if (subjectRepository.findByName("JavaScript Programming").isEmpty()) {
-            com.chillcode.assessment.entity.Subject jsSubject = com.chillcode.assessment.entity.Subject.builder()
-                .name("JavaScript Programming")
-                .description("Browser environments, DOM API, Node.js scripts, and JavaScript logic.")
-                .icon("Cpu")
-                .color("#EF4444")
-                .status("ACTIVE")
-                .build();
-            subjectRepository.save(jsSubject);
-            System.out.println("Seeded default JavaScript Programming subject successfully.");
-        }
-
         // Seed tests and assign to students
         java.util.List<com.chillcode.assessment.entity.Subject> subjects = subjectRepository.findAll();
         java.util.List<User> students = userRepository.findAll().stream()
@@ -155,6 +121,13 @@ public class DatabaseSeeder implements CommandLineRunner {
                         .build();
                 test = testRepository.save(test);
                 System.out.println("Seeded test: " + testName);
+            }
+
+            // Link existing questions of this subject to this test
+            java.util.List<com.chillcode.assessment.entity.Question> subjectQuestions = questionRepository.findBySubjectId(subject.getId());
+            if (!subjectQuestions.isEmpty()) {
+                test.getQuestions().addAll(subjectQuestions);
+                testRepository.save(test);
             }
 
             for (User student : students) {

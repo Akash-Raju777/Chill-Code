@@ -45,6 +45,8 @@ interface StudentTest {
 export default function TestsWorkspace() {
   const router = useRouter();
   const [studentTests, setStudentTests] = useState<StudentTest[]>([]);
+  const [questionsList, setQuestionsList] = useState<any[]>([]);
+  const [subjects, setSubjects] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [selectedTest, setSelectedTest] = useState<StudentTest | null>(null);
@@ -53,6 +55,7 @@ export default function TestsWorkspace() {
   // Search & Filter state variables
   const [searchQuery, setSearchQuery] = useState('');
   const [difficultyFilter, setDifficultyFilter] = useState<'ALL' | 'EASY' | 'MEDIUM' | 'HARD'>('ALL');
+  const [subjectFilter, setSubjectFilter] = useState<number | 'ALL'>('ALL');
   const [hideSolved, setHideSolved] = useState(false);
 
   const { startTestSession } = useTestStore();
@@ -61,10 +64,14 @@ export default function TestsWorkspace() {
   const fetchTests = async () => {
     setLoading(true);
     try {
-      const data = await apiCall('/api/student/tests');
-      setStudentTests(data);
+      const testsData = await apiCall('/api/student/tests');
+      const questionsData = await apiCall('/api/student/questions');
+      const subjectsData = await apiCall('/api/student/subjects');
+      setStudentTests(testsData);
+      setQuestionsList(questionsData);
+      setSubjects(subjectsData);
     } catch (err: any) {
-      setError(err.message || 'Failed to fetch assigned exams list');
+      setError(err.message || 'Failed to fetch practice challenges.');
     } finally {
       setLoading(false);
     }
@@ -74,9 +81,14 @@ export default function TestsWorkspace() {
     fetchTests();
   }, []);
 
-  const handleStartAttempt = (st: StudentTest) => {
-    setSelectedTest(st);
-    setShowConfirmModal(true);
+  const handleStartQuestionAttempt = (q: any) => {
+    const associatedTest = studentTests.find((st) => st.test.subject.id === q.subjectId);
+    if (associatedTest) {
+      setSelectedTest(associatedTest);
+      setShowConfirmModal(true);
+    } else {
+      setError('No active practice block assigned for this subject.');
+    }
   };
 
   const confirmStart = async () => {
@@ -105,23 +117,25 @@ export default function TestsWorkspace() {
   };
 
   // Filter Logic
-  const filteredTests = studentTests.filter((st) => {
-    if (!st || !st.test) return false;
-    const testName = st.test.name || '';
-    const subjectName = st.test.subject?.name || '';
-    
-    const matchesSearch = testName.toLowerCase().includes(searchQuery.toLowerCase()) || 
-      subjectName.toLowerCase().includes(searchQuery.toLowerCase());
-    
-    // Check difficulty filter (mapping marks/difficulty context mock values)
-    const diff = (st.test.maxMarks || 0) > 60 ? 'HARD' : (st.test.maxMarks || 0) > 30 ? 'MEDIUM' : 'EASY';
-    const matchesDifficulty = difficultyFilter === 'ALL' || diff === difficultyFilter;
+  const filteredQuestions = questionsList.filter((q) => {
+    const title = q.title || '';
+    const subject = subjects.find((s) => s.id === q.subjectId);
+    const subjectName = subject ? subject.name : '';
+    const tags = q.tags || '';
 
-    // Check solved status
-    const isSolved = ['SUBMITTED', 'EVALUATED'].includes(st.status || '');
+    const matchesSearch = title.toLowerCase().includes(searchQuery.toLowerCase()) || 
+      subjectName.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      tags.toLowerCase().includes(searchQuery.toLowerCase());
+
+    const matchesDifficulty = difficultyFilter === 'ALL' || q.difficulty === difficultyFilter;
+
+    const matchesSubject = subjectFilter === 'ALL' || q.subjectId === subjectFilter;
+
+    const associatedTest = studentTests.find((st) => st.test.subject.id === q.subjectId);
+    const isSolved = associatedTest ? ['SUBMITTED', 'EVALUATED'].includes(associatedTest.status) : false;
     const matchesSolved = !hideSolved || !isSolved;
 
-    return matchesSearch && matchesDifficulty && matchesSolved;
+    return matchesSearch && matchesDifficulty && matchesSubject && matchesSolved;
   });
 
   return (
@@ -200,10 +214,16 @@ export default function TestsWorkspace() {
 
           {/* Subject Filter dropdown */}
           <div className="relative">
-            <button className="flex items-center gap-2 px-3 py-2 bg-[#0b0c10] border border-white/5 rounded-lg text-xs font-semibold text-gray-400 hover:text-white transition-colors">
-              All Topics
-              <ChevronDown className="w-3.5 h-3.5" />
-            </button>
+            <select
+              value={subjectFilter}
+              onChange={(e) => setSubjectFilter(e.target.value === 'ALL' ? 'ALL' : Number(e.target.value))}
+              className="px-3 py-2 bg-[#0b0c10] border border-white/5 rounded-lg text-xs font-semibold text-gray-400 hover:text-white transition-colors focus:ring-0 focus:outline-none cursor-pointer"
+            >
+              <option value="ALL">All Topics</option>
+              {subjects.map((sub) => (
+                <option key={sub.id} value={sub.id}>{sub.name}</option>
+              ))}
+            </select>
           </div>
 
           {/* Hide solved toggle */}
@@ -220,7 +240,7 @@ export default function TestsWorkspace() {
 
         {/* Counter label */}
         <span className="text-xs font-medium text-gray-500">
-          Showing <strong className="text-white">{filteredTests.length}</strong> of {studentTests.length} assessments
+          Showing <strong className="text-white">{filteredQuestions.length}</strong> of {questionsList.length} problems
         </span>
       </div>
 
@@ -229,11 +249,11 @@ export default function TestsWorkspace() {
         <div className="flex justify-center py-20">
           <Loader2 className="w-8 h-8 animate-spin text-[#7c3aed]" />
         </div>
-      ) : filteredTests.length === 0 ? (
+      ) : filteredQuestions.length === 0 ? (
         <div className="bg-[#11131c] border border-white/5 rounded-2xl p-16 text-center space-y-4 shadow-xl">
           <ClipboardListIcon className="w-12 h-12 text-gray-600 mx-auto" />
-          <h3 className="font-bold text-white text-lg">No assessments fit query</h3>
-          <p className="text-xs text-gray-500 max-w-sm mx-auto">Adjust filters or search parameters to discover assigned assessments.</p>
+          <h3 className="font-bold text-white text-lg">No challenges fit query</h3>
+          <p className="text-xs text-gray-500 max-w-sm mx-auto">Adjust filters or search parameters to discover coding challenges.</p>
         </div>
       ) : (
         <div className="bg-[#11131c] border border-white/5 rounded-2xl overflow-hidden shadow-2xl">
@@ -245,21 +265,23 @@ export default function TestsWorkspace() {
                   <th className="p-4">Title</th>
                   <th className="p-4 w-32">Difficulty</th>
                   <th className="p-4">Tags</th>
-                  <th className="p-4 w-36 pr-6 text-right">Acceptance</th>
+                  <th className="p-4 w-36 pr-6 text-right">Points</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-white/5 text-xs text-gray-400">
-                {filteredTests.map((st) => {
-                  const isSolved = ['SUBMITTED', 'EVALUATED'].includes(st.status);
-                  const isSuspended = st.isSuspended || st.status === 'SUSPENDED';
-                  const isStarted = st.status === 'STARTED';
-                  const difficulty = st.test.maxMarks > 60 ? 'HARD' : st.test.maxMarks > 30 ? 'MEDIUM' : 'EASY';
+                {filteredQuestions.map((q) => {
+                  const associatedTest = studentTests.find((st) => st.test.subject.id === q.subjectId);
+                  const isSolved = associatedTest ? ['SUBMITTED', 'EVALUATED'].includes(associatedTest.status) : false;
+                  const isSuspended = associatedTest ? (associatedTest.isSuspended || associatedTest.status === 'SUSPENDED') : false;
+                  const isStarted = associatedTest ? associatedTest.status === 'STARTED' : false;
+                  const subject = subjects.find((s) => s.id === q.subjectId);
+                  const subjectName = subject ? subject.name : 'Unknown';
 
                   return (
                     <tr 
-                      key={st.id} 
+                      key={q.id} 
                       className="hover:bg-white/5 transition-all group cursor-pointer"
-                      onClick={() => !isSolved && !isSuspended && handleStartAttempt(st)}
+                      onClick={() => !isSolved && !isSuspended && handleStartQuestionAttempt(q)}
                     >
                       {/* Status Icon */}
                       <td className="p-4 pl-6 text-center">
@@ -278,17 +300,17 @@ export default function TestsWorkspace() {
                       <td className="p-4 py-5">
                         <div className="space-y-1">
                           <span className="font-bold text-white text-sm group-hover:text-[#8b5cf6] transition-colors leading-tight">
-                            {st.test.name}
+                            {q.title}
                           </span>
                           <div className="text-[10px] text-gray-500 font-semibold">
                             {isSolved ? (
-                              <span className="text-emerald-400">Solved on 1st attempt</span>
+                              <span className="text-emerald-400">Solved successfully</span>
                             ) : isSuspended ? (
                               <span className="text-red-400 font-medium">Suspended on warnings violation</span>
                             ) : isStarted ? (
                               <span className="text-amber-400">Attempts in progress</span>
                             ) : (
-                              <span>Duration: {st.test.durationMinutes} mins | Not yet attempted</span>
+                              <span>Open for practice coding</span>
                             )}
                           </div>
                         </div>
@@ -297,11 +319,11 @@ export default function TestsWorkspace() {
                       {/* Difficulty level badge */}
                       <td className="p-4">
                         <span className={`text-[10px] font-bold px-2 py-0.5 rounded-md ${
-                          difficulty === 'EASY' ? 'bg-emerald-500/10 text-emerald-400' :
-                          difficulty === 'MEDIUM' ? 'bg-amber-500/10 text-amber-400' :
+                          q.difficulty === 'EASY' ? 'bg-emerald-500/10 text-emerald-400' :
+                          q.difficulty === 'MEDIUM' ? 'bg-amber-500/10 text-amber-400' :
                           'bg-red-500/10 text-red-400'
                         }`}>
-                          {difficulty}
+                          {q.difficulty}
                         </span>
                       </td>
 
@@ -309,11 +331,13 @@ export default function TestsWorkspace() {
                       <td className="p-4">
                         <div className="flex gap-1.5 flex-wrap">
                           <span className="px-2 py-0.5 rounded-lg bg-white/5 border border-white/5 text-[10px] font-semibold text-gray-400 capitalize">
-                            {st.test.subject.name}
+                            {subjectName}
                           </span>
-                          <span className="px-2 py-0.5 rounded-lg bg-white/5 border border-white/5 text-[10px] font-semibold text-gray-400">
-                            {st.test.durationMinutes}min
-                          </span>
+                          {q.tags && q.tags.split(',').map((tag: string) => (
+                            <span key={tag} className="px-2 py-0.5 rounded-lg bg-white/5 border border-white/5 text-[10px] font-semibold text-gray-400">
+                              {tag}
+                            </span>
+                          ))}
                         </div>
                       </td>
 
@@ -321,7 +345,7 @@ export default function TestsWorkspace() {
                       <td className="p-4 pr-6 text-right">
                         <div className="flex items-center justify-end gap-2">
                           <span className="text-xs font-semibold text-gray-500 group-hover:text-white transition-colors">
-                            {isSolved ? `${st.score}/${st.test.maxMarks} pts` : '42.1%'}
+                            {q.marks} pts
                           </span>
                           {!isSolved && !isSuspended && (
                             <ArrowRight className="w-3.5 h-3.5 text-gray-500 opacity-0 group-hover:opacity-100 group-hover:text-[#8b5cf6] translate-x-[-4px] group-hover:translate-x-0 transition-all" />
@@ -339,7 +363,7 @@ export default function TestsWorkspace() {
 
       {/* Daily Challenge floating glow button (Exactly matches Image 1) */}
       <button 
-        onClick={() => studentTests.length > 0 && handleStartAttempt(studentTests[0])}
+        onClick={() => questionsList.length > 0 && handleStartQuestionAttempt(questionsList[0])}
         className="fixed bottom-6 right-6 flex items-center gap-2 px-5 py-3.5 rounded-full bg-[#7c3aed] hover:bg-[#8b5cf6] text-white font-bold text-xs tracking-wider transition-all shadow-xl shadow-[#7c3aed]/20 border border-white/10 glow-card hover:scale-105 active:scale-95 z-40"
       >
         <Zap className="w-4 h-4 fill-white" />
