@@ -29,6 +29,9 @@ public class StudentService {
     @Autowired
     private AchievementRepository achievementRepository;
 
+    @Autowired
+    private com.chillcode.assessment.repository.UserRepository userRepository;
+
     public Map<String, Object> getStudentDashboardStats(Long studentId) {
         List<StudentTest> myTests = studentTestRepository.findByStudentId(studentId);
         
@@ -76,5 +79,23 @@ public class StudentService {
 
     public List<Achievement> getAchievementsForUser(Long studentId) {
         return achievementRepository.findByStudentId(studentId);
+    }
+
+    @Transactional
+    public void broadcastNotification(String title, String message) {
+        List<com.chillcode.assessment.entity.User> students = userRepository.findAll().stream()
+                .filter(u -> u.getRole() == com.chillcode.assessment.entity.Role.STUDENT)
+                .collect(Collectors.toList());
+        
+        for (com.chillcode.assessment.entity.User student : students) {
+            Notification notification = Notification.builder()
+                    .user(student)
+                    .title(title)
+                    .message(message)
+                    .type("GENERAL")
+                    .isRead(false)
+                    .build();
+            notificationRepository.save(notification);
+        }
     }
 }

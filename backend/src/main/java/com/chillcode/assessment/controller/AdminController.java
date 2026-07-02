@@ -28,6 +28,9 @@ public class AdminController {
     @Autowired
     private PasswordEncoder passwordEncoder;
 
+    @Autowired
+    private com.chillcode.assessment.repository.StudentTestRepository studentTestRepository;
+
     @GetMapping("/dashboard")
     public ResponseEntity<DashboardMetricsDto> getDashboardMetrics() {
         return ResponseEntity.ok(adminService.getDashboardMetrics());
@@ -96,5 +99,31 @@ public class AdminController {
             User savedUser = userRepository.save(existingUser);
             return ResponseEntity.ok(savedUser);
         }).orElse(ResponseEntity.notFound().build());
+    }
+
+    @PostMapping("/student/forgive")
+    public ResponseEntity<?> forgiveStudent(@RequestParam String registerNumber) {
+        java.util.Optional<User> studentOpt = userRepository.findByRegisterNumber(registerNumber);
+        if (studentOpt.isEmpty()) {
+            return ResponseEntity.badRequest().body("Student not found with register number: " + registerNumber);
+        }
+
+        User student = studentOpt.get();
+        student.setStatus(com.chillcode.assessment.entity.UserStatus.ACTIVE);
+        student.setSuspensionEndTime(null);
+        userRepository.save(student);
+
+        // Find all student tests for this student and reset their suspension state
+        java.util.List<com.chillcode.assessment.entity.StudentTest> studentTests = studentTestRepository.findByStudentId(student.getId());
+        for (com.chillcode.assessment.entity.StudentTest st : studentTests) {
+            if ("SUSPENDED".equals(st.getStatus()) || Boolean.TRUE.equals(st.getIsSuspended())) {
+                st.setStatus("STARTED");
+                st.setIsSuspended(false);
+                st.setWarningsCount(0);
+                studentTestRepository.save(st);
+            }
+        }
+
+        return ResponseEntity.ok("Student suspension has been lifted.");
     }
 }

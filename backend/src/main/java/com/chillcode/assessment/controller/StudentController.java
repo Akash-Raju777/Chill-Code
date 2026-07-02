@@ -55,6 +55,17 @@ public class StudentController {
         return ResponseEntity.ok("Notification marked as read");
     }
 
+    @PostMapping("/notifications")
+    public ResponseEntity<?> broadcastInstruction(@RequestBody Map<String, String> payload) {
+        String title = payload.get("title");
+        String message = payload.get("message");
+        if (title == null || message == null) {
+            return ResponseEntity.badRequest().body("Title and message are required.");
+        }
+        studentService.broadcastNotification(title, message);
+        return ResponseEntity.ok("Instruction broadcasted successfully to all students.");
+    }
+
     @GetMapping("/achievements")
     public ResponseEntity<List<Achievement>> getAchievements() {
         User student = getCurrentUser();
