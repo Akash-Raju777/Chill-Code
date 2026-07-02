@@ -26,6 +26,24 @@ export default function LoginPage() {
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
 
+  const handleRoleChange = (newRole: 'STUDENT' | 'ADMIN') => {
+    setRole(newRole);
+    setError('');
+    setSuccess('');
+    setIdentifier('');
+    setPassword('');
+    setName('');
+    setEmail('');
+    setPhone('');
+    setRegisterNumber('');
+    setUsername('');
+    
+    if (typeof window !== 'undefined') {
+      window.localStorage.removeItem('identifier');
+      window.sessionStorage.clear();
+    }
+  };
+
   useEffect(() => {
     if (isAuthenticated && user) {
       if (user.role === 'ADMIN') {
@@ -68,6 +86,10 @@ export default function LoginPage() {
           method: 'POST',
           body: JSON.stringify({ identifier, password }),
         });
+        if (loginResponse.role !== role) {
+          setError(`Invalid credentials for ${role.toLowerCase()} portal.`);
+          return;
+        }
         login(loginResponse, loginResponse.token);
         if (loginResponse.role === 'ADMIN') {
           router.push('/admin/dashboard');
@@ -130,10 +152,7 @@ export default function LoginPage() {
                 ? 'text-indigo-400 border-b-2 border-indigo-500'
                 : 'text-gray-500 hover:text-gray-300'
             }`}
-            onClick={() => {
-              setRole('STUDENT');
-              setError('');
-            }}
+            onClick={() => handleRoleChange('STUDENT')}
           >
             Student Panel
           </button>
@@ -144,10 +163,7 @@ export default function LoginPage() {
                 ? 'text-indigo-400 border-b-2 border-indigo-500'
                 : 'text-gray-500 hover:text-gray-300'
             }`}
-            onClick={() => {
-              setRole('ADMIN');
-              setError('');
-            }}
+            onClick={() => handleRoleChange('ADMIN')}
           >
             Admin Panel
           </button>
@@ -165,7 +181,7 @@ export default function LoginPage() {
           </div>
         )}
 
-        <form onSubmit={handleSubmit} className="space-y-4">
+        <form onSubmit={handleSubmit} autoComplete="off" className="space-y-4">
           {isRegister && (
             <>
               {/* Full Name */}
@@ -227,6 +243,9 @@ export default function LoginPage() {
               <input
                 type="text"
                 required
+                name={role === 'STUDENT' ? 'student_register_number' : 'admin_username'}
+                id={role === 'STUDENT' ? 'student_register_number' : 'admin_username'}
+                autoComplete="off"
                 placeholder={role === 'STUDENT' ? 'Enter register number' : 'Enter username'}
                 className="w-full glass-input py-3 pl-10 pr-4 rounded-xl text-sm"
                 value={isRegister ? (role === 'STUDENT' ? registerNumber : username) : identifier}
@@ -250,6 +269,9 @@ export default function LoginPage() {
               <input
                 type="password"
                 required
+                name={role === 'STUDENT' ? 'student_password' : 'admin_password'}
+                id={role === 'STUDENT' ? 'student_password' : 'admin_password'}
+                autoComplete="new-password"
                 placeholder="Enter password"
                 className="w-full glass-input py-3 pl-10 pr-4 rounded-xl text-sm"
                 value={password}
