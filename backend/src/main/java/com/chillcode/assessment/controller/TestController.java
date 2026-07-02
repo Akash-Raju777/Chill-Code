@@ -61,29 +61,29 @@ public class TestController {
 
     // Student endpoints
     @GetMapping("/student/tests")
-    public ResponseEntity<List<StudentTest>> getMyTests() {
+    public ResponseEntity<List<com.chillcode.assessment.dto.StudentTestDto>> getMyTests() {
         User student = getCurrentUser();
-        return ResponseEntity.ok(testService.getTestsForStudent(student.getId()));
+        return ResponseEntity.ok(testService.getTestsForStudentDto(student.getId()));
     }
 
     @PostMapping("/student/tests/{id}/start")
-    public ResponseEntity<StudentTest> startTest(@PathVariable Long id) {
+    public ResponseEntity<com.chillcode.assessment.dto.StudentTestDto> startTest(@PathVariable("id") Long id) {
         User student = getCurrentUser();
-        return ResponseEntity.ok(testService.startTest(id, student.getId()));
+        return ResponseEntity.ok(testService.startTestDto(id, student.getId()));
     }
 
     @PostMapping("/student/tests/{id}/submit")
-    public ResponseEntity<StudentTest> submitTest(@PathVariable Long id) {
+    public ResponseEntity<com.chillcode.assessment.dto.StudentTestDto> submitTest(@PathVariable("id") Long id) {
         User student = getCurrentUser();
-        return ResponseEntity.ok(testService.submitTest(id, student.getId()));
+        return ResponseEntity.ok(testService.submitTestDto(id, student.getId()));
     }
 
     @PostMapping("/student/tests/{id}/warning")
-    public ResponseEntity<StudentTest> logWarning(
-            @PathVariable Long id, 
-            @RequestParam String type, 
-            @RequestParam String reason) {
+    public ResponseEntity<com.chillcode.assessment.dto.StudentTestDto> logWarning(
+            @PathVariable("id") Long id, 
+            @RequestParam("type") String type, 
+            @RequestParam("reason") String reason) {
         User student = getCurrentUser();
-        return ResponseEntity.ok(testService.recordWarning(id, student.getId(), type, reason));
+        return ResponseEntity.ok(testService.recordWarningDto(id, student.getId(), type, reason));
     }
 }

@@ -186,4 +186,67 @@ public class TestService {
 
         return studentTestRepository.save(st);
     }
+
+    public com.chillcode.assessment.dto.StudentTestDto convertToStudentTestDto(StudentTest st) {
+        if (st == null) return null;
+        
+        Test test = st.getTest();
+        com.chillcode.assessment.entity.Subject subject = test != null ? test.getSubject() : null;
+
+        com.chillcode.assessment.dto.StudentTestDto.SubjectDetailsDto subjectDto = null;
+        if (subject != null) {
+            subjectDto = new com.chillcode.assessment.dto.StudentTestDto.SubjectDetailsDto(
+                subject.getId(),
+                subject.getName(),
+                subject.getColor()
+            );
+        }
+
+        com.chillcode.assessment.dto.StudentTestDto.TestDetailsDto testDto = null;
+        if (test != null) {
+            testDto = new com.chillcode.assessment.dto.StudentTestDto.TestDetailsDto(
+                test.getId(),
+                test.getName(),
+                test.getDurationMinutes(),
+                test.getStartTime(),
+                test.getEndTime(),
+                test.getMaxMarks(),
+                test.getInstructions(),
+                subjectDto
+            );
+        }
+
+        return new com.chillcode.assessment.dto.StudentTestDto(
+            st.getId(),
+            st.getStatus(),
+            st.getScore() != null ? st.getScore() : 0,
+            st.getWarningsCount() != null ? st.getWarningsCount() : 0,
+            st.getIsSuspended() != null ? st.getIsSuspended() : false,
+            testDto
+        );
+    }
+
+    public List<com.chillcode.assessment.dto.StudentTestDto> getTestsForStudentDto(Long studentId) {
+        return studentTestRepository.findByStudentId(studentId).stream()
+                .map(this::convertToStudentTestDto)
+                .collect(Collectors.toList());
+    }
+
+    @Transactional
+    public com.chillcode.assessment.dto.StudentTestDto startTestDto(Long testId, Long studentId) {
+        StudentTest st = startTest(testId, studentId);
+        return convertToStudentTestDto(st);
+    }
+
+    @Transactional
+    public com.chillcode.assessment.dto.StudentTestDto submitTestDto(Long testId, Long studentId) {
+        StudentTest st = submitTest(testId, studentId);
+        return convertToStudentTestDto(st);
+    }
+
+    @Transactional
+    public com.chillcode.assessment.dto.StudentTestDto recordWarningDto(Long testId, Long studentId, String type, String reason) {
+        StudentTest st = recordWarning(testId, studentId, type, reason);
+        return convertToStudentTestDto(st);
+    }
 }

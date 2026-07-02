@@ -64,7 +64,7 @@ export default function TestsWorkspace() {
       const data = await apiCall('/api/student/tests');
       setStudentTests(data);
     } catch (err: any) {
-      setError('Failed to fetch assigned exams list');
+      setError(err.message || 'Failed to fetch assigned exams list');
     } finally {
       setLoading(false);
     }
