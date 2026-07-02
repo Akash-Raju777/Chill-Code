@@ -9,49 +9,7 @@ const mockSubjects = [
   { id: 3, name: 'JavaScript & Node.js', description: 'Asynchronous actions, event loops, and arrays.', icon: 'Cpu', color: '#F59E0B', status: 'ACTIVE' }
 ];
 
-const mockQuestions = [
-  {
-    id: 101,
-    subjectId: 1,
-    title: 'Two Sum Problem',
-    difficulty: 'EASY' as const,
-    problemStatement: 'Given an array of integers nums and an integer target, return indices of the two numbers such that they add up to target.\n\nYou may assume that each input would have exactly one solution, and you may not use the same element twice.',
-    constraints: '2 <= nums.length <= 10^4\n-10^9 <= nums[i] <= 10^9\n-10^9 <= target <= 10^9',
-    inputFormat: 'The first line contains N, the size of the array.\nThe second line contains N integers separated by space.\nThe third line contains the target sum.',
-    outputFormat: 'Print the two indices separated by a space (indices are 0-based).',
-    timeLimitMs: 2000,
-    memoryLimitMb: 256,
-    marks: 10,
-    negativeMarks: 0,
-    allowedLanguages: 'java,python,javascript',
-    tags: 'Arrays,Hashing',
-    testCases: [
-      { id: 1001, inputData: '4\n2 7 11 15\n9', expectedOutput: '0 1', isHidden: false },
-      { id: 1002, inputData: '3\n3 2 4\n6', expectedOutput: '1 2', isHidden: false },
-      { id: 1003, inputData: '2\n3 3\n6', expectedOutput: '0 1', isHidden: true }
-    ]
-  },
-  {
-    id: 102,
-    subjectId: 1,
-    title: 'Reverse String',
-    difficulty: 'EASY' as const,
-    problemStatement: 'Write a function that reverses a string. The input string is given as an array of characters s.\n\nYou must do this by modifying the input array in-place with O(1) extra memory.',
-    constraints: '1 <= s.length <= 10^5\ns[i] is a printable ascii character.',
-    inputFormat: 'Single line containing the string s.',
-    outputFormat: 'Print the reversed string.',
-    timeLimitMs: 1500,
-    memoryLimitMb: 128,
-    marks: 10,
-    negativeMarks: 0,
-    allowedLanguages: 'java,python',
-    tags: 'Strings,TwoPointers',
-    testCases: [
-      { id: 1004, inputData: 'hello', expectedOutput: 'olleh', isHidden: false },
-      { id: 1005, inputData: 'Hannah', expectedOutput: 'hannaH', isHidden: false }
-    ]
-  }
-];
+const mockQuestions: any[] = [];
 
 const mockTests = [
   {
@@ -86,32 +44,7 @@ const mockTests = [
   }
 ];
 
-const mockStudentTests = [
-  {
-    id: 601,
-    status: 'ASSIGNED',
-    score: 0,
-    warningsCount: 0,
-    isSuspended: false,
-    test: mockTests[0]
-  },
-  {
-    id: 602,
-    status: 'ASSIGNED',
-    score: 0,
-    warningsCount: 0,
-    isSuspended: false,
-    test: mockTests[1]
-  },
-  {
-    id: 603,
-    status: 'SUBMITTED',
-    score: 85,
-    warningsCount: 0,
-    isSuspended: false,
-    test: mockTests[2]
-  }
-];
+const mockStudentTests: any[] = [];
 
 const mockNotifications = [
   { id: 701, title: 'Exam Assigned', message: 'You have been assigned to Mid-Term Core Java Exam. Start when ready.', type: 'TEST_ALERT', createdAt: new Date().toISOString() }
@@ -148,6 +81,7 @@ export async function apiCall(endpoint: string, options: RequestInit = {}) {
 
   try {
     const response = await fetch(`${BASE_URL}${endpoint}`, {
+      cache: 'no-store',
       ...options,
       headers,
     });
