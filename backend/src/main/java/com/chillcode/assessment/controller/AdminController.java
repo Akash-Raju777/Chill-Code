@@ -8,9 +8,8 @@ import com.chillcode.assessment.service.AdminService;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
-import org.springframework.web.bind.annotation.GetMapping;
-import org.springframework.web.bind.annotation.RequestMapping;
-import org.springframework.web.bind.annotation.RestController;
+import org.springframework.security.crypto.password.PasswordEncoder;
+import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
 import java.util.stream.Collectors;
@@ -26,6 +25,9 @@ public class AdminController {
     @Autowired
     private UserRepository userRepository;
 
+    @Autowired
+    private PasswordEncoder passwordEncoder;
+
     @GetMapping("/dashboard")
     public ResponseEntity<DashboardMetricsDto> getDashboardMetrics() {
         return ResponseEntity.ok(adminService.getDashboardMetrics());
@@ -37,5 +39,62 @@ public class AdminController {
                 .filter(u -> u.getRole() == Role.STUDENT)
                 .collect(Collectors.toList());
         return ResponseEntity.ok(students);
+    }
+
+    @PostMapping("/students")
+    public ResponseEntity<?> createStudent(@RequestBody User studentRequest) {
+        if (studentRequest.getEmail() != null && userRepository.existsByEmail(studentRequest.getEmail())) {
+            return ResponseEntity.badRequest().body("Email is already registered.");
+        }
+        if (studentRequest.getRegisterNumber() != null && userRepository.existsByRegisterNumber(studentRequest.getRegisterNumber())) {
+            return ResponseEntity.badRequest().body("Register number is already taken.");
+        }
+
+        studentRequest.setRole(Role.STUDENT);
+        if (studentRequest.getPassword() != null && !studentRequest.getPassword().isBlank()) {
+            studentRequest.setPassword(passwordEncoder.encode(studentRequest.getPassword()));
+        } else {
+            studentRequest.setPassword(passwordEncoder.encode("password"));
+        }
+
+        User savedStudent = userRepository.save(studentRequest);
+        return ResponseEntity.ok(savedStudent);
+    }
+
+    @PutMapping("/students/{id}")
+    public ResponseEntity<?> updateStudent(@PathVariable Long id, @RequestBody User studentRequest) {
+        return userRepository.findById(id).map(existingUser -> {
+            if (studentRequest.getEmail() != null && !studentRequest.getEmail().equalsIgnoreCase(existingUser.getEmail())) {
+                if (userRepository.existsByEmail(studentRequest.getEmail())) {
+                    return ResponseEntity.badRequest().body("Email is already registered.");
+                }
+                existingUser.setEmail(studentRequest.getEmail());
+            }
+
+            if (studentRequest.getRegisterNumber() != null && !studentRequest.getRegisterNumber().equalsIgnoreCase(existingUser.getRegisterNumber())) {
+                if (userRepository.existsByRegisterNumber(studentRequest.getRegisterNumber())) {
+                    return ResponseEntity.badRequest().body("Register number is already taken.");
+                }
+                existingUser.setRegisterNumber(studentRequest.getRegisterNumber());
+            }
+
+            if (studentRequest.getName() != null) {
+                existingUser.setName(studentRequest.getName());
+            }
+            if (studentRequest.getDepartment() != null) {
+                existingUser.setDepartment(studentRequest.getDepartment());
+            }
+            if (studentRequest.getStatus() != null) {
+                existingUser.setStatus(studentRequest.getStatus());
+            }
+            if (studentRequest.getPassword() != null && !studentRequest.getPassword().isBlank()) {
+                if (!studentRequest.getPassword().startsWith("$2a$")) {
+                    existingUser.setPassword(passwordEncoder.encode(studentRequest.getPassword()));
+                }
+            }
+
+            User savedUser = userRepository.save(existingUser);
+            return ResponseEntity.ok(savedUser);
+        }).orElse(ResponseEntity.notFound().build());
     }
 }
