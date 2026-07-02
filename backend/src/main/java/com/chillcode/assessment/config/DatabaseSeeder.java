@@ -18,6 +18,9 @@ public class DatabaseSeeder implements CommandLineRunner {
     @Autowired
     private PasswordEncoder passwordEncoder;
 
+    @Autowired
+    private com.chillcode.assessment.repository.SubjectRepository subjectRepository;
+
     @Override
     public void run(String... args) throws Exception {
         // Seed admin_demo if it doesn't exist
@@ -46,6 +49,19 @@ public class DatabaseSeeder implements CommandLineRunner {
                 .build();
             userRepository.save(student);
             System.out.println("Seeded Demo Student successfully.");
+        }
+
+        // Seed default subject if none exist
+        if (subjectRepository.count() == 0) {
+            com.chillcode.assessment.entity.Subject javaSubject = com.chillcode.assessment.entity.Subject.builder()
+                .name("Java Programming")
+                .description("Core Java programming concepts, collections, and algorithms.")
+                .icon("Code2")
+                .color("#3B82F6")
+                .status("ACTIVE")
+                .build();
+            subjectRepository.save(javaSubject);
+            System.out.println("Seeded default Java Programming subject successfully.");
         }
     }
 }

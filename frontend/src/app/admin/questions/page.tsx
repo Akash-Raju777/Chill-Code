@@ -162,7 +162,10 @@ export default function QuestionManagement() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!selectedSubjectId) return;
+    if (!selectedSubjectId) {
+      setError('Please create and select a subject before saving a question.');
+      return;
+    }
 
     const langsStr = Object.keys(allowedLangs)
       .filter((k) => allowedLangs[k as keyof typeof allowedLangs])
