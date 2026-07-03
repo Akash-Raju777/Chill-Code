@@ -81,9 +81,14 @@ export default function CodingWorkspace() {
   const [consoleOpen, setConsoleOpen] = useState(true);
   const [editorTheme, setEditorTheme] = useState<'vs-dark' | 'light'>('vs-dark');
   const [fontSize, setFontSize] = useState(14);
+  const [customInput, setCustomInput] = useState('');
+  const [consoleTab, setConsoleTab] = useState<'TESTCASE' | 'RESULT'>('TESTCASE');
 
   useEffect(() => {
     setMounted(true);
+    if (typeof window !== 'undefined' && !document.fullscreenElement) {
+      setFullscreenRequired(true);
+    }
   }, []);
 
   // Set up Timer interval
@@ -201,17 +206,51 @@ export default function CodingWorkspace() {
     }
   };
 
-  const handleRunSubmitCode = async () => {
+  const handleRunCode = async () => {
     if (!currentQuestion) return;
     setExecuting(true);
     setExecResult(null);
     setConsoleOpen(true);
+    setConsoleTab('RESULT');
 
     const payload = {
       code: codes[currentQuestion.id],
       language: languages[currentQuestion.id],
       questionId: currentQuestion.id,
       studentTestId: useTestStore.getState().activeStudentTestId,
+      customInput: customInput,
+      runOnly: true,
+    };
+
+    try {
+      const response = await apiCall('/api/student/submissions', {
+        method: 'POST',
+        body: JSON.stringify(payload),
+      });
+      setExecResult(response);
+    } catch (err: any) {
+      setExecResult({
+        status: 'RUNTIME_ERROR',
+        compileError: err.message || 'Network execution error.',
+      });
+    } finally {
+      setExecuting(false);
+    }
+  };
+
+  const handleSubmitCode = async () => {
+    if (!currentQuestion) return;
+    setExecuting(true);
+    setExecResult(null);
+    setConsoleOpen(true);
+    setConsoleTab('RESULT');
+
+    const payload = {
+      code: codes[currentQuestion.id],
+      language: languages[currentQuestion.id],
+      questionId: currentQuestion.id,
+      studentTestId: useTestStore.getState().activeStudentTestId,
+      runOnly: false,
     };
 
     try {
@@ -361,9 +400,9 @@ export default function CodingWorkspace() {
       </header>
 
       {/* 2. Main Workspace Split Panel */}
-      <div className="flex-1 flex overflow-hidden">
+      <div className="flex-1 flex flex-col md:flex-row overflow-y-auto md:overflow-hidden">
         {/* LEFT COLUMN: Problem Details, Inputs, Examples, Submissions */}
-        <div className="w-[45%] flex flex-col bg-[#11131c] border-r border-white/5 overflow-hidden">
+        <div className="w-full md:w-[45%] h-[50vh] md:h-full flex flex-col bg-[#11131c] border-b md:border-b-0 md:border-r border-white/5 overflow-hidden">
           {/* Tabs header matching Image 2 tab indicators */}
           <div className="flex bg-[#11131c] border-b border-white/5 px-6">
             <button
@@ -490,7 +529,7 @@ export default function CodingWorkspace() {
         </div>
 
         {/* RIGHT COLUMN: Monaco editor & Console drawer */}
-        <div className="w-[55%] flex flex-col bg-[#0f1015] overflow-hidden">
+        <div className="w-full md:w-[55%] h-[50vh] md:h-full flex flex-col bg-[#0f1015] overflow-hidden">
           {/* Header Action toolbar matching Reference image 2 */}
           <div className="h-12 bg-[#11131c] border-b border-white/5 px-4 flex justify-between items-center relative z-10">
             <div className="flex items-center gap-3">
@@ -572,87 +611,157 @@ export default function CodingWorkspace() {
 
             {/* Console body content details */}
             {consoleOpen && (
-              <div className="flex-1 p-5 overflow-y-auto space-y-4 font-mono text-xs bg-[#0f1015]">
-                {executing && (
-                  <div className="flex items-center gap-3 py-6 justify-center text-gray-500">
-                    <Loader2 className="w-5 h-5 animate-spin text-[#8b5cf6]" />
-                    Compiling and running against visible and hidden test cases...
-                  </div>
-                )}
+              <div className="flex-1 p-5 overflow-y-auto font-mono text-xs bg-[#0f1015] flex flex-col min-h-0">
+                {/* Console tabs select header */}
+                <div className="flex gap-4 border-b border-white/5 pb-2 mb-4 font-sans text-xs shrink-0 select-none">
+                  <button
+                    onClick={() => setConsoleTab('TESTCASE')}
+                    className={`pb-1 font-bold uppercase tracking-wider transition-colors focus:outline-none ${
+                      consoleTab === 'TESTCASE' ? 'text-[#8b5cf6] border-b-2 border-[#8b5cf6]' : 'text-gray-400 hover:text-white'
+                    }`}
+                  >
+                    Testcase
+                  </button>
+                  <button
+                    onClick={() => setConsoleTab('RESULT')}
+                    className={`pb-1 font-bold uppercase tracking-wider transition-colors focus:outline-none ${
+                      consoleTab === 'RESULT' ? 'text-[#8b5cf6] border-b-2 border-[#8b5cf6]' : 'text-gray-400 hover:text-white'
+                    }`}
+                  >
+                    Result
+                  </button>
+                </div>
 
-                {!executing && !execResult && (
-                  <div className="text-gray-500 flex items-center justify-center h-full">
-                    Click 'Run Code' or 'Submit' to evaluate your solution.
-                  </div>
-                )}
-
-                {execResult && (
-                  <div className="space-y-4">
-                    {/* Overall Verdict */}
-                    <div className="flex justify-between items-center p-3 rounded-xl border border-white/5 bg-[#11131c]">
-                      <div className="flex items-center gap-2">
-                        <span className="text-gray-500 font-sans uppercase font-bold tracking-wider text-[10px]">Verdict</span>
-                        <span className={`font-bold px-2 py-0.5 rounded-full ${
-                          execResult.status === 'ACCEPTED' ? 'bg-emerald-500/10 text-emerald-400' : 'bg-red-500/10 text-red-400'
-                        }`}>
-                          {execResult.status}
-                        </span>
-                      </div>
-                      <div className="flex gap-4 text-[10px] text-gray-500">
-                        <span>Time: <strong className="text-white">{execResult.runTimeMs}ms</strong></span>
-                        <span>Memory: <strong className="text-white">{(execResult.memoryUsedKb / 1024).toFixed(2)}MB</strong></span>
-                      </div>
+                <div className="flex-1 overflow-y-auto min-h-0">
+                  {consoleTab === 'TESTCASE' && (
+                    <div className="space-y-2">
+                      <div className="text-[10px] text-gray-500 font-bold uppercase tracking-wider font-sans mb-2">Custom Input (stdin)</div>
+                      <textarea
+                        value={customInput}
+                        onChange={(e) => setCustomInput(e.target.value)}
+                        placeholder="Type custom inputs here (e.g. 5\n1 2 3 4 5)..."
+                        className="w-full h-32 p-3 bg-[#11131c] border border-white/5 rounded-xl text-xs text-white focus:outline-none focus:border-[#8b5cf6] font-mono resize-none"
+                      />
                     </div>
+                  )}
 
-                    {/* Compilation Errors output */}
-                    {execResult.compileError && (
-                      <div className="p-3 bg-red-500/5 border border-red-500/15 text-red-400 rounded-xl whitespace-pre-wrap font-mono">
-                        {execResult.compileError}
-                      </div>
-                    )}
+                  {consoleTab === 'RESULT' && (
+                    <div className="space-y-4">
+                      {executing && (
+                        <div className="flex items-center gap-3 py-6 justify-center text-gray-500 font-sans">
+                          <Loader2 className="w-5 h-5 animate-spin text-[#8b5cf6]" />
+                          Compiling and executing your code...
+                        </div>
+                      )}
 
-                    {/* Individual testcase ticks details */}
-                    {execResult.testCaseResults && (
-                      <div className="space-y-2">
-                        <h4 className="text-[10px] text-gray-500 font-sans font-bold uppercase tracking-wider mb-2">Test Case Results</h4>
-                        {execResult.testCaseResults.map((tcRes: any, index: number) => (
-                          <div key={index} className="flex items-center justify-between p-2.5 rounded-lg bg-white/5 border border-white/5">
+                      {!executing && !execResult && (
+                        <div className="text-gray-500 flex items-center justify-center h-full font-sans py-10">
+                          Click 'Run Code' or 'Submit' to evaluate your solution.
+                        </div>
+                      )}
+
+                      {!executing && execResult && (
+                        <div className="space-y-4">
+                          {/* Overall Verdict */}
+                          <div className="flex justify-between items-center p-3 rounded-xl border border-white/5 bg-[#11131c] font-sans">
                             <div className="flex items-center gap-2">
-                              {tcRes.status === 'PASSED' ? (
-                                <CheckCircle className="w-4 h-4 text-emerald-400" />
-                              ) : (
-                                <XCircle className="w-4 h-4 text-red-400" />
-                              )}
-                              <span className="font-semibold text-white">Test Case #{index + 1}</span>
+                              <span className="text-gray-500 uppercase font-bold tracking-wider text-[10px]">Verdict</span>
+                              <span className={`font-bold px-2 py-0.5 rounded-full text-[10px] uppercase ${
+                                execResult.status === 'ACCEPTED' ? 'bg-emerald-500/10 text-emerald-400' : 'bg-red-500/10 text-red-400'
+                              }`}>
+                                {execResult.status}
+                              </span>
                             </div>
-                            <span className={`font-bold text-[10px] uppercase ${
-                              tcRes.status === 'PASSED' ? 'text-emerald-400' : 'text-red-400'
-                            }`}>
-                              {tcRes.status}
-                            </span>
+                            <div className="flex gap-4 text-[10px] text-gray-500">
+                              <span>Time: <strong className="text-white">{execResult.runTimeMs || 0}ms</strong></span>
+                              <span>Memory: <strong className="text-white">{((execResult.memoryUsedKb || 12800) / 1024).toFixed(2)}MB</strong></span>
+                            </div>
                           </div>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-                )}
+
+                          {/* Compilation Errors output */}
+                          {execResult.compileError && (
+                            <div className="space-y-1">
+                              <div className="text-[10px] text-red-400 font-bold uppercase tracking-wider font-sans">Compilation Error</div>
+                              <pre className="p-3 bg-red-500/5 border border-red-500/15 text-red-400 rounded-xl whitespace-pre-wrap font-mono select-text">
+                                {execResult.compileError}
+                              </pre>
+                            </div>
+                          )}
+
+                          {/* Stdout and Stderr display for runOnly / Run Code */}
+                          {(execResult.stdout !== undefined || execResult.stderr !== undefined) && (
+                            <div className="space-y-3">
+                              {execResult.stdout && (
+                                <div className="space-y-1">
+                                  <div className="text-[10px] text-gray-500 font-bold uppercase tracking-wider font-sans">Standard Output (stdout)</div>
+                                  <pre className="p-3 bg-[#11131c] border border-white/5 text-gray-200 rounded-xl whitespace-pre-wrap font-mono select-text">
+                                    {execResult.stdout}
+                                  </pre>
+                                </div>
+                              )}
+                              {execResult.stderr && (
+                                <div className="space-y-1">
+                                  <div className="text-[10px] text-red-400 font-bold uppercase tracking-wider font-sans">Standard Error (stderr)</div>
+                                  <pre className="p-3 bg-red-500/5 border border-red-500/15 text-red-400 rounded-xl whitespace-pre-wrap font-mono select-text">
+                                    {execResult.stderr}
+                                  </pre>
+                                </div>
+                              )}
+                            </div>
+                          )}
+
+                          {/* Individual testcase ticks details (only for full submit runs) */}
+                          {execResult.testCaseResults && (
+                            <div className="space-y-2">
+                              <h4 className="text-[10px] text-gray-500 font-sans font-bold uppercase tracking-wider mb-2">Test Case Results</h4>
+                              {execResult.testCaseResults.map((tcRes: any, index: number) => (
+                                <div key={index} className="flex flex-col p-2.5 rounded-lg bg-white/5 border border-white/5 space-y-1 font-sans">
+                                  <div className="flex items-center justify-between">
+                                    <div className="flex items-center gap-2">
+                                      {tcRes.status === 'PASSED' ? (
+                                        <CheckCircle className="w-4 h-4 text-emerald-400" />
+                                      ) : (
+                                        <XCircle className="w-4 h-4 text-red-400" />
+                                      )}
+                                      <span className="font-semibold text-white">Test Case #{index + 1}</span>
+                                    </div>
+                                    <span className={`font-bold text-[10px] uppercase ${
+                                      tcRes.status === 'PASSED' ? 'text-emerald-400' : 'text-red-400'
+                                    }`}>
+                                      {tcRes.status}
+                                    </span>
+                                  </div>
+                                  {tcRes.message && (
+                                    <pre className="text-[10px] text-gray-400 pl-6 select-text whitespace-pre-wrap font-mono bg-black/10 p-1.5 rounded">
+                                      {tcRes.message}
+                                    </pre>
+                                  )}
+                                </div>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
               </div>
             )}
 
             {/* Bottom Actions Row matching exact style indicators */}
             {consoleOpen && (
-              <div className="p-3 px-6 bg-[#11131c] border-t border-white/5 flex justify-between items-center">
+              <div className="p-3 px-6 bg-[#11131c] border-t border-white/5 flex justify-between items-center select-none">
                 <span className="text-[10px] font-bold text-gray-500 tracking-wider">DEBUG ASSISTANT ACTIVE</span>
                 <div className="flex items-center gap-3">
                   <button 
-                    onClick={handleRunSubmitCode} 
+                    onClick={handleRunCode} 
                     disabled={executing}
                     className="px-4 py-2 rounded-xl bg-white/5 hover:bg-white/10 text-gray-300 font-semibold text-xs tracking-wider transition-all disabled:opacity-50"
                   >
                     Run Code
                   </button>
                   <button 
-                    onClick={handleRunSubmitCode}
+                    onClick={handleSubmitCode}
                     disabled={executing}
                     className="px-5 py-2 rounded-xl bg-[#7c3aed] hover:bg-[#8b5cf6] text-white font-bold text-xs tracking-wider transition-all shadow-md shadow-[#7c3aed]/20 disabled:opacity-50"
                   >

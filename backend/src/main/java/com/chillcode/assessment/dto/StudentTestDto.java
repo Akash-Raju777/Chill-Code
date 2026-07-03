@@ -8,6 +8,7 @@ public class StudentTestDto {
     private Integer score;
     private Integer warningsCount;
     private Boolean isSuspended;
+    private LocalDateTime submittedAt;
     private TestDetailsDto test;
 
     public StudentTestDto() {}
@@ -19,6 +20,11 @@ public class StudentTestDto {
         this.warningsCount = warningsCount;
         this.isSuspended = isSuspended;
         this.test = test;
+    }
+
+    public StudentTestDto(Long id, String status, Integer score, Integer warningsCount, Boolean isSuspended, TestDetailsDto test, LocalDateTime submittedAt) {
+        this(id, status, score, warningsCount, isSuspended, test);
+        this.submittedAt = submittedAt;
     }
 
     public Long getId() { return id; }
@@ -35,6 +41,9 @@ public class StudentTestDto {
 
     public Boolean getIsSuspended() { return isSuspended; }
     public void setIsSuspended(Boolean isSuspended) { this.isSuspended = isSuspended; }
+
+    public LocalDateTime getSubmittedAt() { return submittedAt; }
+    public void setSubmittedAt(LocalDateTime submittedAt) { this.submittedAt = submittedAt; }
 
     public TestDetailsDto getTest() { return test; }
     public void setTest(TestDetailsDto test) { this.test = test; }

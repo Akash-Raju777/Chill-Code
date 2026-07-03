@@ -81,8 +81,15 @@ export default function TestsWorkspace() {
     fetchTests();
   }, []);
 
+  const getAssociatedTest = (subjectId: number) => {
+    const matched = studentTests.filter((st) => st.test.subject.id === subjectId);
+    if (matched.length === 0) return null;
+    const active = matched.find((st) => ['STARTED', 'ASSIGNED'].includes(st.status));
+    return active || matched[0];
+  };
+
   const handleStartQuestionAttempt = (q: any) => {
-    const associatedTest = studentTests.find((st) => st.test.subject.id === q.subjectId);
+    const associatedTest = getAssociatedTest(q.subjectId);
     if (associatedTest) {
       setSelectedTest(associatedTest);
       setShowConfirmModal(true);
@@ -131,7 +138,7 @@ export default function TestsWorkspace() {
 
     const matchesSubject = subjectFilter === 'ALL' || q.subjectId === subjectFilter;
 
-    const associatedTest = studentTests.find((st) => st.test.subject.id === q.subjectId);
+    const associatedTest = getAssociatedTest(q.subjectId);
     const isSolved = associatedTest ? ['SUBMITTED', 'EVALUATED'].includes(associatedTest.status) : false;
     const matchesSolved = !hideSolved || !isSolved;
 
@@ -270,7 +277,7 @@ export default function TestsWorkspace() {
               </thead>
               <tbody className="divide-y divide-white/5 text-xs text-gray-400">
                 {filteredQuestions.map((q) => {
-                  const associatedTest = studentTests.find((st) => st.test.subject.id === q.subjectId);
+                  const associatedTest = getAssociatedTest(q.subjectId);
                   const isSolved = associatedTest ? ['SUBMITTED', 'EVALUATED'].includes(associatedTest.status) : false;
                   const isSuspended = associatedTest ? (associatedTest.isSuspended || associatedTest.status === 'SUSPENDED') : false;
                   const isStarted = associatedTest ? associatedTest.status === 'STARTED' : false;

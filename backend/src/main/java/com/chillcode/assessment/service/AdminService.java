@@ -104,6 +104,7 @@ public class AdminService {
                     Map<String, Object> activity = new HashMap<>();
                     activity.put("time", w.getTimestamp().toString());
                     activity.put("user", w.getStudentTest().getStudent().getName());
+                    activity.put("registerNumber", w.getStudentTest().getStudent().getRegisterNumber());
                     activity.put("details", "Triggered warning: " + w.getType() + " - " + w.getReason());
                     activity.put("type", "warning");
                     recentActivities.add(activity);

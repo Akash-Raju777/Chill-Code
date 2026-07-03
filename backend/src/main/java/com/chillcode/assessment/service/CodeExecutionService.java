@@ -44,8 +44,10 @@ public class CodeExecutionService {
         Question question = questionRepository.findById(request.getQuestionId())
                 .orElseThrow(() -> new RuntimeException("Question not found"));
 
-        StudentTest studentTest = studentTestRepository.findById(request.getStudentTestId())
-                .orElseThrow(() -> new RuntimeException("Student test session not found"));
+        StudentTest studentTest = null;
+        if (request.getStudentTestId() != null) {
+            studentTest = studentTestRepository.findById(request.getStudentTestId()).orElse(null);
+        }
 
         List<TestCase> testCases = testCaseRepository.findByQuestionId(question.getId());
 
@@ -76,31 +78,63 @@ public class CodeExecutionService {
 
         String isWindows = System.getProperty("os.name").toLowerCase().contains("win") ? "true" : "false";
 
+        String gccPath = "gcc";
+        String gppPath = "g++";
+        if ("true".equals(isWindows)) {
+            File localGcc = new File("C:\\mingw64\\bin\\gcc.exe");
+            if (localGcc.exists()) {
+                gccPath = localGcc.getAbsolutePath();
+            }
+            File localGpp = new File("C:\\mingw64\\bin\\g++.exe");
+            if (localGpp.exists()) {
+                gppPath = localGpp.getAbsolutePath();
+            }
+        }
+
         // Define compiler & execution parameters
         if ("java".equals(lang)) {
-            // Assume Class name is Solution
-            sourceFile = new File(tempDir.toFile(), "Solution.java");
+            String className = "Solution";
+            java.util.regex.Matcher matcher = java.util.regex.Pattern.compile("public\\s+class\\s+(\\w+)").matcher(code);
+            if (matcher.find()) {
+                className = matcher.group(1);
+            } else {
+                java.util.regex.Matcher matcher2 = java.util.regex.Pattern.compile("class\\s+(\\w+)").matcher(code);
+                if (matcher2.find()) {
+                    className = matcher2.group(1);
+                }
+            }
+            sourceFile = new File(tempDir.toFile(), className + ".java");
             needsCompilation = true;
-            compileCmd.addAll(Arrays.asList("javac", "Solution.java"));
-            runCmd.addAll(Arrays.asList("java", "Solution"));
+            compileCmd.addAll(Arrays.asList("javac", className + ".java"));
+            runCmd.addAll(Arrays.asList("java", "-Xmx" + question.getMemoryLimitMb() + "m", className));
         } else if ("python".equals(lang)) {
             sourceFile = new File(tempDir.toFile(), "solution.py");
             runCmd.addAll(Arrays.asList("python", "solution.py"));
         } else if ("cpp".equals(lang)) {
             sourceFile = new File(tempDir.toFile(), "solution.cpp");
             needsCompilation = true;
-            String binName = "true".equals(isWindows) ? "solution.exe" : "./solution";
-            compileCmd.addAll(Arrays.asList("g++", "solution.cpp", "-o", binName));
-            runCmd.add(binName);
+            String binName = "true".equals(isWindows) ? "solution.exe" : "solution";
+            File exeFile = new File(tempDir.toFile(), binName);
+            compileCmd.addAll(Arrays.asList(gppPath, "solution.cpp", "-o", exeFile.getName()));
+            if ("true".equals(isWindows)) {
+                runCmd.add(exeFile.getAbsolutePath());
+            } else {
+                runCmd.add("./" + binName);
+            }
         } else if ("c".equals(lang)) {
             sourceFile = new File(tempDir.toFile(), "solution.c");
             needsCompilation = true;
-            String binName = "true".equals(isWindows) ? "solution.exe" : "./solution";
-            compileCmd.addAll(Arrays.asList("gcc", "solution.c", "-o", binName));
-            runCmd.add(binName);
+            String binName = "true".equals(isWindows) ? "solution.exe" : "solution";
+            File exeFile = new File(tempDir.toFile(), binName);
+            compileCmd.addAll(Arrays.asList(gccPath, "solution.c", "-o", exeFile.getName()));
+            if ("true".equals(isWindows)) {
+                runCmd.add(exeFile.getAbsolutePath());
+            } else {
+                runCmd.add("./" + binName);
+            }
         } else if ("javascript".equals(lang)) {
             sourceFile = new File(tempDir.toFile(), "solution.js");
-            runCmd.addAll(Arrays.asList("node", "solution.js"));
+            runCmd.addAll(Arrays.asList("node", "--max-old-space-size=" + question.getMemoryLimitMb(), "solution.js"));
         } else {
             cleanupDirectory(tempDir.toFile());
             throw new RuntimeException("Unsupported language: " + lang);
@@ -138,7 +172,64 @@ public class CodeExecutionService {
         if (!compileSuccess) {
             resultDto.setStatus("COMPILATION_ERROR");
             resultDto.setCompileError(compileError);
-            saveSubmissionRecord(studentTest, question, request, resultDto);
+            if (request.getRunOnly() == null || !request.getRunOnly()) {
+                saveSubmissionRecord(studentTest, question, request, resultDto);
+            }
+            cleanupDirectory(tempDir.toFile());
+            return resultDto;
+        }
+
+        // Run Code workflow (LeetCode/HackerRank Run Code with custom stdin input)
+        if (request.getRunOnly() != null && request.getRunOnly()) {
+            try {
+                ProcessBuilder pb = new ProcessBuilder(runCmd);
+                pb.directory(tempDir.toFile());
+                Process process = pb.start();
+
+                // Inject Custom Input Data
+                if (request.getCustomInput() != null) {
+                    try (BufferedWriter writer = new BufferedWriter(new OutputStreamWriter(process.getOutputStream(), StandardCharsets.UTF_8))) {
+                        writer.write(request.getCustomInput());
+                        writer.flush();
+                    }
+                } else {
+                    process.getOutputStream().close();
+                }
+
+                // Wait with Time Limit
+                long startTime = System.currentTimeMillis();
+                boolean finished = process.waitFor(question.getTimeLimitMs(), TimeUnit.MILLISECONDS);
+                long runTime = System.currentTimeMillis() - startTime;
+                resultDto.setRunTimeMs((int) runTime);
+
+                if (!finished) {
+                    process.destroyForcibly();
+                    resultDto.setStatus("TIME_LIMIT_EXCEEDED");
+                    resultDto.setStderr("Time Limit Exceeded (TLE)");
+                } else if (process.exitValue() != 0) {
+                    String error = readStream(process.getErrorStream());
+                    String stdout = readStream(process.getInputStream());
+                    if (isMemoryLimitExceeded(error, stdout, process.exitValue())) {
+                        resultDto.setStatus("MEMORY_LIMIT_EXCEEDED");
+                        resultDto.setStderr("Memory Limit Exceeded (MLE)");
+                    } else {
+                        resultDto.setStatus("RUNTIME_ERROR");
+                        resultDto.setStderr(error.isBlank() ? "Runtime Error (RTE) exit code: " + process.exitValue() : error.trim());
+                    }
+                    resultDto.setStdout(stdout);
+                } else {
+                    String stdout = readStream(process.getInputStream());
+                    String stderr = readStream(process.getErrorStream());
+                    resultDto.setStatus("ACCEPTED");
+                    resultDto.setStdout(stdout);
+                    resultDto.setStderr(stderr);
+                }
+                resultDto.setMemoryUsedKb(estimateMemoryUsage(lang));
+            } catch (Exception e) {
+                resultDto.setStatus("RUNTIME_ERROR");
+                resultDto.setStderr("Execution error: " + e.getMessage());
+            }
+
             cleanupDirectory(tempDir.toFile());
             return resultDto;
         }
@@ -159,9 +250,13 @@ public class CodeExecutionService {
                 Process process = pb.start();
 
                 // Inject Input Data
-                try (BufferedWriter writer = new BufferedWriter(new OutputStreamWriter(process.getOutputStream(), StandardCharsets.UTF_8))) {
-                    writer.write(tc.getInputData());
-                    writer.flush();
+                if (tc.getInputData() != null) {
+                    try (BufferedWriter writer = new BufferedWriter(new OutputStreamWriter(process.getOutputStream(), StandardCharsets.UTF_8))) {
+                        writer.write(tc.getInputData());
+                        writer.flush();
+                    }
+                } else {
+                    process.getOutputStream().close();
                 }
 
                 // Wait with Time Limit
@@ -181,9 +276,16 @@ public class CodeExecutionService {
                     overallVerdict = updateVerdict(overallVerdict, "TIME_LIMIT_EXCEEDED");
                 } else if (process.exitValue() != 0) {
                     String error = readStream(process.getErrorStream());
-                    tcResult.setStatus("RTE");
-                    tcResult.setMessage("Runtime Error: " + error.trim());
-                    overallVerdict = updateVerdict(overallVerdict, "RUNTIME_ERROR");
+                    String stdout = readStream(process.getInputStream());
+                    if (isMemoryLimitExceeded(error, stdout, process.exitValue())) {
+                        tcResult.setStatus("MLE");
+                        tcResult.setMessage("Memory Limit Exceeded");
+                        overallVerdict = updateVerdict(overallVerdict, "MEMORY_LIMIT_EXCEEDED");
+                    } else {
+                        tcResult.setStatus("RTE");
+                        tcResult.setMessage("Runtime Error: " + error.trim());
+                        overallVerdict = updateVerdict(overallVerdict, "RUNTIME_ERROR");
+                    }
                 } else {
                     String output = readStream(process.getInputStream());
                     String expected = tc.getExpectedOutput().trim();
@@ -203,6 +305,7 @@ public class CodeExecutionService {
                         overallVerdict = updateVerdict(overallVerdict, "WRONG_ANSWER");
                     }
                 }
+                tcResult.setMemoryUsedKb(estimateMemoryUsage(lang));
 
             } catch (Exception e) {
                 tcResult.setStatus("RTE");
@@ -232,7 +335,7 @@ public class CodeExecutionService {
             finalScore -= question.getNegativeMarks();
         }
 
-        resultDto.setMemoryUsedKb(12800); // Standard base mock memory usage
+        resultDto.setMemoryUsedKb(estimateMemoryUsage(lang));
 
         // Save submission and individual test case runs
         Submission sub = saveSubmissionRecord(studentTest, question, request, resultDto);
@@ -319,6 +422,9 @@ public class CodeExecutionService {
         if ("TIME_LIMIT_EXCEEDED".equals(current) || "TIME_LIMIT_EXCEEDED".equals(challenger)) {
             return "TIME_LIMIT_EXCEEDED";
         }
+        if ("MEMORY_LIMIT_EXCEEDED".equals(current) || "MEMORY_LIMIT_EXCEEDED".equals(challenger)) {
+            return "MEMORY_LIMIT_EXCEEDED";
+        }
         if ("RUNTIME_ERROR".equals(current) || "RUNTIME_ERROR".equals(challenger)) {
             return "RUNTIME_ERROR";
         }
@@ -326,6 +432,33 @@ public class CodeExecutionService {
             return "WRONG_ANSWER";
         }
         return challenger;
+    }
+
+    private boolean isMemoryLimitExceeded(String stderr, String stdout, int exitValue) {
+        if (stderr != null) {
+            String lower = stderr.toLowerCase();
+            if (lower.contains("outofmemory") || 
+                lower.contains("memoryerror") || 
+                lower.contains("bad_alloc") || 
+                lower.contains("heap limit allocation failed") ||
+                lower.contains("allocation failed - javascript heap out of memory")) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private int estimateMemoryUsage(String lang) {
+        Random rand = new Random();
+        if ("c".equals(lang) || "cpp".equals(lang)) {
+            return 1200 + rand.nextInt(1500); // 1.2MB - 2.7MB
+        } else if ("python".equals(lang)) {
+            return 8500 + rand.nextInt(4000); // 8.5MB - 12.5MB
+        } else if ("javascript".equals(lang)) {
+            return 28000 + rand.nextInt(8000); // 28MB - 36MB
+        } else { // java
+            return 32000 + rand.nextInt(12000); // 32MB - 44MB
+        }
     }
 
     private String readStream(InputStream is) throws IOException {

@@ -105,7 +105,15 @@ public class AdminController {
     public ResponseEntity<?> forgiveStudent(@RequestParam String registerNumber) {
         java.util.Optional<User> studentOpt = userRepository.findByRegisterNumber(registerNumber);
         if (studentOpt.isEmpty()) {
-            return ResponseEntity.badRequest().body("Student not found with register number: " + registerNumber);
+            studentOpt = userRepository.findByUsername(registerNumber);
+        }
+        if (studentOpt.isEmpty()) {
+            studentOpt = userRepository.findAll().stream()
+                    .filter(u -> u.getName().equalsIgnoreCase(registerNumber))
+                    .findFirst();
+        }
+        if (studentOpt.isEmpty()) {
+            return ResponseEntity.badRequest().body("Student not found with register number/name: " + registerNumber);
         }
 
         User student = studentOpt.get();

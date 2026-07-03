@@ -42,6 +42,7 @@ export default function QuestionManagement() {
   const [editingQuestion, setEditingQuestion] = useState<Question | null>(null);
   const [showForm, setShowForm] = useState(false);
   const [error, setError] = useState('');
+  const [formSubjectId, setFormSubjectId] = useState<number | null>(null);
 
   // Form Fields
   const [title, setTitle] = useState('');
@@ -115,6 +116,7 @@ export default function QuestionManagement() {
     setAllowedLangs({ java: true, python: true, cpp: false, c: false, javascript: false });
     setTags('');
     setTestCases([{ inputData: '', expectedOutput: '', isHidden: false }]);
+    setFormSubjectId(selectedSubjectId);
     setShowForm(true);
   };
 
@@ -134,7 +136,7 @@ export default function QuestionManagement() {
     setTestCases(q.testCases || []);
     
     // Allowed languages parsing
-    const langs = q.allowedLanguages.split(',');
+    const langs = q.allowedLanguages ? q.allowedLanguages.split(',').map(l => l.trim().toLowerCase()) : [];
     setAllowedLangs({
       java: langs.includes('java'),
       python: langs.includes('python'),
@@ -143,6 +145,7 @@ export default function QuestionManagement() {
       javascript: langs.includes('javascript'),
     });
     
+    setFormSubjectId(q.subjectId);
     setShowForm(true);
   };
 
@@ -162,8 +165,8 @@ export default function QuestionManagement() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!selectedSubjectId) {
-      setError('Please create and select a subject before saving a question.');
+    if (!formSubjectId) {
+      setError('Please select a subject before saving a question.');
       return;
     }
 
@@ -172,7 +175,7 @@ export default function QuestionManagement() {
       .join(',');
 
     const payload = {
-      subjectId: selectedSubjectId,
+      subjectId: formSubjectId,
       title,
       difficulty,
       problemStatement,
@@ -201,7 +204,11 @@ export default function QuestionManagement() {
         });
       }
       setShowForm(false);
-      fetchQuestions(selectedSubjectId);
+      if (selectedSubjectId) {
+        fetchQuestions(selectedSubjectId);
+      } else {
+        fetchQuestions(formSubjectId);
+      }
     } catch (err: any) {
       setError(err.message || 'Failed to save question');
     }
@@ -327,7 +334,22 @@ export default function QuestionManagement() {
       ) : (
         /* Form view */
         <form onSubmit={handleSubmit} className="space-y-8 glass-panel p-6 md:p-8 rounded-2xl">
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+            {/* Subject Selector */}
+            <div>
+              <label className="block text-xs font-semibold text-gray-400 uppercase mb-1">Subject / Topic</label>
+              <select
+                required
+                className="w-full glass-input p-3 rounded-xl text-sm"
+                value={formSubjectId || ''}
+                onChange={(e) => setFormSubjectId(Number(e.target.value))}
+              >
+                <option value="" disabled>Select Subject</option>
+                {subjects.map((sub) => (
+                  <option key={sub.id} value={sub.id}>{sub.name}</option>
+                ))}
+              </select>
+            </div>
             {/* Title */}
             <div>
               <label className="block text-xs font-semibold text-gray-400 uppercase mb-1">Problem Title</label>
@@ -493,8 +515,7 @@ export default function QuestionManagement() {
                   <div className="flex-1 space-y-1">
                     <label className="block text-[10px] font-semibold text-gray-500 uppercase">Standard Input (stdin)</label>
                     <textarea
-                      required
-                      placeholder="Input data feed"
+                      placeholder="Input data feed (leave blank if no input)"
                       className="w-full glass-input p-2 rounded-lg text-xs h-16 font-mono"
                       value={tc.inputData}
                       onChange={(e) => handleTestCaseChange(index, 'inputData', e.target.value)}

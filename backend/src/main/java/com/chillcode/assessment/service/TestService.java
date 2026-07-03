@@ -168,17 +168,13 @@ public class TestService {
             st.setStatus("SUSPENDED");
             st.setIsSuspended(true);
             
-            // Suspend student status overall for 30 minutes
             User student = st.getStudent();
-            student.setStatus(UserStatus.SUSPENDED);
-            student.setSuspensionEndTime(LocalDateTime.now().plusMinutes(30));
-            userRepository.save(student);
 
             // Log activity log
             Notification alert = Notification.builder()
                     .user(student)
-                    .title("Account Suspended")
-                    .message("Your account has been suspended for 30 minutes due to multiple security violations in test: " + st.getTest().getName())
+                    .title("Attempt Suspended")
+                    .message("Your exam attempt has been suspended due to multiple security violations in test: " + st.getTest().getName())
                     .type("SUSPENSION")
                     .build();
             notificationRepository.save(alert);
@@ -222,7 +218,8 @@ public class TestService {
             st.getScore() != null ? st.getScore() : 0,
             st.getWarningsCount() != null ? st.getWarningsCount() : 0,
             st.getIsSuspended() != null ? st.getIsSuspended() : false,
-            testDto
+            testDto,
+            st.getSubmittedAt()
         );
     }
 

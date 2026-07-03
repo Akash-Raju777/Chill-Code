@@ -65,20 +65,10 @@ export const useTestStore = create<TestState>((set) => ({
     const languages: Record<number, string> = {};
 
     questions.forEach((q) => {
-      const allowed = q.allowedLanguages.split(',');
+      const allowed = q.allowedLanguages.split(',').map(l => l.trim().toLowerCase());
       const defaultLang = allowed[0] || 'java';
       languages[q.id] = defaultLang;
-
-      // Boilerplates
-      if (defaultLang === 'java') {
-        codes[q.id] = `import java.util.*;\n\npublic class Solution {\n    public static void main(String[] args) {\n        Scanner sc = new Scanner(System.in);\n        // Write your code here\n        \n    }\n}`;
-      } else if (defaultLang === 'python') {
-        codes[q.id] = `# Write your Python code here\nimport sys\n\ndef main():\n    # Read input from sys.stdin\n    pass\n\nif __name__ == '__main__':\n    main()`;
-      } else if (defaultLang === 'javascript') {
-        codes[q.id] = `// Write your Node.js JavaScript code here\nconst fs = require('fs');\n\nfunction main() {\n    const input = fs.readFileSync('/dev/stdin', 'utf-8');\n    \n}`;
-      } else {
-        codes[q.id] = `// Write your code here`;
-      }
+      codes[q.id] = ''; // Code starts completely empty
     });
 
     set({
@@ -101,29 +91,9 @@ export const useTestStore = create<TestState>((set) => ({
   })),
 
   updateLanguage: (questionId, language) => set((state) => {
-    const prevCode = state.codes[questionId];
-    let newCode = prevCode;
-    
-    // Auto replace boilerplate if code is still default/empty
-    if (!prevCode || prevCode.trim().length < 50 || prevCode.includes('public class Solution') || prevCode.includes('# Write your Python code') || prevCode.includes('// Write your Node.js')) {
-      if (language === 'java') {
-        newCode = `import java.util.*;\n\npublic class Solution {\n    public static void main(String[] args) {\n        Scanner sc = new Scanner(System.in);\n        // Write your code here\n        \n    }\n}`;
-      } else if (language === 'python') {
-        newCode = `# Write your Python code here\nimport sys\n\ndef main():\n    # Read input from sys.stdin\n    pass\n\nif __name__ == '__main__':\n    main()`;
-      } else if (language === 'javascript') {
-        newCode = `// Write your Node.js JavaScript code here\nconst fs = require('fs');\n\nfunction main() {\n    const input = fs.readFileSync('/dev/stdin', 'utf-8');\n    \n}`;
-      } else if (language === 'cpp') {
-        newCode = `#include <iostream>\nusing namespace std;\n\nint main() {\n    // Write your C++ code here\n    return 0;\n}`;
-      } else if (language === 'c') {
-        newCode = `#include <stdio.h>\n\nint main() {\n    // Write your C code here\n    return 0;\n}`;
-      } else {
-        newCode = `// Write code here`;
-      }
-    }
-
     return {
-      languages: { ...state.languages, [questionId]: language },
-      codes: { ...state.codes, [questionId]: newCode }
+      languages: { ...state.languages, [questionId]: language }
+      // Do not replace with boilerplate, keep what the user typed or keep empty
     };
   }),
 

@@ -55,13 +55,13 @@ export default function AdminDashboard() {
     }
   };
 
-  const handleForgive = async (studentName: string) => {
-    if (!confirm(`Are you sure you want to forgive ${studentName} and reset their warning logs?`)) return;
+  const handleForgive = async (studentKey: string, displayName: string) => {
+    if (!confirm(`Are you sure you want to forgive ${displayName} and reset their warning logs?`)) return;
     try {
-      await apiCall(`/api/admin/student/forgive?registerNumber=${encodeURIComponent(studentName)}`, {
+      await apiCall(`/api/admin/student/forgive?registerNumber=${encodeURIComponent(studentKey)}`, {
         method: 'POST'
       });
-      alert(`Successfully reset security warning logs for ${studentName}. They can now continue their test.`);
+      alert(`Successfully reset security warning logs for ${displayName}. They can now continue their test.`);
       fetchMetrics();
     } catch (e: any) {
       alert(e.message || 'Failed to forgive student.');
@@ -223,7 +223,7 @@ export default function AdminDashboard() {
                       <div className="mt-2.5 flex items-center justify-between border-t border-white/5 pt-2">
                         <span className="text-[10px] text-red-400 font-semibold uppercase tracking-wider">Secure Warning Logged</span>
                         <button
-                          onClick={() => handleForgive(act.user)}
+                          onClick={() => handleForgive(act.registerNumber || act.user, act.user)}
                           className="px-2.5 py-1 text-[10px] bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400 border border-emerald-500/20 rounded-lg font-bold transition-all uppercase tracking-wider"
                         >
                           Forgive Student

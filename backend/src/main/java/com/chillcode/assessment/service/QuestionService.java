@@ -83,13 +83,15 @@ public class QuestionService {
             }
         }
 
-        // Link uploaded question to existing tests of the same subject automatically
+        // Link uploaded question to existing tests of the same subject automatically and unlink from others
         java.util.List<com.chillcode.assessment.entity.Test> tests = testRepository.findAll();
         for (com.chillcode.assessment.entity.Test test : tests) {
             if (test.getSubject().getId().equals(subject.getId())) {
                 test.getQuestions().add(savedQuestion);
-                testRepository.save(test);
+            } else {
+                test.getQuestions().remove(savedQuestion);
             }
+            testRepository.save(test);
         }
 
         return convertToDto(savedQuestion);
@@ -118,6 +120,17 @@ public class QuestionService {
         question.setTags(questionDto.getTags());
 
         Question savedQuestion = questionRepository.save(question);
+
+        // Synchronize question links to tests based on subject
+        java.util.List<com.chillcode.assessment.entity.Test> tests = testRepository.findAll();
+        for (com.chillcode.assessment.entity.Test test : tests) {
+            if (test.getSubject().getId().equals(subject.getId())) {
+                test.getQuestions().add(savedQuestion);
+            } else {
+                test.getQuestions().remove(savedQuestion);
+            }
+            testRepository.save(test);
+        }
 
         // Update test cases (delete existing and insert new ones for simplicity)
         List<TestCase> existingTestCases = testCaseRepository.findByQuestionId(id);

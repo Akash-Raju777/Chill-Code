@@ -14,4 +14,6 @@ public class SubmissionResultDto {
     private Integer memoryUsedKb;
     private String compileError;
     private List<TestCaseResultDto> testCaseResults;
+    private String stdout;
+    private String stderr;
 }

@@ -10,4 +10,6 @@ public class SubmitRequest {
     private String language;
     private Long questionId;
     private Long studentTestId;
+    private String customInput;
+    private Boolean runOnly;
 }
