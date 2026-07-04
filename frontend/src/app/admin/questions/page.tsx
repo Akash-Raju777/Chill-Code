@@ -87,8 +87,10 @@ export default function QuestionManagement() {
     loadInitialData();
   }, []);
 
-  const fetchQuestions = async (subjectId: number) => {
-    setLoading(true);
+  const fetchQuestions = async (subjectId: number, isInitial = false) => {
+    if (isInitial || questions.length === 0) {
+      setLoading(true);
+    }
     try {
       const data = await apiCall(`/api/admin/subjects/${subjectId}/questions`);
       setQuestions(data);
@@ -101,7 +103,7 @@ export default function QuestionManagement() {
 
   useEffect(() => {
     if (selectedSubjectId) {
-      fetchQuestions(selectedSubjectId);
+      fetchQuestions(selectedSubjectId, true);
     }
   }, [selectedSubjectId]);
 

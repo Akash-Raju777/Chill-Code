@@ -39,8 +39,10 @@ export default function SubjectManagement() {
     }
   };
 
-  const fetchSubjects = async () => {
-    setLoading(true);
+  const fetchSubjects = async (isInitial = false) => {
+    if (isInitial || subjects.length === 0) {
+      setLoading(true);
+    }
     try {
       const data = await apiCall('/api/admin/subjects');
       setSubjects(data);
@@ -52,7 +54,7 @@ export default function SubjectManagement() {
   };
 
   useEffect(() => {
-    fetchSubjects();
+    fetchSubjects(true);
   }, []);
 
   const handleCreate = async (e: React.FormEvent) => {

@@ -46,8 +46,10 @@ export default function TestManagement() {
   const [autoSubmit, setAutoSubmit] = useState(true);
   const [negativeMarking, setNegativeMarking] = useState(false);
 
-  const fetchInitialData = async () => {
-    setLoading(true);
+  const fetchInitialData = async (isInitial = false) => {
+    if (isInitial || tests.length === 0) {
+      setLoading(true);
+    }
     try {
       const testsData = await apiCall('/api/admin/tests');
       setTests(testsData);
@@ -65,7 +67,7 @@ export default function TestManagement() {
   };
 
   useEffect(() => {
-    fetchInitialData();
+    fetchInitialData(true);
   }, []);
 
   const fetchQuestionsForSubject = async (subId: number) => {

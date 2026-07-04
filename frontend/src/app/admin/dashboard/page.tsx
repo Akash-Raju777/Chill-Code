@@ -44,8 +44,10 @@ export default function AdminDashboard() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
 
-  const fetchMetrics = async () => {
-    setLoading(true);
+  const fetchMetrics = async (isInitial = false) => {
+    if (isInitial || !data) {
+      setLoading(true);
+    }
     try {
       const [response, reattempts] = await Promise.all([
         apiCall('/api/admin/dashboard'),
@@ -100,7 +102,7 @@ export default function AdminDashboard() {
   };
 
   useEffect(() => {
-    fetchMetrics();
+    fetchMetrics(true);
   }, []);
 
   if (loading) {

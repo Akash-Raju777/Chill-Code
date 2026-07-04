@@ -33,8 +33,10 @@ export default function StudentManagement() {
   const [status, setStatus] = useState('ACTIVE');
   const [saveLoading, setSaveLoading] = useState(false);
 
-  const fetchStudents = async () => {
-    setLoading(true);
+  const fetchStudents = async (isInitial = false) => {
+    if (isInitial || students.length === 0) {
+      setLoading(true);
+    }
     try {
       const data = await apiCall('/api/admin/students');
       setStudents(data);
@@ -46,7 +48,7 @@ export default function StudentManagement() {
   };
 
   useEffect(() => {
-    fetchStudents();
+    fetchStudents(true);
   }, []);
 
   const handleOpenAdd = () => {
