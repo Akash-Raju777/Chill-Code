@@ -16,7 +16,8 @@ import {
   Menu,
   X,
   User as UserIcon,
-  Megaphone
+  Megaphone,
+  MessageSquare
 } from 'lucide-react';
 import Link from 'next/link';
 
@@ -52,6 +53,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
     { name: 'Question Management', path: '/admin/questions', icon: Code2 },
     { name: 'Send Instructions', path: '/admin/instructions', icon: Megaphone },
     { name: 'Students', path: '/admin/students', icon: Users },
+    { name: 'Chat with Ash', path: '/admin/ash', icon: MessageSquare },
   ];
 
   return (

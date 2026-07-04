@@ -43,6 +43,9 @@ public class CodeExecutionService {
     @Autowired
     private AchievementRepository achievementRepository;
 
+    @Autowired
+    private AiHintCacheRepository aiHintCacheRepository;
+
     @Value("${judge0.api.url}")
     private String judge0ApiUrl;
 
@@ -98,7 +101,7 @@ public class CodeExecutionService {
                 resultDto.setExitCode(verdict.equals("ACCEPTED") ? 0 : -1);
 
                 if (!"ACCEPTED".equals(verdict)) {
-                    String explanation = getGrokExplanation(verdict, request.getCode(), resultDto.getCompileError(), resultDto.getStderr(), lang, request.getCustomInput(), null, resultDto.getStdout());
+                    String explanation = getGrokExplanation(verdict, request.getCode(), resultDto.getCompileError(), resultDto.getStderr(), lang, request.getCustomInput(), null, resultDto.getStdout(), studentTest, question);
                     resultDto.setAiExplanation(explanation);
                 }
             } catch (Exception e) {
@@ -194,15 +197,20 @@ public class CodeExecutionService {
             if (failedTc != null) {
                 TestCase tcObj = testCaseRepository.findById(failedTc.getTestCaseId()).orElse(null);
                 if (tcObj != null) {
-                    expected = tcObj.getExpectedOutput();
+                    if (tcObj.getIsHidden()) {
+                        expected = null;
+                        actual = "Hidden testcase failed.";
+                    } else {
+                        expected = tcObj.getExpectedOutput();
+                    }
                 }
                 if ("RTE".equals(failedTc.getStatus())) {
                     runStderr = failedTc.getMessage();
-                } else if ("FAILED".equals(failedTc.getStatus())) {
+                } else if ("FAILED".equals(failedTc.getStatus()) && (tcObj == null || !tcObj.getIsHidden())) {
                     actual = failedTc.getMessage();
                 }
             }
-            String explanation = getGrokExplanation(overallVerdict, request.getCode(), resultDto.getCompileError(), runStderr, lang, "", expected, actual);
+            String explanation = getGrokExplanation(overallVerdict, request.getCode(), resultDto.getCompileError(), runStderr, lang, "", expected, actual, studentTest, question);
             resultDto.setAiExplanation(explanation);
         }
 
@@ -390,35 +398,130 @@ public class CodeExecutionService {
     }
 
 
-    private String getGrokExplanation(String status, String code, String compileError, String stderr, String language, String customInput, String expectedOutput, String actualOutput) {
+    private String calculateSHA256(String input) {
         try {
-            String prompt = "You are an AI programming tutor assistant. Explain the following error or issue clearly and concisely in a few sentences.\n" +
-                            "Language: " + language + "\n" +
-                            "Verdict: " + status + "\n";
-            
+            java.security.MessageDigest digest = java.security.MessageDigest.getInstance("SHA-256");
+            byte[] hash = digest.digest(input.getBytes(StandardCharsets.UTF_8));
+            StringBuilder hexString = new StringBuilder();
+            for (byte b : hash) {
+                String hex = Integer.toHexString(0xff & b);
+                if (hex.length() == 1) hexString.append('0');
+                hexString.append(hex);
+            }
+            return hexString.toString();
+        } catch (Exception ex) {
+            throw new RuntimeException("SHA-256 computation failed", ex);
+        }
+    }
+
+    private String getGrokExplanation(String status, String code, String compileError, String stderr, String language, String customInput, String expectedOutput, String actualOutput, StudentTest studentTest, Question question) {
+        try {
+            String errorContext = "";
             if ("COMPILATION_ERROR".equals(status)) {
-                prompt += "Compilation Error Message:\n" + compileError + "\n";
+                errorContext = compileError;
             } else if ("RUNTIME_ERROR".equals(status)) {
-                prompt += "Runtime Error / Stderr Output:\n" + stderr + "\n";
+                errorContext = stderr;
             } else if ("WRONG_ANSWER".equals(status)) {
-                prompt += "Custom Input:\n" + customInput + "\n" +
-                          "Expected Output:\n" + expectedOutput + "\n" +
-                          "Actual Output:\n" + actualOutput + "\n";
+                errorContext = "expected:" + expectedOutput + "|actual:" + actualOutput;
+            } else {
+                errorContext = status;
+            }
+            String hashInput = code + "|" + (errorContext != null ? errorContext : "");
+            String hash = calculateSHA256(hashInput);
+
+            Optional<AiHintCache> cachedHintOpt = aiHintCacheRepository.findByHash(hash);
+            if (cachedHintOpt.isPresent()) {
+                return cachedHintOpt.get().getAiHint();
+            }
+
+            if (studentTest != null) {
+                if (studentTest.getAiRequestsCount() == null) {
+                    studentTest.setAiRequestsCount(0);
+                }
+                if (studentTest.getAiRequestsCount() >= 5) {
+                    return "AI hint limit reached for this test (Maximum 5 requests allowed).";
+                }
+            }
+
+            String prompt = "";
+            if ("COMPILATION_ERROR".equals(status)) {
+                prompt = "You are an expert programming mentor.\n\n" +
+                         "Never reveal the complete solution.\n" +
+                         "Explain the compiler error in simple English.\n" +
+                         "Mention:\n" +
+                         "• Which line contains the error.\n" +
+                         "• What caused it.\n" +
+                         "• How the student can fix it.\n" +
+                         "• Give one small hint.\n" +
+                         "• Never generate the full solution.\n" +
+                         "• Never reveal hidden test cases.\n" +
+                         "• Never modify the student's code.\n\n" +
+                         "Context:\n" +
+                         "Programming Language: " + language + "\n" +
+                         "Problem Statement: " + (question != null ? question.getProblemStatement() : "") + "\n" +
+                         "Input Format: " + (question != null ? question.getInputFormat() : "") + "\n" +
+                         "Output Format: " + (question != null ? question.getOutputFormat() : "") + "\n" +
+                         "Compiler Error:\n" + compileError + "\n\n" +
+                         "Source Code:\n" + code;
+            } else if ("RUNTIME_ERROR".equals(status)) {
+                prompt = "You are an expert programming mentor.\n\n" +
+                         "Never reveal the complete solution.\n" +
+                         "Do NOT provide corrected code.\n" +
+                         "Never reveal hidden test cases.\n" +
+                         "Never modify the student's code.\n\n" +
+                         "For Runtime Error:\n" +
+                         "Explain why it occurred based on the error message and the source code. Specifically identify if it was Array Index Out of Bounds, Null Pointer, Division by Zero, Stack Overflow, or Input mismatch if applicable.\n" +
+                         "Suggest what concept to check.\n\n" +
+                         "Error Message:\n" + stderr + "\n\n" +
+                         "Context:\n" +
+                         "Programming Language: " + language + "\n" +
+                         "Problem Statement: " + (question != null ? question.getProblemStatement() : "") + "\n" +
+                         "Input Format: " + (question != null ? question.getInputFormat() : "") + "\n" +
+                         "Output Format: " + (question != null ? question.getOutputFormat() : "") + "\n\n" +
+                         "Source Code:\n" + code;
+            } else if ("WRONG_ANSWER".equals(status)) {
+                boolean isHidden = (expectedOutput == null || expectedOutput.isBlank() || "Hidden testcase failed.".equals(actualOutput));
+                
+                prompt = "You are an expert programming mentor.\n\n" +
+                         "Never reveal the complete solution.\n" +
+                         "Do NOT provide corrected code.\n" +
+                         "Never reveal hidden test cases.\n" +
+                         "Never modify the student's code.\n\n" +
+                         "For Wrong Answer:\n" +
+                         "Identify the logical mistake in the student's source code.\n";
+                
+                if (isHidden) {
+                    prompt += "A hidden test case failed. Explain to the student what potential logical flaws, boundary conditions, or edge cases they should check, without referencing any specific test case input or output.\n\n";
+                } else {
+                    prompt += "Compare Expected Output and Actual Output to diagnose the error.\n" +
+                              "Expected Output:\n" + expectedOutput + "\n" +
+                              "Actual Output:\n" + actualOutput + "\n\n";
+                }
+                
+                prompt += "Return exactly in this format:\n" +
+                          "Wrong Answer\n" +
+                          "Explanation:\n" +
+                          "[Explain the logical mistake in simple English]\n" +
+                          "Hint:\n" +
+                          "[Provide one small hint]\n\n" +
+                          "Context:\n" +
+                          "Programming Language: " + language + "\n" +
+                          "Problem Statement: " + (question != null ? question.getProblemStatement() : "") + "\n" +
+                          "Input Format: " + (question != null ? question.getInputFormat() : "") + "\n" +
+                          "Output Format: " + (question != null ? question.getOutputFormat() : "") + "\n\n" +
+                          "Source Code:\n" + code;
             } else {
                 return null;
             }
-            
-            prompt += "Code submitted by student:\n" + code + "\n";
-            prompt += "\nExplain the issue and suggest how to fix it without rewriting the entire code.";
 
             ObjectMapper mapper = new ObjectMapper();
             Map<String, Object> requestMap = new HashMap<>();
-            requestMap.put("model", "grok-2-1212");
+            requestMap.put("model", "grok-2");
             
             List<Map<String, String>> messages = new ArrayList<>();
             Map<String, String> systemMsg = new HashMap<>();
             systemMsg.put("role", "system");
-            systemMsg.put("content", "You are a helpful coding assistant who explains compiler and runtime errors clearly and concisely. Keep answers brief (under 3 sentences).");
+            systemMsg.put("content", "You are a helpful coding mentor. Keep answers clear, structured, and under 5 sentences. Never provide code blocks or the full solution.");
             messages.add(systemMsg);
             
             Map<String, String> userMsg = new HashMap<>();
@@ -443,9 +546,9 @@ public class CodeExecutionService {
 
             java.net.http.HttpResponse<String> response = client.send(httpRequest, java.net.http.HttpResponse.BodyHandlers.ofString());
             
-            // Retry with grok-beta if grok-2 fails
             if (response.statusCode() != 200) {
-                requestMap.put("model", "grok-beta");
+                System.err.println("Primary Grok request in CodeExecutionService failed with status: " + response.statusCode() + ", Body: " + response.body());
+                requestMap.put("model", "grok-2-latest");
                 requestBody = mapper.writeValueAsString(requestMap);
                 httpRequest = java.net.http.HttpRequest.newBuilder()
                     .uri(java.net.URI.create("https://api.x.ai/v1/chat/completions"))
@@ -456,19 +559,41 @@ public class CodeExecutionService {
                 response = client.send(httpRequest, java.net.http.HttpResponse.BodyHandlers.ofString());
             }
 
+            String aiExplanation = null;
             if (response.statusCode() == 200) {
                 JsonNode rootNode = mapper.readTree(response.body());
                 JsonNode contentNode = rootNode.path("choices").path(0).path("message").path("content");
                 if (!contentNode.isMissingNode()) {
-                    return contentNode.asText();
+                    aiExplanation = contentNode.asText();
                 }
             } else {
                 System.err.println("Grok API request failed with status: " + response.statusCode() + ", Body: " + response.body());
             }
+
+            if (aiExplanation == null) {
+                aiExplanation = getLocalFallbackExplanation(status, compileError, stderr);
+            }
+
+            AiHintCache newCache = AiHintCache.builder()
+                    .hash(hash)
+                    .aiHint(aiExplanation)
+                    .build();
+            try {
+                aiHintCacheRepository.save(newCache);
+            } catch (Exception e) {
+                System.err.println("Cache save failed: " + e.getMessage());
+            }
+
+            if (studentTest != null) {
+                studentTest.setAiRequestsCount(studentTest.getAiRequestsCount() + 1);
+                studentTestRepository.save(studentTest);
+            }
+
+            return aiExplanation;
         } catch (Exception e) {
             System.err.println("Failed to fetch Grok explanation: " + e.getMessage());
+            return getLocalFallbackExplanation(status, compileError, stderr);
         }
-        return getLocalFallbackExplanation(status, compileError, stderr);
     }
 
     private String getLocalFallbackExplanation(String status, String compileError, String stderr) {

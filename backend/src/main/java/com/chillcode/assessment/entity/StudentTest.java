@@ -45,6 +45,9 @@ public class StudentTest {
     @Column(name = "is_suspended")
     private Boolean isSuspended = false;
 
+    @Column(name = "ai_requests_count")
+    private Integer aiRequestsCount = 0;
+
     @Column(name = "reattempt_status", length = 30)
     private String reattemptStatus;
 

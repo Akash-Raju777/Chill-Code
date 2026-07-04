@@ -92,6 +92,7 @@ CREATE TABLE IF NOT EXISTS student_tests (
     submitted_at TIMESTAMP NULL,
     warnings_count INT DEFAULT 0,
     is_suspended BOOLEAN DEFAULT FALSE,
+    ai_requests_count INT DEFAULT 0,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (student_id) REFERENCES app_users(id) ON DELETE CASCADE,
     FOREIGN KEY (test_id) REFERENCES tests(id) ON DELETE CASCADE,
@@ -171,3 +172,12 @@ CREATE TABLE IF NOT EXISTS activity_logs (
     timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (user_id) REFERENCES app_users(id) ON DELETE CASCADE
 );
+
+-- AI Hint Cache Table
+CREATE TABLE IF NOT EXISTS ai_hint_cache (
+    id BIGSERIAL PRIMARY KEY,
+    hash VARCHAR(64) UNIQUE NOT NULL,
+    ai_hint TEXT NOT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+

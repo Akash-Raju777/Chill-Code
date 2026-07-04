@@ -344,7 +344,9 @@ export default function CodingWorkspace() {
     } catch (err: any) {
       setExecResult({
         status: 'RUNTIME_ERROR',
-        compileError: err.message || 'Network execution error.',
+        compilerOutput: null,
+        runtimeOutput: err.message || 'Network execution error.',
+        aiHint: null
       });
     } finally {
       setExecuting(false);
@@ -376,7 +378,9 @@ export default function CodingWorkspace() {
     } catch (err: any) {
       setExecResult({
         status: 'RUNTIME_ERROR',
-        compileError: err.message || 'Network submission error.',
+        compilerOutput: null,
+        runtimeOutput: err.message || 'Network submission error.',
+        aiHint: null
       });
     } finally {
       setExecuting(false);
@@ -485,32 +489,14 @@ export default function CodingWorkspace() {
                status}
             </span>
           </div>
-          <div className="flex gap-4 text-[10px] text-gray-500">
-            {execResult.exitCode !== undefined && (
-              <span>Exit Code: <strong className="text-white">{execResult.exitCode}</strong></span>
-            )}
-          </div>
         </div>
-
-        {/* AI Explanation from Grok / Local Fallback */}
-        {execResult.aiExplanation && (
-          <div className="space-y-1.5 p-4 rounded-xl bg-indigo-950/20 border border-indigo-500/20 text-indigo-200">
-            <div className="flex items-center gap-1.5 text-xs font-bold text-indigo-400 uppercase tracking-wider font-sans">
-              <Sparkles className="w-3.5 h-3.5 fill-indigo-400 animate-pulse" />
-              AI Tutor Explanation (Grok)
-            </div>
-            <p className="text-xs leading-relaxed font-sans select-text whitespace-pre-wrap">
-              {execResult.aiExplanation}
-            </p>
-          </div>
-        )}
 
         {/* Case 1: Compilation Error */}
         {status === 'COMPILATION_ERROR' && (
           <div className="space-y-2">
             <div className="text-[10px] text-red-400 font-bold uppercase tracking-wider font-sans">Compilation Error</div>
             <pre className="p-3 bg-red-500/5 border border-red-500/15 text-red-400 rounded-xl whitespace-pre-wrap font-mono select-text text-xs leading-relaxed">
-              {execResult.compileError || "Unknown compilation error."}
+              {execResult.compilerOutput || "Unknown compilation error."}
             </pre>
           </div>
         )}
@@ -520,34 +506,18 @@ export default function CodingWorkspace() {
           <div className="space-y-2">
             <div className="text-[10px] text-red-400 font-bold uppercase tracking-wider font-sans">Runtime Error</div>
             <pre className="p-3 bg-red-500/5 border border-red-500/15 text-red-400 rounded-xl whitespace-pre-wrap font-mono select-text text-xs leading-relaxed">
-              {execResult.stderr || "Runtime exception or non-zero exit code."}
+              {execResult.runtimeOutput || "Runtime exception or non-zero exit code."}
             </pre>
           </div>
         )}
 
         {/* Case 3: Wrong Answer */}
         {status === 'WRONG_ANSWER' && (
-          <div className="space-y-3">
+          <div className="space-y-2">
             <div className="text-[10px] text-red-400 font-bold uppercase tracking-wider font-sans">Wrong Answer</div>
-            {execResult.testCaseResults && execResult.testCaseResults.length > 0 ? (
-              <div className="space-y-2.5">
-                {execResult.testCaseResults.map((tcRes: any, idx: number) => {
-                  if (tcRes.status === 'PASSED') return null;
-                  return (
-                    <div key={idx} className="p-3 bg-red-500/5 border border-red-500/15 rounded-xl space-y-2 text-xs leading-relaxed">
-                      <div className="font-bold text-red-400 font-sans">Failed Test Case #{idx + 1}</div>
-                      <pre className="font-mono text-gray-300 bg-black/10 p-2 rounded whitespace-pre-wrap">
-                        {tcRes.message}
-                      </pre>
-                    </div>
-                  );
-                })}
-              </div>
-            ) : (
-              <pre className="p-3 bg-red-500/5 border border-red-500/15 text-red-400 rounded-xl whitespace-pre-wrap font-mono select-text text-xs leading-relaxed">
-                {execResult.stderr || "Output mismatch."}
-              </pre>
-            )}
+            <pre className="p-3 bg-red-500/5 border border-red-500/15 text-red-400 rounded-xl whitespace-pre-wrap font-mono select-text text-xs leading-relaxed">
+              {execResult.runtimeOutput || "Output mismatch."}
+            </pre>
           </div>
         )}
 
@@ -561,52 +531,32 @@ export default function CodingWorkspace() {
             <div className="p-4 bg-emerald-500/5 border border-emerald-500/15 text-emerald-400 rounded-xl text-xs font-sans space-y-1.5">
               <div>✅ Accepted</div>
               <div>✅ Test Cases Passed</div>
-              {execResult.testCaseResults && (
-                <div>Passed Test Cases: <strong>{execResult.testCaseResults.length} / {execResult.testCaseResults.length}</strong></div>
-              )}
             </div>
           </div>
         )}
 
-        {/* Case 5: Time Limit Exceeded */}
-        {status === 'TIME_LIMIT_EXCEEDED' && (
+        {/* Case 5: Time Limit Exceeded / Memory Limit Exceeded */}
+        {(status === 'TIME_LIMIT_EXCEEDED' || status === 'MEMORY_LIMIT_EXCEEDED') && (
           <div className="space-y-2">
-            <div className="text-[10px] text-red-400 font-bold uppercase tracking-wider font-sans">Time Limit Exceeded</div>
+            <div className="text-[10px] text-red-400 font-bold uppercase tracking-wider font-sans">
+              {status === 'TIME_LIMIT_EXCEEDED' ? 'Time Limit Exceeded' : 'Memory Limit Exceeded'}
+            </div>
             <pre className="p-3 bg-red-500/5 border border-red-500/15 text-red-400 rounded-xl whitespace-pre-wrap font-mono select-text text-xs leading-relaxed">
-              Your code took too long to execute and exceeded the maximum allowed limit (5000ms).
+              {execResult.runtimeOutput || (status === 'TIME_LIMIT_EXCEEDED' ? "Time Limit Exceeded" : "Memory Limit Exceeded")}
             </pre>
           </div>
         )}
 
-        {/* Case 6: Memory Limit Exceeded */}
-        {status === 'MEMORY_LIMIT_EXCEEDED' && (
-          <div className="space-y-2">
-            <div className="text-[10px] text-red-400 font-bold uppercase tracking-wider font-sans">Memory Limit Exceeded</div>
-            <pre className="p-3 bg-red-500/5 border border-red-500/15 text-red-400 rounded-xl whitespace-pre-wrap font-mono select-text text-xs leading-relaxed">
-              Your code allocated more memory than allowed by the platform limits (256MB).
-            </pre>
-          </div>
-        )}
-
-        {/* Standard stdout / stderr output details */}
-        {status !== 'COMPILATION_ERROR' && status !== 'RUNTIME_ERROR' && (execResult.stdout || execResult.stderr) && (
-          <div className="space-y-3 pt-2 border-t border-white/5">
-            {execResult.stdout && (
-              <div className="space-y-1">
-                <div className="text-[10px] text-gray-500 font-bold uppercase tracking-wider font-sans">Program Output (stdout)</div>
-                <pre className="p-3 bg-[#11131c] border border-white/5 text-gray-200 rounded-xl whitespace-pre-wrap font-mono select-text text-xs leading-relaxed">
-                  {execResult.stdout}
-                </pre>
-              </div>
-            )}
-            {execResult.stderr && (
-              <div className="space-y-1">
-                <div className="text-[10px] text-red-400 font-bold uppercase tracking-wider font-sans">Standard Error (stderr)</div>
-                <pre className="p-3 bg-red-500/5 border border-red-500/15 text-red-400 rounded-xl whitespace-pre-wrap font-mono select-text text-xs leading-relaxed">
-                  {execResult.stderr}
-                </pre>
-              </div>
-            )}
+        {/* AI Hint Panel */}
+        {execResult.aiHint && (
+          <div className="space-y-1.5 p-4 rounded-xl bg-indigo-950/20 border border-indigo-500/20 text-indigo-200">
+            <div className="flex items-center gap-1.5 text-xs font-bold text-indigo-400 uppercase tracking-wider font-sans">
+              <Sparkles className="w-3.5 h-3.5 fill-indigo-400 animate-pulse" />
+              AI Hint
+            </div>
+            <p className="text-xs leading-relaxed font-sans select-text whitespace-pre-wrap font-mono">
+              {execResult.aiHint}
+            </p>
           </div>
         )}
       </div>

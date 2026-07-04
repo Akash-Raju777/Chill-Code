@@ -37,9 +37,38 @@ public class SubmissionController {
     }
 
     @PostMapping("/submissions")
-    public ResponseEntity<SubmissionResultDto> submitCode(@RequestBody SubmitRequest submitRequest) {
+    public ResponseEntity<com.chillcode.assessment.dto.SubmissionResponseDto> submitCode(@RequestBody SubmitRequest submitRequest) {
         SubmissionResultDto result = codeExecutionService.submitCode(submitRequest);
-        return ResponseEntity.ok(result);
+        
+        com.chillcode.assessment.dto.SubmissionResponseDto response = new com.chillcode.assessment.dto.SubmissionResponseDto();
+        response.setStatus(result.getStatus());
+        response.setCompilerOutput(result.getCompileError());
+        
+        if ("COMPILATION_ERROR".equals(result.getStatus())) {
+            response.setRuntimeOutput(null);
+        } else if ("RUNTIME_ERROR".equals(result.getStatus())) {
+            response.setRuntimeOutput(result.getStderr());
+        } else if ("WRONG_ANSWER".equals(result.getStatus())) {
+            if (result.getTestCaseResults() != null) {
+                java.util.Optional<com.chillcode.assessment.dto.TestCaseResultDto> failedTcOpt = result.getTestCaseResults().stream()
+                        .filter(tc -> !"PASSED".equals(tc.getStatus()))
+                        .findFirst();
+                if (failedTcOpt.isPresent()) {
+                    response.setRuntimeOutput(failedTcOpt.get().getMessage());
+                } else {
+                    response.setRuntimeOutput("Output mismatch.");
+                }
+            } else {
+                response.setRuntimeOutput("Output mismatch.");
+            }
+        } else if ("ACCEPTED".equals(result.getStatus())) {
+            response.setRuntimeOutput(result.getStdout());
+        } else {
+            response.setRuntimeOutput(result.getStderr() != null ? result.getStderr() : result.getStdout());
+        }
+        
+        response.setAiHint(result.getAiExplanation());
+        return ResponseEntity.ok(response);
     }
 
     @GetMapping("/submissions/solved")
