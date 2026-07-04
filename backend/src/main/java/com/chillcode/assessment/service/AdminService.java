@@ -79,9 +79,12 @@ public class AdminService {
                 .forEach(t -> {
                     Map<String, Object> data = new HashMap<>();
                     data.put("name", t.getName());
-                    long assigned = studentTestRepository.findByTestId(t.getId()).size();
+                    long assigned = studentTestRepository.findByTestId(t.getId()).stream()
+                            .filter(st -> st.getStudent() != null && com.chillcode.assessment.entity.UserStatus.ACTIVE.equals(st.getStudent().getStatus()))
+                            .count();
                     long attended = studentTestRepository.findByTestId(t.getId()).stream()
-                            .filter(st -> "SUBMITTED".equals(st.getStatus()) || "STARTED".equals(st.getStatus()))
+                            .filter(st -> st.getStudent() != null && com.chillcode.assessment.entity.UserStatus.ACTIVE.equals(st.getStudent().getStatus()))
+                            .filter(st -> !"ASSIGNED".equals(st.getStatus()))
                             .count();
                     data.put("assigned", assigned);
                     data.put("attended", attended);

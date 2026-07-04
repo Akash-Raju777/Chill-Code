@@ -3,6 +3,7 @@
 import React, { useEffect, useState } from 'react';
 import { apiCall } from '../../../utils/api';
 import { useRouter } from 'next/navigation';
+import { useAuthStore } from '../../../store/authStore';
 import { useTestStore } from '../../../store/testStore';
 import { useSecurityStore } from '../../../store/securityStore';
 import { 
@@ -46,6 +47,7 @@ interface StudentTest {
 
 export default function TestsWorkspace() {
   const router = useRouter();
+  const { user } = useAuthStore();
   const [studentTests, setStudentTests] = useState<StudentTest[]>([]);
   const [questionsList, setQuestionsList] = useState<any[]>([]);
   const [subjects, setSubjects] = useState<any[]>([]);
@@ -70,16 +72,20 @@ export default function TestsWorkspace() {
     if (isInitial) setLoading(true);
     setError('');
     try {
-      const [testsData, questionsData, subjectsData, solvedData] = await Promise.all([
+      const [testsData, questionsData, subjectsData, solvedData, profileData] = await Promise.all([
         apiCall('/api/student/tests'),
         apiCall('/api/student/questions'),
         apiCall('/api/student/subjects'),
         apiCall('/api/student/submissions/solved'),
+        apiCall('/api/student/profile'),
       ]);
       setStudentTests(testsData);
       setQuestionsList(questionsData);
       setSubjects(subjectsData);
       setSolvedQuestionIds(solvedData || []);
+      if (profileData) {
+        useAuthStore.getState().setUser(profileData);
+      }
     } catch (err: any) {
       setError(err.message || 'Failed to fetch practice challenges.');
     } finally {
@@ -268,7 +274,7 @@ export default function TestsWorkspace() {
               {list.map((q) => {
                 const associatedTest = getAssociatedTest(q.subjectId);
                 const isSolved = solvedQuestionIds.includes(q.id);
-                const isSuspended = associatedTest ? (associatedTest.isSuspended || associatedTest.status === 'SUSPENDED') : false;
+                const isSuspended = (associatedTest ? (associatedTest.isSuspended || associatedTest.status === 'SUSPENDED') : false) && user?.status === 'ACTIVE';
                 const isStarted = associatedTest ? associatedTest.status === 'STARTED' : false;
                 const isSubmitted = associatedTest ? (associatedTest.status === 'SUBMITTED' || associatedTest.status === 'EVALUATED') : false;
                 const subject = subjects.find((s) => s.id === q.subjectId);

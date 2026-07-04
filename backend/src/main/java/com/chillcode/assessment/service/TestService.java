@@ -124,7 +124,9 @@ public class TestService {
 
         if (student.getSuspensionEndTime() != null) {
             if (student.getSuspensionEndTime().isBefore(LocalDateTime.now())) {
-                student.setStatus(UserStatus.ACTIVE);
+                if (student.getStatus() != UserStatus.INACTIVE) {
+                    student.setStatus(UserStatus.ACTIVE);
+                }
                 student.setSuspensionEndTime(null);
                 userRepository.save(student);
 
@@ -266,7 +268,9 @@ public class TestService {
                 .orElseThrow(() -> new RuntimeException("Student not found"));
 
         if (student.getSuspensionEndTime() != null && student.getSuspensionEndTime().isBefore(LocalDateTime.now())) {
-            student.setStatus(UserStatus.ACTIVE);
+            if (student.getStatus() != UserStatus.INACTIVE) {
+                student.setStatus(UserStatus.ACTIVE);
+            }
             student.setSuspensionEndTime(null);
             userRepository.save(student);
 

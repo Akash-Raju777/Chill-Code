@@ -64,6 +64,12 @@ export default function AdminDashboard() {
 
   const handleForgive = async (studentKey: string, displayName: string) => {
     if (!confirm(`Are you sure you want to forgive ${displayName} and reset their warning logs?`)) return;
+    if (data) {
+      setData({
+        ...data,
+        recentActivities: data.recentActivities.filter(act => (act.registerNumber || act.user) !== studentKey)
+      });
+    }
     try {
       await apiCall(`/api/admin/student/forgive?registerNumber=${encodeURIComponent(studentKey)}`, {
         method: 'POST'
@@ -72,11 +78,13 @@ export default function AdminDashboard() {
       fetchMetrics();
     } catch (e: any) {
       alert(e.message || 'Failed to forgive student.');
+      fetchMetrics();
     }
   };
 
   const handleApproveReattempt = async (studentTestId: number, testName: string) => {
     if (!confirm(`Are you sure you want to approve this reattempt request for "${testName}"? The student's attempt progress will be reset.`)) return;
+    setReattemptRequests(prev => prev.filter(req => req.id !== studentTestId));
     try {
       await apiCall(`/api/admin/tests/reattempt-requests/${studentTestId}/approve`, {
         method: 'POST',
@@ -85,11 +93,13 @@ export default function AdminDashboard() {
       fetchMetrics();
     } catch (e: any) {
       alert(e.message || 'Failed to approve request.');
+      fetchMetrics();
     }
   };
 
   const handleRejectReattempt = async (studentTestId: number, testName: string) => {
     if (!confirm(`Are you sure you want to reject this reattempt request for "${testName}"?`)) return;
+    setReattemptRequests(prev => prev.filter(req => req.id !== studentTestId));
     try {
       await apiCall(`/api/admin/tests/reattempt-requests/${studentTestId}/reject`, {
         method: 'POST',
@@ -98,6 +108,7 @@ export default function AdminDashboard() {
       fetchMetrics();
     } catch (e: any) {
       alert(e.message || 'Failed to reject request.');
+      fetchMetrics();
     }
   };
 
