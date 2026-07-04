@@ -281,7 +281,12 @@ public class AshBotService {
                     total, completed, avgScore);
         }
 
-        // 6. Default conversational greeting list
+        // 6. Student search not found fallback
+        if (query.contains("student") || query.contains("list") || query.contains("table") || query.contains("find") || query.contains("search") || query.contains("is ")) {
+            return "No matching student record was found in the database list for your query.";
+        }
+
+        // 7. Default conversational greeting list
         return "Hello! I am **Ash**, your control room AI assistant. Since I am currently operating in offline/demo mode, here are the topics you can ask me about using real-time database scans:\n\n" +
                "- **\"Is 24btad007 in student list?\"** / **\"find Akash\"** - Search for a specific student's record and profile status dynamically.\n" +
                "- **\"Who failed in Java?\"** - Scan for student failures or low scores in Java Programming.\n" +
