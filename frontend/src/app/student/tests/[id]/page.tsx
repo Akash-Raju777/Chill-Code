@@ -122,7 +122,7 @@ export default function CodingWorkspace() {
           return;
         }
 
-        if (activeTest.isSuspended || activeTest.status === 'SUSPENDED') {
+        if ((activeTest.isSuspended || activeTest.status === 'SUSPENDED') && isSecurityStatusActive) {
           suspendTest();
           clearTestSession();
           return;
@@ -392,7 +392,7 @@ export default function CodingWorkspace() {
   };
 
   // Suspension Screen
-  if (isTestSuspended) {
+  if (isTestSuspended && isSecurityStatusActive) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-[#0b0c10] p-4 text-center">
         <div className="max-w-md bg-[#11131c] p-8 rounded-2xl border border-red-500/20 glow-card space-y-6">
