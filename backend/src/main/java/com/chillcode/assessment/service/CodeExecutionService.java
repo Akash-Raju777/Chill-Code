@@ -449,7 +449,7 @@ public class CodeExecutionService {
                          "Never reveal the complete solution.\n" +
                          "Explain the compiler error in simple English.\n" +
                          "Mention:\n" +
-                         "• Which line contains the error.\n" +
+                         "• The exact line number that contains the error.\n" +
                          "• What caused it.\n" +
                          "• How the student can fix it.\n" +
                          "• Give one small hint.\n" +
@@ -471,6 +471,7 @@ public class CodeExecutionService {
                          "Never modify the student's code.\n\n" +
                          "For Runtime Error:\n" +
                          "Explain why it occurred based on the error message and the source code. Specifically identify if it was Array Index Out of Bounds, Null Pointer, Division by Zero, Stack Overflow, or Input mismatch if applicable.\n" +
+                         "Indicate the exact line number in the source code where the exception or runtime error is being thrown.\n" +
                          "Suggest what concept to check.\n\n" +
                          "Error Message:\n" + stderr + "\n\n" +
                          "Context:\n" +
@@ -488,7 +489,7 @@ public class CodeExecutionService {
                          "Never reveal hidden test cases.\n" +
                          "Never modify the student's code.\n\n" +
                          "For Wrong Answer:\n" +
-                         "Identify the logical mistake in the student's source code.\n";
+                         "Identify the exact line number in the student's source code where the logical mistake occurs and explain the error.\n";
                 
                 if (isHidden) {
                     prompt += "A hidden test case failed. Explain to the student what potential logical flaws, boundary conditions, or edge cases they should check, without referencing any specific test case input or output.\n\n";
@@ -501,7 +502,7 @@ public class CodeExecutionService {
                 prompt += "Return exactly in this format:\n" +
                           "Wrong Answer\n" +
                           "Explanation:\n" +
-                          "[Explain the logical mistake in simple English]\n" +
+                          "[Explain the logical mistake in simple English and point out the exact line number where it occurs]\n" +
                           "Hint:\n" +
                           "[Provide one small hint]\n\n" +
                           "Context:\n" +
