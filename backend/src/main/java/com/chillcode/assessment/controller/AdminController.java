@@ -92,6 +92,22 @@ public class AdminController {
             }
             if (studentRequest.getStatus() != null) {
                 existingUser.setStatus(studentRequest.getStatus());
+                if (studentRequest.getStatus() == com.chillcode.assessment.entity.UserStatus.ACTIVE || studentRequest.getStatus() == com.chillcode.assessment.entity.UserStatus.INACTIVE) {
+                    existingUser.setSuspensionEndTime(null);
+                    java.util.List<com.chillcode.assessment.entity.StudentTest> studentTests = studentTestRepository.findByStudentId(existingUser.getId());
+                    for (com.chillcode.assessment.entity.StudentTest st : studentTests) {
+                        java.util.List<com.chillcode.assessment.entity.Warning> warnings = warningRepository.findByStudentTestId(st.getId());
+                        if (warnings != null && !warnings.isEmpty()) {
+                            warningRepository.deleteAll(warnings);
+                        }
+                        st.setWarningsCount(0);
+                        st.setIsSuspended(false);
+                        if ("SUSPENDED".equals(st.getStatus())) {
+                            st.setStatus("STARTED");
+                        }
+                        studentTestRepository.save(st);
+                    }
+                }
             }
             if (studentRequest.getPassword() != null && !studentRequest.getPassword().isBlank()) {
                 if (!studentRequest.getPassword().startsWith("$2a$")) {
