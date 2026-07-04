@@ -61,7 +61,7 @@ public class AshBotService {
 
             // 3. Prepare the Grok API request map
             Map<String, Object> requestMap = new HashMap<>();
-            requestMap.put("model", "grok-2");
+            requestMap.put("model", "grok-3");
             
             List<Map<String, String>> messages = new ArrayList<>();
             
@@ -91,8 +91,8 @@ public class AshBotService {
 
             if (response.statusCode() != 200) {
                 System.err.println("Primary Grok request failed with status: " + response.statusCode() + ", Body: " + response.body());
-                // Fallback to grok-2-latest
-                requestMap.put("model", "grok-2-latest");
+                // Fallback to grok-3-latest
+                requestMap.put("model", "grok-3-latest");
                 requestBody = mapper.writeValueAsString(requestMap);
                 httpRequest = HttpRequest.newBuilder()
                         .uri(URI.create("https://api.x.ai/v1/chat/completions"))
@@ -169,7 +169,38 @@ public class AshBotService {
     private String getMockAshResponse(String userQuery) {
         String query = userQuery.toLowerCase().trim();
 
-        // 1. "Who failed in Java?"
+        // 1. Check for specific student query (e.g. "IS 24btad007 in student list" or "find Akash" or "is student_demo in list")
+        List<User> students = userRepository.findByRole(Role.STUDENT);
+        for (User student : students) {
+            String regNum = student.getRegisterNumber() != null ? student.getRegisterNumber().toLowerCase() : "";
+            String name = student.getName() != null ? student.getName().toLowerCase() : "";
+            String username = student.getUsername() != null ? student.getUsername().toLowerCase() : "";
+            
+            if ((!regNum.isEmpty() && query.contains(regNum)) || 
+                (!name.isEmpty() && query.contains(name)) || 
+                (!username.isEmpty() && query.contains(username))) {
+                
+                // Found a matching student!
+                return String.format("### Student Record Found\n\n" +
+                        "- **Student Name:** %s\n" +
+                        "- **Register/Roll Number:** %s\n" +
+                        "- **Username:** %s\n" +
+                        "- **Email:** %s\n" +
+                        "- **Department:** %s\n" +
+                        "- **Account Status:** %s\n" +
+                        "\n" +
+                        "Yes, **%s** is currently present in the student database list.",
+                        student.getName(),
+                        student.getRegisterNumber() != null ? student.getRegisterNumber() : "N/A",
+                        student.getUsername(),
+                        student.getEmail() != null ? student.getEmail() : "N/A",
+                        student.getDepartment() != null ? student.getDepartment() : "N/A",
+                        student.getStatus() != null ? student.getStatus().toString() : "ACTIVE",
+                        student.getName());
+            }
+        }
+
+        // 2. "Who failed in Java?"
         if (query.contains("fail") && (query.contains("java") || query.contains("programming"))) {
             List<StudentTest> attempts = studentTestRepository.findAll();
             StringBuilder sb = new StringBuilder();
@@ -196,7 +227,7 @@ public class AshBotService {
             return sb.toString();
         }
 
-        // 2. "highest score" / "top scorer"
+        // 3. "highest score" / "top scorer"
         if (query.contains("highest") || query.contains("top scorer") || query.contains("best") || query.contains("highest score")) {
             List<StudentTest> attempts = studentTestRepository.findAll();
             StudentTest top = null;
@@ -216,7 +247,7 @@ public class AshBotService {
             }
         }
 
-        // 3. "summary of all subjects" / "subjects" / "questions"
+        // 4. "summary of all subjects" / "subjects" / "questions"
         if (query.contains("subjects") || query.contains("questions") || query.contains("summary") || query.contains("subject")) {
             List<Subject> subjects = subjectRepository.findAll();
             StringBuilder sb = new StringBuilder();
@@ -236,7 +267,7 @@ public class AshBotService {
             return sb.toString();
         }
 
-        // 4. "attempts" / "statistics"
+        // 5. "attempts" / "statistics"
         if (query.contains("attempts") || query.contains("statistics") || query.contains("stats") || query.contains("stat")) {
             List<StudentTest> attempts = studentTestRepository.findAll();
             long total = attempts.size();
@@ -250,8 +281,9 @@ public class AshBotService {
                     total, completed, avgScore);
         }
 
-        // 5. Default conversational greeting list
+        // 6. Default conversational greeting list
         return "Hello! I am **Ash**, your control room AI assistant. Since I am currently operating in offline/demo mode, here are the topics you can ask me about using real-time database scans:\n\n" +
+               "- **\"Is 24btad007 in student list?\"** / **\"find Akash\"** - Search for a specific student's record and profile status dynamically.\n" +
                "- **\"Who failed in Java?\"** - Scan for student failures or low scores in Java Programming.\n" +
                "- **\"Who scored the highest?\"** - Identify the top-performing student across all assessments.\n" +
                "- **\"Summary of subjects\"** - View all active subjects, total questions, and difficulty ranges.\n" +

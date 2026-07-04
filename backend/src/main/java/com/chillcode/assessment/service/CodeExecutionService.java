@@ -516,7 +516,7 @@ public class CodeExecutionService {
 
             ObjectMapper mapper = new ObjectMapper();
             Map<String, Object> requestMap = new HashMap<>();
-            requestMap.put("model", "grok-2");
+            requestMap.put("model", "grok-3");
             
             List<Map<String, String>> messages = new ArrayList<>();
             Map<String, String> systemMsg = new HashMap<>();
@@ -548,7 +548,7 @@ public class CodeExecutionService {
             
             if (response.statusCode() != 200) {
                 System.err.println("Primary Grok request in CodeExecutionService failed with status: " + response.statusCode() + ", Body: " + response.body());
-                requestMap.put("model", "grok-2-latest");
+                requestMap.put("model", "grok-3-latest");
                 requestBody = mapper.writeValueAsString(requestMap);
                 httpRequest = java.net.http.HttpRequest.newBuilder()
                     .uri(java.net.URI.create("https://api.x.ai/v1/chat/completions"))
