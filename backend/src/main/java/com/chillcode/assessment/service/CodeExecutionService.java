@@ -276,7 +276,225 @@ public class CodeExecutionService {
             
             return mapper.readTree(httpResponse.body());
         } catch (Exception e) {
-            throw new RuntimeException("Failed to execute code on Judge0: " + e.getMessage(), e);
+            System.err.println("Judge0 execution failed, invoking local compilation fallback: " + e.getMessage());
+            return executeLocallyFallback(code, languageId, stdin, expectedOutput);
+        }
+    }
+
+    private JsonNode executeLocallyFallback(String code, int languageId, String stdin, String expectedOutput) {
+        ObjectMapper mapper = new ObjectMapper();
+        com.fasterxml.jackson.databind.node.ObjectNode root = mapper.createObjectNode();
+        com.fasterxml.jackson.databind.node.ObjectNode status = mapper.createObjectNode();
+        
+        File tempDir = new File(System.getProperty("user.dir"), "temp_exec_" + System.currentTimeMillis() + "_" + (int)(Math.random() * 1000));
+        tempDir.mkdirs();
+        
+        try {
+            String stdoutVal = "";
+            String stderrVal = "";
+            String compileOutputVal = "";
+            int statusId = 3; // ACCEPTED by default
+            double timeSec = 0.05;
+            int memoryKb = 1200;
+
+            if (languageId == 62) { // Java
+                // Find public class name
+                String className = "Main";
+                java.util.regex.Matcher matcher = java.util.regex.Pattern.compile("public\\s+class\\s+([A-Za-z0-9_]+)").matcher(code);
+                if (matcher.find()) {
+                    className = matcher.group(1);
+                }
+                
+                File sourceFile = new File(tempDir, className + ".java");
+                java.nio.file.Files.writeString(sourceFile.toPath(), code, StandardCharsets.UTF_8);
+                
+                // Compile
+                javax.tools.JavaCompiler compiler = javax.tools.ToolProvider.getSystemJavaCompiler();
+                if (compiler == null) {
+                    throw new RuntimeException("System Java compiler (JDK) is not available in the runtime environment.");
+                }
+                
+                ByteArrayOutputStream errStream = new ByteArrayOutputStream();
+                int compileResult = compiler.run(null, null, errStream, sourceFile.getAbsolutePath());
+                
+                if (compileResult != 0) {
+                    statusId = 6; // Compilation Error
+                    compileOutputVal = errStream.toString(StandardCharsets.UTF_8);
+                } else {
+                    // Run
+                    long startTime = System.currentTimeMillis();
+                    ProcessBuilder pb = new ProcessBuilder("java", "-cp", tempDir.getAbsolutePath(), className);
+                    Process process = pb.start();
+                    
+                    // Write stdin
+                    if (stdin != null && !stdin.isEmpty()) {
+                        try (OutputStream os = process.getOutputStream()) {
+                            os.write(stdin.getBytes(StandardCharsets.UTF_8));
+                            os.flush();
+                        }
+                    }
+                    
+                    // Read output streams in parallel to prevent deadlocks
+                    ByteArrayOutputStream outStream = new ByteArrayOutputStream();
+                    ByteArrayOutputStream procErrStream = new ByteArrayOutputStream();
+                    
+                    Thread outThread = new Thread(() -> {
+                        try (InputStream is = process.getInputStream()) {
+                            is.transferTo(outStream);
+                        } catch (Exception ignored) {}
+                    });
+                    Thread errThread = new Thread(() -> {
+                        try (InputStream is = process.getErrorStream()) {
+                            is.transferTo(procErrStream);
+                        } catch (Exception ignored) {}
+                    });
+                    
+                    outThread.start();
+                    errThread.start();
+                    
+                    boolean finished = process.waitFor(5, java.util.concurrent.TimeUnit.SECONDS);
+                    if (!finished) {
+                        process.destroyForcibly();
+                        statusId = 5; // TLE
+                    } else {
+                        outThread.join(1000);
+                        errThread.join(1000);
+                        timeSec = (System.currentTimeMillis() - startTime) / 1000.0;
+                        int exitCode = process.exitValue();
+                        if (exitCode != 0) {
+                            statusId = 11; // Runtime Error
+                            stderrVal = procErrStream.toString(StandardCharsets.UTF_8);
+                            if (stderrVal.isEmpty()) {
+                                stderrVal = "Process exited with code " + exitCode;
+                            }
+                        } else {
+                            stdoutVal = outStream.toString(StandardCharsets.UTF_8);
+                            // Compare output
+                            if (expectedOutput != null) {
+                                boolean match = compareOutputs(expectedOutput, stdoutVal);
+                                statusId = match ? 3 : 4;
+                            } else {
+                                statusId = 3;
+                            }
+                        }
+                    }
+                }
+            } else if (languageId == 71) { // Python
+                File sourceFile = new File(tempDir, "solution.py");
+                java.nio.file.Files.writeString(sourceFile.toPath(), code, StandardCharsets.UTF_8);
+                
+                long startTime = System.currentTimeMillis();
+                ProcessBuilder pb;
+                if (System.getProperty("os.name").toLowerCase().contains("win")) {
+                    pb = new ProcessBuilder("python", sourceFile.getAbsolutePath());
+                } else {
+                    pb = new ProcessBuilder("python3", sourceFile.getAbsolutePath());
+                }
+                
+                Process process = pb.start();
+                
+                // Write stdin
+                if (stdin != null && !stdin.isEmpty()) {
+                    try (OutputStream os = process.getOutputStream()) {
+                        os.write(stdin.getBytes(StandardCharsets.UTF_8));
+                        os.flush();
+                    }
+                }
+                
+                ByteArrayOutputStream outStream = new ByteArrayOutputStream();
+                ByteArrayOutputStream procErrStream = new ByteArrayOutputStream();
+                
+                Thread outThread = new Thread(() -> {
+                    try (InputStream is = process.getInputStream()) {
+                        is.transferTo(outStream);
+                    } catch (Exception ignored) {}
+                });
+                Thread errThread = new Thread(() -> {
+                    try (InputStream is = process.getErrorStream()) {
+                        is.transferTo(procErrStream);
+                    } catch (Exception ignored) {}
+                });
+                
+                outThread.start();
+                errThread.start();
+                
+                boolean finished = process.waitFor(5, java.util.concurrent.TimeUnit.SECONDS);
+                if (!finished) {
+                    process.destroyForcibly();
+                    statusId = 5; // TLE
+                } else {
+                    outThread.join(1000);
+                    errThread.join(1000);
+                    timeSec = (System.currentTimeMillis() - startTime) / 1000.0;
+                    int exitCode = process.exitValue();
+                    if (exitCode != 0) {
+                        statusId = 11; // Runtime Error
+                        stderrVal = procErrStream.toString(StandardCharsets.UTF_8);
+                        if (stderrVal.isEmpty()) {
+                            stderrVal = "Process exited with code " + exitCode;
+                        }
+                    } else {
+                        stdoutVal = outStream.toString(StandardCharsets.UTF_8);
+                        if (expectedOutput != null) {
+                            boolean match = compareOutputs(expectedOutput, stdoutVal);
+                            statusId = match ? 3 : 4;
+                        } else {
+                            statusId = 3;
+                        }
+                    }
+                }
+            } else {
+                throw new RuntimeException("Unsupported language for local fallback compilation.");
+            }
+
+            status.put("id", statusId);
+            status.put("description", getStatusDescription(statusId));
+            root.set("status", status);
+            root.put("time", timeSec);
+            root.put("memory", memoryKb);
+            root.put("stdout", Base64.getEncoder().encodeToString(stdoutVal.getBytes(StandardCharsets.UTF_8)));
+            root.put("stderr", Base64.getEncoder().encodeToString(stderrVal.getBytes(StandardCharsets.UTF_8)));
+            root.put("compile_output", Base64.getEncoder().encodeToString(compileOutputVal.getBytes(StandardCharsets.UTF_8)));
+            
+            return root;
+        } catch (Exception ex) {
+            status.put("id", 11);
+            status.put("description", "Runtime Error");
+            root.set("status", status);
+            root.put("time", 0.0);
+            root.put("memory", 0);
+            root.put("stdout", "");
+            root.put("stderr", Base64.getEncoder().encodeToString(("Local execution failed: " + ex.getMessage()).getBytes(StandardCharsets.UTF_8)));
+            root.put("compile_output", "");
+            return root;
+        } finally {
+            // Clean up tempDir recursively
+            deleteDirectory(tempDir);
+        }
+    }
+
+    private void deleteDirectory(File dir) {
+        File[] files = dir.listFiles();
+        if (files != null) {
+            for (File f : files) {
+                if (f.isDirectory()) {
+                    deleteDirectory(f);
+                } else {
+                    f.delete();
+                }
+            }
+        }
+        dir.delete();
+    }
+
+    private String getStatusDescription(int statusId) {
+        switch (statusId) {
+            case 3: return "Accepted";
+            case 4: return "Wrong Answer";
+            case 5: return "Time Limit Exceeded";
+            case 6: return "Compilation Error";
+            case 7: case 8: case 9: case 10: case 11: case 12: return "Runtime Error";
+            default: return "Unknown";
         }
     }
 
