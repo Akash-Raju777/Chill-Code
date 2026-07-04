@@ -516,7 +516,7 @@ public class CodeExecutionService {
 
             ObjectMapper mapper = new ObjectMapper();
             Map<String, Object> requestMap = new HashMap<>();
-            requestMap.put("model", "grok-3");
+            requestMap.put("model", "llama-3.3-70b-versatile");
             
             List<Map<String, String>> messages = new ArrayList<>();
             Map<String, String> systemMsg = new HashMap<>();
@@ -538,7 +538,7 @@ public class CodeExecutionService {
                 .connectTimeout(java.time.Duration.ofSeconds(10))
                 .build();
             java.net.http.HttpRequest httpRequest = java.net.http.HttpRequest.newBuilder()
-                .uri(java.net.URI.create("https://api.x.ai/v1/chat/completions"))
+                .uri(java.net.URI.create("https://api.groq.com/openai/v1/chat/completions"))
                 .header("Content-Type", "application/json")
                 .header("Authorization", "Bearer " + xaiApiKey)
                 .POST(java.net.http.HttpRequest.BodyPublishers.ofString(requestBody, StandardCharsets.UTF_8))
@@ -548,10 +548,10 @@ public class CodeExecutionService {
             
             if (response.statusCode() != 200) {
                 System.err.println("Primary Grok request in CodeExecutionService failed with status: " + response.statusCode() + ", Body: " + response.body());
-                requestMap.put("model", "grok-3-latest");
+                requestMap.put("model", "llama-3.1-8b-instant");
                 requestBody = mapper.writeValueAsString(requestMap);
                 httpRequest = java.net.http.HttpRequest.newBuilder()
-                    .uri(java.net.URI.create("https://api.x.ai/v1/chat/completions"))
+                    .uri(java.net.URI.create("https://api.groq.com/openai/v1/chat/completions"))
                     .header("Content-Type", "application/json")
                     .header("Authorization", "Bearer " + xaiApiKey)
                     .POST(java.net.http.HttpRequest.BodyPublishers.ofString(requestBody, StandardCharsets.UTF_8))

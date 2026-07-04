@@ -59,9 +59,9 @@ public class AshBotService {
 
             String prompt = String.format("%s\n\nAdmin Query: %s", dbContext, userQuery);
 
-            // 3. Prepare the Grok API request map
+            // 3. Prepare the Groq API request map
             Map<String, Object> requestMap = new HashMap<>();
-            requestMap.put("model", "grok-3");
+            requestMap.put("model", "llama-3.3-70b-versatile");
             
             List<Map<String, String>> messages = new ArrayList<>();
             
@@ -81,7 +81,7 @@ public class AshBotService {
             String requestBody = mapper.writeValueAsString(requestMap);
 
             HttpRequest httpRequest = HttpRequest.newBuilder()
-                    .uri(URI.create("https://api.x.ai/v1/chat/completions"))
+                    .uri(URI.create("https://api.groq.com/openai/v1/chat/completions"))
                     .header("Content-Type", "application/json")
                     .header("Authorization", "Bearer " + xaiApiKey)
                     .POST(HttpRequest.BodyPublishers.ofString(requestBody, StandardCharsets.UTF_8))
@@ -91,11 +91,11 @@ public class AshBotService {
 
             if (response.statusCode() != 200) {
                 System.err.println("Primary Grok request failed with status: " + response.statusCode() + ", Body: " + response.body());
-                // Fallback to grok-3-latest
-                requestMap.put("model", "grok-3-latest");
+                // Fallback to llama-3.1-8b-instant
+                requestMap.put("model", "llama-3.1-8b-instant");
                 requestBody = mapper.writeValueAsString(requestMap);
                 httpRequest = HttpRequest.newBuilder()
-                        .uri(URI.create("https://api.x.ai/v1/chat/completions"))
+                        .uri(URI.create("https://api.groq.com/openai/v1/chat/completions"))
                         .header("Content-Type", "application/json")
                         .header("Authorization", "Bearer " + xaiApiKey)
                         .POST(HttpRequest.BodyPublishers.ofString(requestBody, StandardCharsets.UTF_8))
