@@ -8,6 +8,7 @@ interface User {
   registerNumber?: string;
   username?: string;
   status: string;
+  department?: string;
 }
 
 interface AuthState {
@@ -16,6 +17,7 @@ interface AuthState {
   isAuthenticated: boolean;
   login: (user: User, token: string) => void;
   logout: () => void;
+  setUser: (user: User) => void;
 }
 
 export const useAuthStore = create<AuthState>((set) => {
@@ -53,6 +55,12 @@ export const useAuthStore = create<AuthState>((set) => {
         localStorage.removeItem('chill_token');
       }
       set({ user: null, token: null, isAuthenticated: false });
+    },
+    setUser: (user) => {
+      if (typeof window !== 'undefined') {
+        localStorage.setItem('chill_user', JSON.stringify(user));
+      }
+      set({ user });
     },
   };
 });

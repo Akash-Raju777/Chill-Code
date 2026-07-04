@@ -21,10 +21,32 @@ public class SubmissionController {
     @Autowired
     private SubmissionRepository submissionRepository;
 
+    @Autowired
+    private com.chillcode.assessment.repository.UserRepository userRepository;
+
+    private com.chillcode.assessment.entity.User getCurrentUser() {
+        String identifier = org.springframework.security.core.context.SecurityContextHolder.getContext().getAuthentication().getName();
+        java.util.Optional<com.chillcode.assessment.entity.User> userOpt = userRepository.findByRegisterNumber(identifier);
+        if (userOpt.isEmpty()) {
+            userOpt = userRepository.findByUsername(identifier);
+        }
+        if (userOpt.isEmpty()) {
+            userOpt = userRepository.findByEmail(identifier);
+        }
+        return userOpt.orElseThrow(() -> new RuntimeException("Current user not found"));
+    }
+
     @PostMapping("/submissions")
     public ResponseEntity<SubmissionResultDto> submitCode(@RequestBody SubmitRequest submitRequest) {
         SubmissionResultDto result = codeExecutionService.submitCode(submitRequest);
         return ResponseEntity.ok(result);
+    }
+
+    @GetMapping("/submissions/solved")
+    public ResponseEntity<List<Long>> getSolvedQuestionIds() {
+        com.chillcode.assessment.entity.User student = getCurrentUser();
+        List<Long> solvedIds = submissionRepository.findSolvedQuestionIdsByStudentId(student.getId());
+        return ResponseEntity.ok(solvedIds);
     }
 
     @GetMapping("/submissions/test/{studentTestId}/question/{questionId}")

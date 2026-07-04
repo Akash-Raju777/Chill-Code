@@ -11,6 +11,7 @@ import java.time.LocalDateTime;
 @NoArgsConstructor
 @AllArgsConstructor
 @Builder
+@com.fasterxml.jackson.annotation.JsonIgnoreProperties({"hibernateLazyInitializer", "handler"})
 public class Submission {
 
     @Id
@@ -19,10 +20,12 @@ public class Submission {
 
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "student_test_id", nullable = false)
+    @com.fasterxml.jackson.annotation.JsonIgnore
     private StudentTest studentTest;
 
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "question_id", nullable = false)
+    @com.fasterxml.jackson.annotation.JsonIgnore
     private Question question;
 
     @Column(nullable = false, length = 20)
@@ -44,6 +47,9 @@ public class Submission {
 
     @Column(name = "compile_error", columnDefinition = "TEXT")
     private String compileError;
+
+    @OneToMany(mappedBy = "submission", cascade = CascadeType.ALL, orphanRemoval = true)
+    private java.util.List<SubmissionTestCase> submissionTestCases;
 
     @Column(name = "created_at", nullable = false, updatable = false)
     private LocalDateTime createdAt = LocalDateTime.now();

@@ -16,3 +16,9 @@
 javac_args.txt
 sources.txt
 backend/cp.txt
+
+# Local Deployment binaries & chunks
+deploy/*.exe
+deploy/*.part*
+deploy/*.parts/
+deploy/*.tmp

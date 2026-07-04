@@ -5,6 +5,8 @@ import com.chillcode.assessment.entity.Notification;
 import com.chillcode.assessment.entity.User;
 import com.chillcode.assessment.repository.UserRepository;
 import com.chillcode.assessment.service.StudentService;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.context.SecurityContextHolder;
@@ -17,6 +19,8 @@ import java.util.Optional;
 @RestController
 @RequestMapping("/api/student")
 public class StudentController {
+
+    private static final Logger log = LoggerFactory.getLogger(StudentController.class);
 
     @Autowired
     private StudentService studentService;
@@ -39,12 +43,14 @@ public class StudentController {
     @GetMapping("/dashboard/stats")
     public ResponseEntity<Map<String, Object>> getDashboardStats() {
         User student = getCurrentUser();
+        log.info("API Request: Load dashboard stats for student ID: {}", student.getId());
         return ResponseEntity.ok(studentService.getStudentDashboardStats(student.getId()));
     }
 
     @GetMapping("/notifications")
     public ResponseEntity<List<Notification>> getNotifications() {
         User student = getCurrentUser();
+        log.info("API Request: Load notifications for student ID: {}", student.getId());
         return ResponseEntity.ok(studentService.getNotificationsForUser(student.getId()));
     }
 
@@ -69,6 +75,22 @@ public class StudentController {
     @GetMapping("/achievements")
     public ResponseEntity<List<Achievement>> getAchievements() {
         User student = getCurrentUser();
+        log.info("API Request: Load achievements for student ID: {}", student.getId());
         return ResponseEntity.ok(studentService.getAchievementsForUser(student.getId()));
+    }
+
+    @GetMapping("/profile")
+    public ResponseEntity<Map<String, Object>> getProfile() {
+        User student = getCurrentUser();
+        return ResponseEntity.ok(Map.of(
+            "id", student.getId(),
+            "name", student.getName(),
+            "email", student.getEmail(),
+            "role", student.getRole().name(),
+            "registerNumber", student.getRegisterNumber() != null ? student.getRegisterNumber() : "",
+            "username", student.getUsername() != null ? student.getUsername() : "",
+            "status", student.getStatus().name(),
+            "department", student.getDepartment() != null ? student.getDepartment() : ""
+        ));
     }
 }

@@ -18,4 +18,5 @@ public class AuthResponse {
     private String registerNumber;
     private String username;
     private String status;
+    private String department;
 }

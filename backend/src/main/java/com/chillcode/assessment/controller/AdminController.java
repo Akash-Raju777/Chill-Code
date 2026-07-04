@@ -31,6 +31,9 @@ public class AdminController {
     @Autowired
     private com.chillcode.assessment.repository.StudentTestRepository studentTestRepository;
 
+    @Autowired
+    private com.chillcode.assessment.repository.WarningRepository warningRepository;
+
     @GetMapping("/dashboard")
     public ResponseEntity<DashboardMetricsDto> getDashboardMetrics() {
         return ResponseEntity.ok(adminService.getDashboardMetrics());
@@ -121,15 +124,21 @@ public class AdminController {
         student.setSuspensionEndTime(null);
         userRepository.save(student);
 
-        // Find all student tests for this student and reset their suspension state
+        // Find all student tests for this student, delete their warnings, and reset their suspension state
         java.util.List<com.chillcode.assessment.entity.StudentTest> studentTests = studentTestRepository.findByStudentId(student.getId());
         for (com.chillcode.assessment.entity.StudentTest st : studentTests) {
-            if ("SUSPENDED".equals(st.getStatus()) || Boolean.TRUE.equals(st.getIsSuspended())) {
-                st.setStatus("STARTED");
-                st.setIsSuspended(false);
-                st.setWarningsCount(0);
-                studentTestRepository.save(st);
+            // Delete warnings from Warning table so they disappear from the admin dashboard activities feed
+            java.util.List<com.chillcode.assessment.entity.Warning> warnings = warningRepository.findByStudentTestId(st.getId());
+            if (warnings != null && !warnings.isEmpty()) {
+                warningRepository.deleteAll(warnings);
             }
+
+            st.setWarningsCount(0);
+            st.setIsSuspended(false);
+            if ("SUSPENDED".equals(st.getStatus())) {
+                st.setStatus("STARTED");
+            }
+            studentTestRepository.save(st);
         }
 
         return ResponseEntity.ok("Student suspension has been lifted.");

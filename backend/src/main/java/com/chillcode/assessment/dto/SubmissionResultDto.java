@@ -16,4 +16,8 @@ public class SubmissionResultDto {
     private List<TestCaseResultDto> testCaseResults;
     private String stdout;
     private String stderr;
+    private Integer exitCode;
+    private String aiExplanation;
 }
+
+

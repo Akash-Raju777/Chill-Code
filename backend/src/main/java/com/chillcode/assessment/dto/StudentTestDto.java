@@ -9,23 +9,40 @@ public class StudentTestDto {
     private Integer warningsCount;
     private Boolean isSuspended;
     private LocalDateTime submittedAt;
+    private LocalDateTime startedAt;
     private TestDetailsDto test;
+    private String reattemptStatus;
+    private String studentRegisterNumber;
+    private String studentName;
 
     public StudentTestDto() {}
 
     public StudentTestDto(Long id, String status, Integer score, Integer warningsCount, Boolean isSuspended, TestDetailsDto test) {
-        this.id = id;
-        this.status = status;
-        this.score = score;
-        this.warningsCount = warningsCount;
-        this.isSuspended = isSuspended;
-        this.test = test;
+      this.id = id;
+      this.status = status;
+      this.score = score;
+      this.warningsCount = warningsCount;
+      this.isSuspended = isSuspended;
+      this.test = test;
     }
 
     public StudentTestDto(Long id, String status, Integer score, Integer warningsCount, Boolean isSuspended, TestDetailsDto test, LocalDateTime submittedAt) {
-        this(id, status, score, warningsCount, isSuspended, test);
-        this.submittedAt = submittedAt;
+      this(id, status, score, warningsCount, isSuspended, test);
+      this.submittedAt = submittedAt;
     }
+
+    public StudentTestDto(Long id, String status, Integer score, Integer warningsCount, Boolean isSuspended, TestDetailsDto test, LocalDateTime submittedAt, LocalDateTime startedAt) {
+      this(id, status, score, warningsCount, isSuspended, test, submittedAt);
+      this.startedAt = startedAt;
+    }
+
+    public StudentTestDto(Long id, String status, Integer score, Integer warningsCount, Boolean isSuspended, TestDetailsDto test, LocalDateTime submittedAt, LocalDateTime startedAt, String reattemptStatus) {
+      this(id, status, score, warningsCount, isSuspended, test, submittedAt, startedAt);
+      this.reattemptStatus = reattemptStatus;
+    }
+
+    public String getReattemptStatus() { return reattemptStatus; }
+    public void setReattemptStatus(String reattemptStatus) { this.reattemptStatus = reattemptStatus; }
 
     public Long getId() { return id; }
     public void setId(Long id) { this.id = id; }
@@ -45,8 +62,17 @@ public class StudentTestDto {
     public LocalDateTime getSubmittedAt() { return submittedAt; }
     public void setSubmittedAt(LocalDateTime submittedAt) { this.submittedAt = submittedAt; }
 
+    public LocalDateTime getStartedAt() { return startedAt; }
+    public void setStartedAt(LocalDateTime startedAt) { this.startedAt = startedAt; }
+
     public TestDetailsDto getTest() { return test; }
     public void setTest(TestDetailsDto test) { this.test = test; }
+
+    public String getStudentRegisterNumber() { return studentRegisterNumber; }
+    public void setStudentRegisterNumber(String studentRegisterNumber) { this.studentRegisterNumber = studentRegisterNumber; }
+
+    public String getStudentName() { return studentName; }
+    public void setStudentName(String studentName) { this.studentName = studentName; }
 
     public static class TestDetailsDto {
         private Long id;

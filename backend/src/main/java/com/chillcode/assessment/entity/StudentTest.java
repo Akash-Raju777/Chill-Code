@@ -45,6 +45,9 @@ public class StudentTest {
     @Column(name = "is_suspended")
     private Boolean isSuspended = false;
 
+    @Column(name = "reattempt_status", length = 30)
+    private String reattemptStatus;
+
     @Column(name = "created_at", nullable = false, updatable = false)
     private LocalDateTime createdAt = LocalDateTime.now();
 

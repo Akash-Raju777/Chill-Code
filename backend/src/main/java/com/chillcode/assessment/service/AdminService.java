@@ -52,37 +52,41 @@ public class AdminService {
                 .filter(st -> "SUBMITTED".equals(st.getStatus()))
                 .count();
 
-        // Prepare monthly tests chart
+        // Prepare monthly tests chart using actual data
         List<Map<String, Object>> monthlyTests = new ArrayList<>();
         String[] months = {"Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"};
-        for (int i = 0; i < 6; i++) {
+        List<com.chillcode.assessment.entity.Test> testsList = testRepository.findAll();
+        for (int i = 5; i >= 0; i--) {
+            LocalDateTime monthStart = now.minusMonths(i).withDayOfMonth(1).withHour(0).withMinute(0).withSecond(0).withNano(0);
+            LocalDateTime monthEnd = monthStart.plusMonths(1);
+            String monthName = months[monthStart.getMonthValue() - 1];
+            
+            long count = testsList.stream()
+                    .filter(t -> t.getStartTime() != null && !t.getStartTime().isBefore(monthStart) && t.getStartTime().isBefore(monthEnd))
+                    .count();
+            
             Map<String, Object> data = new HashMap<>();
-            data.put("month", months[(now.getMonthValue() - 6 + i + 12) % 12]);
-            data.put("tests", totalTests > 0 ? (long)(totalTests * 0.4 + i) : 2 + i);
+            data.put("month", monthName);
+            data.put("tests", count);
             monthlyTests.add(data);
         }
 
-        // Student participation chart
+        // Student participation chart using actual data
         List<Map<String, Object>> studentParticipation = new ArrayList<>();
-        testRepository.findAll().stream().limit(5).forEach(t -> {
-            Map<String, Object> data = new HashMap<>();
-            data.put("name", t.getName());
-            long assigned = studentTestRepository.findByTestId(t.getId()).size();
-            long attended = studentTestRepository.findByTestId(t.getId()).stream()
-                    .filter(st -> "SUBMITTED".equals(st.getStatus()) || "STARTED".equals(st.getStatus()))
-                    .count();
-            data.put("assigned", assigned);
-            data.put("attended", attended);
-            studentParticipation.add(data);
-        });
-
-        if (studentParticipation.isEmpty()) {
-            Map<String, Object> sample = new HashMap<>();
-            sample.put("name", "Mid-Term Assessment");
-            sample.put("assigned", 120);
-            sample.put("attended", 115);
-            studentParticipation.add(sample);
-        }
+        testRepository.findAll().stream()
+                .filter(t -> studentTestRepository.findByTestId(t.getId()).size() > 0)
+                .limit(5)
+                .forEach(t -> {
+                    Map<String, Object> data = new HashMap<>();
+                    data.put("name", t.getName());
+                    long assigned = studentTestRepository.findByTestId(t.getId()).size();
+                    long attended = studentTestRepository.findByTestId(t.getId()).stream()
+                            .filter(st -> "SUBMITTED".equals(st.getStatus()) || "STARTED".equals(st.getStatus()))
+                            .count();
+                    data.put("assigned", assigned);
+                    data.put("attended", attended);
+                    studentParticipation.add(data);
+                });
 
         // Language wise performance chart
         List<Map<String, Object>> languagePerformance = new ArrayList<>();

@@ -35,19 +35,24 @@ interface DashboardData {
   monthlyTests: Array<{ month: string; tests: number }>;
   studentParticipation: Array<{ name: string; assigned: number; attended: number }>;
   languagePerformance: Array<{ language: string; avgScore: number }>;
-  recentActivities: Array<{ time: string; user: string; details: string; type: string }>;
+  recentActivities: Array<{ time: string; user: string; details: string; type: string; registerNumber?: string }>;
 }
 
 export default function AdminDashboard() {
   const [data, setData] = useState<DashboardData | null>(null);
+  const [reattemptRequests, setReattemptRequests] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
 
   const fetchMetrics = async () => {
     setLoading(true);
     try {
-      const response = await apiCall('/api/admin/dashboard');
+      const [response, reattempts] = await Promise.all([
+        apiCall('/api/admin/dashboard'),
+        apiCall('/api/admin/tests/reattempt-requests')
+      ]);
       setData(response);
+      setReattemptRequests(reattempts || []);
     } catch (err: any) {
       setError(err.message || 'Failed to load dashboard metrics');
     } finally {
@@ -65,6 +70,32 @@ export default function AdminDashboard() {
       fetchMetrics();
     } catch (e: any) {
       alert(e.message || 'Failed to forgive student.');
+    }
+  };
+
+  const handleApproveReattempt = async (studentTestId: number, testName: string) => {
+    if (!confirm(`Are you sure you want to approve this reattempt request for "${testName}"? The student's attempt progress will be reset.`)) return;
+    try {
+      await apiCall(`/api/admin/tests/reattempt-requests/${studentTestId}/approve`, {
+        method: 'POST',
+      });
+      alert('Reattempt request approved successfully.');
+      fetchMetrics();
+    } catch (e: any) {
+      alert(e.message || 'Failed to approve request.');
+    }
+  };
+
+  const handleRejectReattempt = async (studentTestId: number, testName: string) => {
+    if (!confirm(`Are you sure you want to reject this reattempt request for "${testName}"?`)) return;
+    try {
+      await apiCall(`/api/admin/tests/reattempt-requests/${studentTestId}/reject`, {
+        method: 'POST',
+      });
+      alert('Reattempt request rejected.');
+      fetchMetrics();
+    } catch (e: any) {
+      alert(e.message || 'Failed to reject request.');
     }
   };
 
@@ -185,19 +216,40 @@ export default function AdminDashboard() {
           </div>
         </div>
 
-        {/* Language performance and activity */}
-        <div className="glass-panel p-6 rounded-xl space-y-4">
-          <h3 className="font-semibold text-white">Language performance (Avg Score %)</h3>
-          <div className="h-[250px] w-full">
-            <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={data.languagePerformance} layout="vertical">
-                <CartesianGrid strokeDasharray="3 3" stroke="#252836" />
-                <XAxis type="number" stroke="#6b7280" style={{ fontSize: '12px' }} />
-                <YAxis dataKey="language" type="category" stroke="#6b7280" style={{ fontSize: '12px' }} />
-                <Tooltip contentStyle={{ background: '#0b0c10', border: '1px solid rgba(255,255,255,0.05)' }} />
-                <Bar dataKey="avgScore" fill="#10b981" radius={[0, 4, 4, 0]} />
-              </BarChart>
-            </ResponsiveContainer>
+        {/* Test Reattempt Requests */}
+        <div className="glass-panel p-6 rounded-xl space-y-4 flex flex-col justify-between">
+          <div>
+            <h3 className="font-semibold text-white mb-4">Test Reattempt Requests</h3>
+            {reattemptRequests.length === 0 ? (
+              <div className="py-12 text-center text-xs text-gray-500 font-medium font-sans">
+                No pending reattempt requests from students.
+              </div>
+            ) : (
+              <div className="space-y-3 max-h-[250px] overflow-y-auto pr-1">
+                {reattemptRequests.map((req) => (
+                  <div key={req.id} className="flex gap-3 text-sm p-3 rounded-lg bg-white/5 items-start justify-between">
+                    <div className="flex-1">
+                      <div className="font-medium text-white">{req.test.name}</div>
+                      <p className="text-gray-400 text-xs mt-1">Requested by {req.studentName || 'Student'} ({req.studentRegisterNumber || 'N/A'})</p>
+                    </div>
+                    <div className="flex gap-2">
+                      <button
+                        onClick={() => handleApproveReattempt(req.id, req.test.name)}
+                        className="px-2.5 py-1 text-[10px] bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400 border border-emerald-500/20 rounded-lg font-bold transition-all uppercase tracking-wider"
+                      >
+                        Approve
+                      </button>
+                      <button
+                        onClick={() => handleRejectReattempt(req.id, req.test.name)}
+                        className="px-2.5 py-1 text-[10px] bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 border border-rose-500/20 rounded-lg font-bold transition-all uppercase tracking-wider"
+                      >
+                        Reject
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
         </div>
 

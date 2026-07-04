@@ -15,8 +15,6 @@ interface Question {
   constraints?: string;
   inputFormat?: string;
   outputFormat?: string;
-  timeLimitMs: number;
-  memoryLimitMb: number;
   marks: number;
   allowedLanguages: string; // Comma separated
   tags?: string;
@@ -33,13 +31,15 @@ interface TestState {
   languages: Record<number, string>; // questionId -> selected language
   timeLeftSeconds: number;
   isSessionActive: boolean;
+  isViewMode: boolean;
 
   startTestSession: (
     testId: number,
     studentTestId: number,
     testName: string,
     questions: Question[],
-    durationMinutes: number
+    durationMinutes: number,
+    isViewMode?: boolean
   ) => void;
   setActiveQuestionIndex: (index: number) => void;
   updateCode: (questionId: number, code: string) => void;
@@ -58,8 +58,9 @@ export const useTestStore = create<TestState>((set) => ({
   languages: {},
   timeLeftSeconds: 0,
   isSessionActive: false,
+  isViewMode: false,
 
-  startTestSession: (testId, studentTestId, testName, questions, durationMinutes) => {
+  startTestSession: (testId, studentTestId, testName, questions, durationMinutes, isViewMode = false) => {
     // Initial codes and languages mapping
     const codes: Record<number, string> = {};
     const languages: Record<number, string> = {};
@@ -81,6 +82,7 @@ export const useTestStore = create<TestState>((set) => ({
       languages,
       timeLeftSeconds: durationMinutes * 60,
       isSessionActive: true,
+      isViewMode,
     });
   },
 
@@ -115,5 +117,6 @@ export const useTestStore = create<TestState>((set) => ({
     languages: {},
     timeLeftSeconds: 0,
     isSessionActive: false,
+    isViewMode: false,
   }),
 }));

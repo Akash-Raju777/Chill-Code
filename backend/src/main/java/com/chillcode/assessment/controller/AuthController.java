@@ -115,6 +115,7 @@ public class AuthController {
                 .registerNumber(user.getRegisterNumber())
                 .username(user.getUsername())
                 .status(user.getStatus().name())
+                .department(user.getDepartment())
                 .build();
 
         return ResponseEntity.ok(authResponse);

@@ -35,12 +35,6 @@ public class Question {
     @Column(name = "output_format", columnDefinition = "TEXT")
     private String outputFormat;
 
-    @Column(name = "time_limit_ms")
-    private Integer timeLimitMs = 2000;
-
-    @Column(name = "memory_limit_mb")
-    private Integer memoryLimitMb = 256;
-
     private Integer marks = 10;
 
     @Column(name = "negative_marks")
@@ -68,9 +62,8 @@ public class Question {
     public Question() {}
 
     public Question(Long id, Subject subject, String title, Difficulty difficulty, String problemStatement, 
-                    String constraints, String inputFormat, String outputFormat, Integer timeLimitMs, 
-                    Integer memoryLimitMb, Integer marks, Integer negativeMarks, String allowedLanguages, 
-                    String tags, List<TestCase> testCases, List<Submission> submissions, LocalDateTime createdAt) {
+                    String constraints, String inputFormat, String outputFormat, Integer marks, Integer negativeMarks, 
+                    String allowedLanguages, String tags, List<TestCase> testCases, List<Submission> submissions, LocalDateTime createdAt) {
         this.id = id;
         this.subject = subject;
         this.title = title;
@@ -79,8 +72,6 @@ public class Question {
         this.constraints = constraints;
         this.inputFormat = inputFormat;
         this.outputFormat = outputFormat;
-        this.timeLimitMs = timeLimitMs;
-        this.memoryLimitMb = memoryLimitMb;
         this.marks = marks;
         this.negativeMarks = negativeMarks;
         this.allowedLanguages = allowedLanguages;
@@ -115,11 +106,7 @@ public class Question {
     public String getOutputFormat() { return outputFormat; }
     public void setOutputFormat(String outputFormat) { this.outputFormat = outputFormat; }
 
-    public Integer getTimeLimitMs() { return timeLimitMs; }
-    public void setTimeLimitMs(Integer timeLimitMs) { this.timeLimitMs = timeLimitMs; }
 
-    public Integer getMemoryLimitMb() { return memoryLimitMb; }
-    public void setMemoryLimitMb(Integer memoryLimitMb) { this.memoryLimitMb = memoryLimitMb; }
 
     public Integer getMarks() { return marks; }
     public void setMarks(Integer marks) { this.marks = marks; }
@@ -155,8 +142,6 @@ public class Question {
         private String constraints;
         private String inputFormat;
         private String outputFormat;
-        private Integer timeLimitMs = 2000;
-        private Integer memoryLimitMb = 256;
         private Integer marks = 10;
         private Integer negativeMarks = 0;
         private String allowedLanguages;
@@ -173,8 +158,6 @@ public class Question {
         public QuestionBuilder constraints(String constraints) { this.constraints = constraints; return this; }
         public QuestionBuilder inputFormat(String inputFormat) { this.inputFormat = inputFormat; return this; }
         public QuestionBuilder outputFormat(String outputFormat) { this.outputFormat = outputFormat; return this; }
-        public QuestionBuilder timeLimitMs(Integer timeLimitMs) { this.timeLimitMs = timeLimitMs; return this; }
-        public QuestionBuilder memoryLimitMb(Integer memoryLimitMb) { this.memoryLimitMb = memoryLimitMb; return this; }
         public QuestionBuilder marks(Integer marks) { this.marks = marks; return this; }
         public QuestionBuilder negativeMarks(Integer negativeMarks) { this.negativeMarks = negativeMarks; return this; }
         public QuestionBuilder allowedLanguages(String allowedLanguages) { this.allowedLanguages = allowedLanguages; return this; }
@@ -185,7 +168,7 @@ public class Question {
 
         public Question build() {
             return new Question(id, subject, title, difficulty, problemStatement, constraints, inputFormat, outputFormat, 
-                                timeLimitMs, memoryLimitMb, marks, negativeMarks, allowedLanguages, tags, testCases, submissions, 
+                                marks, negativeMarks, allowedLanguages, tags, testCases, submissions, 
                                 createdAt != null ? createdAt : LocalDateTime.now());
         }
     }

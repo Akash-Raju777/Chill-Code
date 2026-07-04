@@ -19,8 +19,6 @@ public class QuestionDto {
     private String constraints;
     private String inputFormat;
     private String outputFormat;
-    private Integer timeLimitMs;
-    private Integer memoryLimitMb;
     private Integer marks;
     private Integer negativeMarks;
     private String allowedLanguages;

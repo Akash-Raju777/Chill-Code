@@ -30,6 +30,9 @@ public class TestCase {
     @Column(name = "is_hidden")
     private Boolean isHidden = true;
 
+    @OneToMany(mappedBy = "testCase", cascade = CascadeType.ALL, orphanRemoval = true)
+    private java.util.List<SubmissionTestCase> submissionTestCases;
+
     @Column(name = "created_at", nullable = false, updatable = false)
     private LocalDateTime createdAt = LocalDateTime.now();
 

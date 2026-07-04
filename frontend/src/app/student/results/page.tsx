@@ -106,8 +106,21 @@ export default function StudentResults() {
               <div className="flex items-center gap-6">
                 {/* Score badge */}
                 <div className="text-left md:text-right">
-                  <div className="text-[10px] text-gray-500 font-semibold uppercase">Final Grade</div>
-                  <div className="text-2xl font-black text-white">{st.score} <span className="text-xs text-gray-500 font-normal">/ {st.test.maxMarks} pts</span></div>
+                  <div className="text-[10px] text-gray-500 font-semibold uppercase">Score</div>
+                  <div className="text-sm font-bold text-white">
+                    {st.score} / {st.test.maxMarks || 100}
+                  </div>
+                </div>
+
+                <div className="text-left md:text-right">
+                  <div className="text-[10px] text-gray-500 font-semibold uppercase">Result</div>
+                  <div className={`text-xl font-extrabold tracking-wider ${
+                    st.status !== 'SUSPENDED' && st.score >= ((st.test.maxMarks || 100) * 0.4) 
+                      ? 'text-emerald-400' 
+                      : 'text-red-400'
+                  }`}>
+                    {st.status !== 'SUSPENDED' && st.score >= ((st.test.maxMarks || 100) * 0.4) ? 'PASS' : 'FAIL'}
+                  </div>
                 </div>
 
                 <span className="inline-flex items-center px-3 py-1.5 rounded-lg bg-white/5 border border-[#252836] text-[10px] font-bold text-gray-500 uppercase tracking-wider select-none">

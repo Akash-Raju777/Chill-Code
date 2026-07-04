@@ -40,6 +40,8 @@ interface StudentTest {
   warningsCount: number;
   isSuspended: boolean;
   test: Test;
+  submittedAt?: string;
+  startedAt?: string;
 }
 
 export default function TestsWorkspace() {
@@ -47,10 +49,13 @@ export default function TestsWorkspace() {
   const [studentTests, setStudentTests] = useState<StudentTest[]>([]);
   const [questionsList, setQuestionsList] = useState<any[]>([]);
   const [subjects, setSubjects] = useState<any[]>([]);
+  const [solvedQuestionIds, setSolvedQuestionIds] = useState<number[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [selectedTest, setSelectedTest] = useState<StudentTest | null>(null);
+  const [selectedQuestion, setSelectedQuestion] = useState<any>(null);
   const [showConfirmModal, setShowConfirmModal] = useState(false);
+
 
   // Search & Filter state variables
   const [searchQuery, setSearchQuery] = useState('');
@@ -61,24 +66,39 @@ export default function TestsWorkspace() {
   const { startTestSession } = useTestStore();
   const { resetWarnings } = useSecurityStore();
 
-  const fetchTests = async () => {
-    setLoading(true);
+  const fetchTests = async (isInitial = true) => {
+    if (isInitial) setLoading(true);
+    setError('');
     try {
-      const testsData = await apiCall('/api/student/tests');
-      const questionsData = await apiCall('/api/student/questions');
-      const subjectsData = await apiCall('/api/student/subjects');
+      const [testsData, questionsData, subjectsData, solvedData] = await Promise.all([
+        apiCall('/api/student/tests'),
+        apiCall('/api/student/questions'),
+        apiCall('/api/student/subjects'),
+        apiCall('/api/student/submissions/solved'),
+      ]);
       setStudentTests(testsData);
       setQuestionsList(questionsData);
       setSubjects(subjectsData);
+      setSolvedQuestionIds(solvedData || []);
     } catch (err: any) {
       setError(err.message || 'Failed to fetch practice challenges.');
     } finally {
-      setLoading(false);
+      if (isInitial) setLoading(false);
     }
   };
 
   useEffect(() => {
-    fetchTests();
+    fetchTests(true);
+
+    // Auto-refresh questions list when the student returns to/focuses this browser tab
+    const handleFocus = () => {
+      fetchTests(false);
+    };
+    window.addEventListener('focus', handleFocus);
+
+    return () => {
+      window.removeEventListener('focus', handleFocus);
+    };
   }, []);
 
   const getAssociatedTest = (subjectId: number) => {
@@ -91,6 +111,11 @@ export default function TestsWorkspace() {
   const handleStartQuestionAttempt = (q: any) => {
     const associatedTest = getAssociatedTest(q.subjectId);
     if (associatedTest) {
+      if (associatedTest.status === 'SUBMITTED' || associatedTest.status === 'EVALUATED') {
+        handleViewQuestionAttempt(q);
+        return;
+      }
+      setSelectedQuestion(q);
       setSelectedTest(associatedTest);
       setShowConfirmModal(true);
     } else {
@@ -98,21 +123,62 @@ export default function TestsWorkspace() {
     }
   };
 
-  const confirmStart = async () => {
-    if (!selectedTest) return;
+  const handleViewQuestionAttempt = async (q: any) => {
+    const associatedTest = getAssociatedTest(q.subjectId);
+    if (!associatedTest) return;
     try {
+      startTestSession(
+        associatedTest.test.id,
+        associatedTest.id,
+        q.title,
+        [q],
+        0,
+        true // isViewMode = true
+      );
+      router.push(`/student/tests/${associatedTest.test.id}`);
+    } catch (err: any) {
+      setError(err.message || 'Failed to enter view mode.');
+    }
+  };
+
+  const handleRequestReattempt = async (testId: number) => {
+    if (!confirm('Are you sure you want to request another attempt from the admin? This will let you write the test again once approved.')) return;
+    try {
+      await apiCall(`/api/student/tests/${testId}/request-reattempt`, {
+        method: 'POST',
+      });
+      alert('Your reattempt request has been submitted to the admin successfully.');
+      fetchTests(false);
+    } catch (err: any) {
+      alert(err.message || 'Failed to submit reattempt request.');
+    }
+  };
+
+  const confirmStart = async () => {
+    if (!selectedTest || !selectedQuestion) return;
+    try {
+      // Auto fullscreen request on interaction gesture
+      try {
+        const docEl = document.documentElement;
+        if (docEl.requestFullscreen) {
+          await docEl.requestFullscreen();
+        }
+      } catch (fsErr) {
+        console.warn("Fullscreen request was rejected/unsupported", fsErr);
+      }
+
       const updatedSt = await apiCall(`/api/student/tests/${selectedTest.test.id}/start`, {
         method: 'POST',
       });
-      const questions = await apiCall(`/api/student/subjects/${selectedTest.test.subject.id}/questions`);
       resetWarnings();
 
       startTestSession(
         selectedTest.test.id,
         updatedSt.id,
-        selectedTest.test.name,
-        questions,
-        selectedTest.test.durationMinutes
+        selectedQuestion.title,
+        [selectedQuestion],
+        selectedTest.test.durationMinutes,
+        false // isViewMode = false
       );
 
       setShowConfirmModal(false);
@@ -122,6 +188,7 @@ export default function TestsWorkspace() {
       setShowConfirmModal(false);
     }
   };
+
 
   // Filter Logic
   const filteredQuestions = questionsList.filter((q) => {
@@ -139,11 +206,229 @@ export default function TestsWorkspace() {
     const matchesSubject = subjectFilter === 'ALL' || q.subjectId === subjectFilter;
 
     const associatedTest = getAssociatedTest(q.subjectId);
-    const isSolved = associatedTest ? ['SUBMITTED', 'EVALUATED'].includes(associatedTest.status) : false;
+    const isSubmitted = associatedTest ? (associatedTest.status === 'SUBMITTED' || associatedTest.status === 'EVALUATED') : false;
+    const isSolved = solvedQuestionIds.includes(q.id) || isSubmitted;
     const matchesSolved = !hideSolved || !isSolved;
 
     return matchesSearch && matchesDifficulty && matchesSubject && matchesSolved;
   });
+
+  const completedQuestions = questionsList.filter((q) => {
+    const title = q.title || '';
+    const subject = subjects.find((s) => s.id === q.subjectId);
+    const subjectName = subject ? subject.name : '';
+    const tags = q.tags || '';
+
+    const matchesSearch = title.toLowerCase().includes(searchQuery.toLowerCase()) || 
+      subjectName.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      tags.toLowerCase().includes(searchQuery.toLowerCase());
+
+    const matchesDifficulty = difficultyFilter === 'ALL' || q.difficulty === difficultyFilter;
+    const matchesSubject = subjectFilter === 'ALL' || q.subjectId === subjectFilter;
+
+    const associatedTest = getAssociatedTest(q.subjectId);
+    const isSubmitted = associatedTest ? (associatedTest.status === 'SUBMITTED' || associatedTest.status === 'EVALUATED') : false;
+    const isSolved = solvedQuestionIds.includes(q.id) || isSubmitted;
+
+    return matchesSearch && matchesDifficulty && matchesSubject && isSolved;
+  });
+
+  const notCompletedQuestions = filteredQuestions.filter((q) => {
+    const associatedTest = getAssociatedTest(q.subjectId);
+    const isSubmitted = associatedTest ? (associatedTest.status === 'SUBMITTED' || associatedTest.status === 'EVALUATED') : false;
+    return !solvedQuestionIds.includes(q.id) && !isSubmitted;
+  });
+
+  const renderQuestionsTable = (list: any[], isCompletedTable: boolean) => {
+    if (list.length === 0) {
+      return (
+        <div className="bg-[#11131c]/30 border border-white/5 rounded-xl p-8 text-center text-xs text-gray-500 font-medium font-sans">
+          No challenges in this category matching current filters.
+        </div>
+      );
+    }
+
+    return (
+      <div className="bg-[#11131c] border border-white/5 rounded-2xl overflow-hidden shadow-2xl">
+        <div className="overflow-x-auto">
+          <table className="w-full text-left border-collapse">
+            <thead>
+              <tr className="border-b border-white/5 text-[10px] text-gray-500 uppercase font-bold tracking-wider select-none bg-[#11131c]">
+                <th className="p-4 pl-6 w-20 text-center">Status</th>
+                <th className="p-4">Problem Name</th>
+                <th className="p-4 w-32">Difficulty</th>
+                <th className="p-4">Tags</th>
+                <th className="p-4 w-28 text-center">Points</th>
+                <th className="p-4 w-40 text-center">Last Attempt</th>
+                {isCompletedTable && <th className="p-4 w-40 text-center">Solved Time</th>}
+                <th className="p-4 w-36 pr-6 text-right">Action</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-white/5 text-xs text-gray-400">
+              {list.map((q) => {
+                const associatedTest = getAssociatedTest(q.subjectId);
+                const isSolved = solvedQuestionIds.includes(q.id);
+                const isSuspended = associatedTest ? (associatedTest.isSuspended || associatedTest.status === 'SUSPENDED') : false;
+                const isStarted = associatedTest ? associatedTest.status === 'STARTED' : false;
+                const isSubmitted = associatedTest ? (associatedTest.status === 'SUBMITTED' || associatedTest.status === 'EVALUATED') : false;
+                const subject = subjects.find((s) => s.id === q.subjectId);
+                const subjectName = subject ? subject.name : 'Unknown';
+
+                let statusStr = "Not Solved";
+                if (isSolved) statusStr = "Solved";
+                else if (isSuspended) statusStr = "Suspended";
+                else if (isSubmitted) statusStr = "Submitted";
+                else if (isStarted) statusStr = "In Progress";
+
+                let lastAttemptStr = "No attempt yet";
+                if (associatedTest) {
+                  const dateVal = associatedTest.submittedAt || associatedTest.startedAt;
+                  if (dateVal) {
+                    lastAttemptStr = new Date(dateVal).toLocaleDateString();
+                  } else {
+                    lastAttemptStr = isStarted ? "Active Session" : "Recent";
+                  }
+                }
+
+                let solvedTimeStr = "-";
+                if (isSolved && associatedTest && associatedTest.submittedAt) {
+                  solvedTimeStr = new Date(associatedTest.submittedAt).toLocaleString();
+                }
+
+                return (
+                  <tr 
+                    key={q.id} 
+                    className="hover:bg-white/5 transition-all group cursor-pointer"
+                    onClick={() => {
+                      if (isSolved || isSubmitted) {
+                        handleViewQuestionAttempt(q);
+                      } else if (!isSuspended) {
+                        handleStartQuestionAttempt(q);
+                      }
+                    }}
+                  >
+                    <td className="p-4 pl-6 text-center">
+                      <div className="inline-flex items-center justify-center">
+                        {isSolved || isSubmitted ? (
+                          <CheckCircle2 className="w-5 h-5 text-emerald-400 fill-emerald-400/5" />
+                        ) : isSuspended ? (
+                          <XCircle className="w-5 h-5 text-red-500 fill-red-500/5" />
+                        ) : isStarted ? (
+                          <div className="w-5 h-5 rounded-full border-2 border-amber-500 flex items-center justify-center">
+                            <span className="w-2 h-2 rounded-full bg-amber-500"></span>
+                          </div>
+                        ) : !isCompletedTable ? (
+                          <Circle className="w-5 h-5 text-gray-600 hover:text-indigo-400 transition-colors" />
+                        ) : null}
+                      </div>
+                    </td>
+
+                    <td className="p-4 py-5">
+                      <div className="space-y-1">
+                        <span className="font-bold text-white text-sm group-hover:text-[#8b5cf6] transition-colors leading-tight">
+                          {q.title}
+                        </span>
+                        <div className="text-[10px] text-gray-500 font-semibold flex items-center gap-1.5">
+                          <span>{statusStr}</span>
+                        </div>
+                      </div>
+                    </td>
+
+                    <td className="p-4">
+                      <span className={`text-[10px] font-bold px-2 py-0.5 rounded-md ${
+                        q.difficulty === 'EASY' ? 'bg-emerald-500/10 text-emerald-400' :
+                        q.difficulty === 'MEDIUM' ? 'bg-amber-500/10 text-amber-400' :
+                        'bg-red-500/10 text-red-400'
+                      }`}>
+                        {q.difficulty}
+                      </span>
+                    </td>
+
+                    <td className="p-4">
+                      <div className="flex gap-1.5 flex-wrap">
+                        <span className="px-2 py-0.5 rounded-lg bg-white/5 border border-white/5 text-[10px] font-semibold text-gray-400 capitalize">
+                          {subjectName}
+                        </span>
+                        {q.tags && q.tags.split(',').map((tag: string) => (
+                          <span key={tag} className="px-2 py-0.5 rounded-lg bg-white/5 border border-white/5 text-[10px] font-semibold text-gray-400">
+                            {tag}
+                          </span>
+                        ))}
+                      </div>
+                    </td>
+
+                    <td className="p-4 text-center text-white font-semibold">
+                      {q.marks} pts
+                    </td>
+
+                    <td className="p-4 text-center text-gray-500">
+                      {lastAttemptStr}
+                    </td>
+
+                    {isCompletedTable && (
+                      <td className="p-4 text-center text-[#10b981] font-medium">
+                        {solvedTimeStr}
+                      </td>
+                    )}
+
+                    <td className="p-4 pr-6 text-right flex items-center justify-end gap-2">
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          if (isSolved || isSubmitted) {
+                            handleViewQuestionAttempt(q);
+                          } else if (!isSuspended) {
+                            handleStartQuestionAttempt(q);
+                          }
+                        }}
+                        disabled={isSuspended}
+                        className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all select-none ${
+                          isSolved || isSubmitted
+                            ? 'bg-emerald-500/10 hover:bg-emerald-500/25 border border-emerald-500/20 text-emerald-400'
+                            : isSuspended
+                            ? 'bg-red-500/10 text-red-400 border border-red-500/10 cursor-not-allowed opacity-50'
+                            : 'bg-[#7c3aed] hover:bg-[#8b5cf6] text-white shadow-md'
+                        }`}
+                      >
+                        {isSolved || isSubmitted ? 'View Attempt' : isSuspended ? 'Suspended' : 'Write Test'}
+                      </button>
+
+                      {isSubmitted && associatedTest && (
+                        <>
+                          {!associatedTest.reattemptStatus && (
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleRequestReattempt(associatedTest.test.id);
+                              }}
+                              className="px-3 py-1.5 rounded-lg text-xs font-bold bg-indigo-500/10 hover:bg-indigo-500/25 border border-indigo-500/20 text-indigo-400 transition-all select-none"
+                            >
+                              Another Attempt
+                            </button>
+                          )}
+                          {associatedTest.reattemptStatus === 'PENDING' && (
+                            <span className="px-2.5 py-1.5 rounded-lg text-[10px] font-bold bg-amber-500/10 text-amber-400 border border-amber-500/20 select-none">
+                              Pending Approval
+                            </span>
+                          )}
+                          {associatedTest.reattemptStatus === 'REJECTED' && (
+                            <span className="px-2.5 py-1.5 rounded-lg text-[10px] font-bold bg-rose-500/10 text-rose-400 border border-rose-500/20 select-none">
+                              Rejected
+                            </span>
+                          )}
+                        </>
+                      )}
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    );
+  };
+
 
   return (
     <div className="space-y-6 min-h-screen bg-[#0b0c10] text-[#c5c6c7] p-2 relative font-sans">
@@ -166,10 +451,6 @@ export default function TestsWorkspace() {
               onChange={(e) => setSearchQuery(e.target.value)}
             />
           </div>
-          <button className="p-2 border border-white/5 rounded-xl bg-[#11131c] text-gray-400 hover:text-white transition-colors relative">
-            <Bell className="w-4 h-4" />
-            <span className="absolute top-1 right-1 w-2 h-2 bg-indigo-500 rounded-full" />
-          </button>
         </div>
       </div>
 
@@ -251,7 +532,7 @@ export default function TestsWorkspace() {
         </span>
       </div>
 
-      {/* Main Problems Table (High fidelity matching Image 1) */}
+      {/* Main Problems Tables categorized by Completed vs Not Completed */}
       {loading ? (
         <div className="flex justify-center py-20">
           <Loader2 className="w-8 h-8 animate-spin text-[#7c3aed]" />
@@ -263,110 +544,30 @@ export default function TestsWorkspace() {
           <p className="text-xs text-gray-500 max-w-sm mx-auto">Adjust filters or search parameters to discover coding challenges.</p>
         </div>
       ) : (
-        <div className="bg-[#11131c] border border-white/5 rounded-2xl overflow-hidden shadow-2xl">
-          <div className="overflow-x-auto">
-            <table className="w-full text-left border-collapse">
-              <thead>
-                <tr className="border-b border-white/5 text-[10px] text-gray-500 uppercase font-bold tracking-wider select-none bg-[#11131c]">
-                  <th className="p-4 pl-6 w-20 text-center">Status</th>
-                  <th className="p-4">Title</th>
-                  <th className="p-4 w-32">Difficulty</th>
-                  <th className="p-4">Tags</th>
-                  <th className="p-4 w-36 pr-6 text-right">Points</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-white/5 text-xs text-gray-400">
-                {filteredQuestions.map((q) => {
-                  const associatedTest = getAssociatedTest(q.subjectId);
-                  const isSolved = associatedTest ? ['SUBMITTED', 'EVALUATED'].includes(associatedTest.status) : false;
-                  const isSuspended = associatedTest ? (associatedTest.isSuspended || associatedTest.status === 'SUSPENDED') : false;
-                  const isStarted = associatedTest ? associatedTest.status === 'STARTED' : false;
-                  const subject = subjects.find((s) => s.id === q.subjectId);
-                  const subjectName = subject ? subject.name : 'Unknown';
-
-                  return (
-                    <tr 
-                      key={q.id} 
-                      className="hover:bg-white/5 transition-all group cursor-pointer"
-                      onClick={() => !isSolved && !isSuspended && handleStartQuestionAttempt(q)}
-                    >
-                      {/* Status Icon */}
-                      <td className="p-4 pl-6 text-center">
-                        <div className="inline-flex items-center justify-center">
-                          {isSolved ? (
-                            <CheckCircle2 className="w-5 h-5 text-emerald-400 fill-emerald-400/5" />
-                          ) : isSuspended ? (
-                            <XCircle className="w-5 h-5 text-red-500 fill-red-500/5" />
-                          ) : (
-                            <Circle className="w-5 h-5 text-gray-600 hover:text-indigo-400 transition-colors" />
-                          )}
-                        </div>
-                      </td>
-
-                      {/* Problem Title & Subtitles details */}
-                      <td className="p-4 py-5">
-                        <div className="space-y-1">
-                          <span className="font-bold text-white text-sm group-hover:text-[#8b5cf6] transition-colors leading-tight">
-                            {q.title}
-                          </span>
-                          <div className="text-[10px] text-gray-500 font-semibold">
-                            {isSolved ? (
-                              <span className="text-emerald-400">Solved successfully</span>
-                            ) : isSuspended ? (
-                              <span className="text-red-400 font-medium">Suspended on warnings violation</span>
-                            ) : isStarted ? (
-                              <span className="text-amber-400">Attempts in progress</span>
-                            ) : (
-                              <span>Open for practice coding</span>
-                            )}
-                          </div>
-                        </div>
-                      </td>
-
-                      {/* Difficulty level badge */}
-                      <td className="p-4">
-                        <span className={`text-[10px] font-bold px-2 py-0.5 rounded-md ${
-                          q.difficulty === 'EASY' ? 'bg-emerald-500/10 text-emerald-400' :
-                          q.difficulty === 'MEDIUM' ? 'bg-amber-500/10 text-amber-400' :
-                          'bg-red-500/10 text-red-400'
-                        }`}>
-                          {q.difficulty}
-                        </span>
-                      </td>
-
-                      {/* Subject tags */}
-                      <td className="p-4">
-                        <div className="flex gap-1.5 flex-wrap">
-                          <span className="px-2 py-0.5 rounded-lg bg-white/5 border border-white/5 text-[10px] font-semibold text-gray-400 capitalize">
-                            {subjectName}
-                          </span>
-                          {q.tags && q.tags.split(',').map((tag: string) => (
-                            <span key={tag} className="px-2 py-0.5 rounded-lg bg-white/5 border border-white/5 text-[10px] font-semibold text-gray-400">
-                              {tag}
-                            </span>
-                          ))}
-                        </div>
-                      </td>
-
-                      {/* Action status button (right-aligned) */}
-                      <td className="p-4 pr-6 text-right">
-                        <div className="flex items-center justify-end gap-2">
-                          <span className="text-xs font-semibold text-gray-500 group-hover:text-white transition-colors">
-                            {q.marks} pts
-                          </span>
-                          {!isSolved && !isSuspended && (
-                            <ArrowRight className="w-3.5 h-3.5 text-gray-500 opacity-0 group-hover:opacity-100 group-hover:text-[#8b5cf6] translate-x-[-4px] group-hover:translate-x-0 transition-all" />
-                          )}
-                        </div>
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
+        <div className="space-y-8">
+          {/* Category 1: Not Completed */}
+          <div className="space-y-4">
+            <h2 className="text-sm font-bold text-[#8b5cf6] uppercase tracking-wider flex items-center gap-2 font-sans select-none">
+              <span className="w-2.5 h-2.5 rounded-full bg-[#8b5cf6] animate-pulse"></span>
+              Not Completed ({notCompletedQuestions.length})
+            </h2>
+            {renderQuestionsTable(notCompletedQuestions, false)}
           </div>
+
+          {/* Category 2: Completed */}
+          {!hideSolved && (
+            <div className="space-y-4 pt-4">
+              <h2 className="text-sm font-bold text-emerald-400 uppercase tracking-wider flex items-center gap-2 font-sans select-none">
+                <span className="w-2.5 h-2.5 rounded-full bg-emerald-400"></span>
+                Completed ({completedQuestions.length})
+              </h2>
+              {renderQuestionsTable(completedQuestions, true)}
+            </div>
+          )}
         </div>
       )}
+
+
 
       {/* Daily Challenge floating glow button (Exactly matches Image 1) */}
       <button 

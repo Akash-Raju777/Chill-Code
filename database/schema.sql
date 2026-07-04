@@ -36,8 +36,6 @@ CREATE TABLE IF NOT EXISTS questions (
     constraints TEXT NULL,
     input_format TEXT NULL,
     output_format TEXT NULL,
-    time_limit_ms INT DEFAULT 2000,
-    memory_limit_mb INT DEFAULT 256,
     marks INT DEFAULT 10,
     negative_marks INT DEFAULT 0,
     allowed_languages TEXT NULL, -- Comma separated: 'java,python,cpp,c,javascript'

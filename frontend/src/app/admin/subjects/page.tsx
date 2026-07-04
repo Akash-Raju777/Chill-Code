@@ -209,7 +209,7 @@ export default function SubjectManagement() {
               <div className="flex items-center justify-between border-t border-white/5 pt-4 pl-2 text-xs text-gray-500">
                 <span className="flex items-center gap-1.5 capitalize font-medium">
                   <Tag className="w-3.5 h-3.5" style={{ color: sub.color }} />
-                  {sub.status.toLowerCase()}
+                  {(sub.status || 'ACTIVE').toLowerCase()}
                 </span>
                 <span>Active Track</span>
               </div>

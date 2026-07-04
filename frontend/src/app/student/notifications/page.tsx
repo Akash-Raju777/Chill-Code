@@ -61,7 +61,7 @@ export default function StudentNotifications() {
       <div className="flex justify-between items-center">
         <div>
           <h1 className="text-2xl font-bold text-white tracking-tight">System Notifications</h1>
-          <p className="text-sm text-gray-500">Security logs and exam alerts</p>
+          <p className="text-sm text-gray-500">Official broadcast notifications from the administrator</p>
         </div>
       </div>
 

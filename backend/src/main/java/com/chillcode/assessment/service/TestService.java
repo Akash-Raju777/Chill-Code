@@ -38,6 +38,10 @@ public class TestService {
     @Autowired
     private NotificationRepository notificationRepository;
 
+    @Autowired
+    private SubmissionRepository submissionRepository;
+
+
     public List<Test> getAllTests() {
         return testRepository.findAll();
     }
@@ -115,6 +119,32 @@ public class TestService {
 
     @Transactional
     public StudentTest startTest(Long testId, Long studentId) {
+        User student = userRepository.findById(studentId)
+                .orElseThrow(() -> new RuntimeException("Student not found"));
+
+        if (student.getSuspensionEndTime() != null) {
+            if (student.getSuspensionEndTime().isBefore(LocalDateTime.now())) {
+                student.setStatus(UserStatus.ACTIVE);
+                student.setSuspensionEndTime(null);
+                userRepository.save(student);
+
+                StudentTest st = studentTestRepository.findByStudentIdAndTestId(studentId, testId).orElse(null);
+                if (st != null) {
+                    st.setIsSuspended(false);
+                    st.setWarningsCount(0);
+                    st.setStatus("STARTED");
+                    studentTestRepository.save(st);
+
+                    List<Warning> warnings = warningRepository.findByStudentTestId(st.getId());
+                    if (warnings != null && !warnings.isEmpty()) {
+                        warningRepository.deleteAll(warnings);
+                    }
+                }
+            } else {
+                throw new RuntimeException("Your attempt on this test has been suspended due to security violations. Please wait until your 30 minutes suspension expires.");
+            }
+        }
+
         StudentTest st = studentTestRepository.findByStudentIdAndTestId(studentId, testId)
                 .orElseThrow(() -> new RuntimeException("Student is not assigned to this test"));
 
@@ -212,18 +242,65 @@ public class TestService {
             );
         }
 
-        return new com.chillcode.assessment.dto.StudentTestDto(
+        com.chillcode.assessment.dto.StudentTestDto dto = new com.chillcode.assessment.dto.StudentTestDto(
             st.getId(),
             st.getStatus(),
             st.getScore() != null ? st.getScore() : 0,
             st.getWarningsCount() != null ? st.getWarningsCount() : 0,
             st.getIsSuspended() != null ? st.getIsSuspended() : false,
             testDto,
-            st.getSubmittedAt()
+            st.getSubmittedAt(),
+            st.getStartedAt(),
+            st.getReattemptStatus()
         );
+        if (st.getStudent() != null) {
+            dto.setStudentRegisterNumber(st.getStudent().getRegisterNumber());
+            dto.setStudentName(st.getStudent().getName());
+        }
+        return dto;
     }
 
+    @Transactional
     public List<com.chillcode.assessment.dto.StudentTestDto> getTestsForStudentDto(Long studentId) {
+        User student = userRepository.findById(studentId)
+                .orElseThrow(() -> new RuntimeException("Student not found"));
+
+        if (student.getSuspensionEndTime() != null && student.getSuspensionEndTime().isBefore(LocalDateTime.now())) {
+            student.setStatus(UserStatus.ACTIVE);
+            student.setSuspensionEndTime(null);
+            userRepository.save(student);
+
+            List<StudentTest> studentTests = studentTestRepository.findByStudentId(studentId);
+            for (StudentTest st : studentTests) {
+                if (Boolean.TRUE.equals(st.getIsSuspended()) || "SUSPENDED".equals(st.getStatus())) {
+                    st.setIsSuspended(false);
+                    st.setWarningsCount(0);
+                    st.setStatus("STARTED");
+                    studentTestRepository.save(st);
+
+                    List<Warning> warnings = warningRepository.findByStudentTestId(st.getId());
+                    if (warnings != null && !warnings.isEmpty()) {
+                        warningRepository.deleteAll(warnings);
+                    }
+                }
+            }
+        }
+        
+        List<com.chillcode.assessment.entity.Test> allTests = testRepository.findAll();
+        for (com.chillcode.assessment.entity.Test test : allTests) {
+            if (studentTestRepository.findByStudentIdAndTestId(studentId, test.getId()).isEmpty()) {
+                com.chillcode.assessment.entity.StudentTest st = com.chillcode.assessment.entity.StudentTest.builder()
+                        .student(student)
+                        .test(test)
+                        .status("ASSIGNED")
+                        .score(0)
+                        .warningsCount(0)
+                        .isSuspended(false)
+                        .build();
+                studentTestRepository.save(st);
+            }
+        }
+
         return studentTestRepository.findByStudentId(studentId).stream()
                 .map(this::convertToStudentTestDto)
                 .collect(Collectors.toList());
@@ -245,5 +322,55 @@ public class TestService {
     public com.chillcode.assessment.dto.StudentTestDto recordWarningDto(Long testId, Long studentId, String type, String reason) {
         StudentTest st = recordWarning(testId, studentId, type, reason);
         return convertToStudentTestDto(st);
+    }
+
+    @Transactional
+    public com.chillcode.assessment.dto.StudentTestDto requestReattempt(Long testId, Long studentId) {
+        StudentTest st = studentTestRepository.findByStudentIdAndTestId(studentId, testId)
+                .orElseThrow(() -> new RuntimeException("Student test not found"));
+        st.setReattemptStatus("PENDING");
+        return convertToStudentTestDto(studentTestRepository.save(st));
+    }
+
+    @Transactional(readOnly = true)
+    public List<com.chillcode.assessment.dto.StudentTestDto> getPendingReattempts() {
+        return studentTestRepository.findAll().stream()
+                .filter(st -> "PENDING".equals(st.getReattemptStatus()))
+                .map(this::convertToStudentTestDto)
+                .collect(Collectors.toList());
+    }
+
+    @Transactional
+    public com.chillcode.assessment.dto.StudentTestDto approveReattempt(Long studentTestId) {
+        StudentTest st = studentTestRepository.findById(studentTestId)
+                .orElseThrow(() -> new RuntimeException("Student test not found"));
+        
+        st.setStatus("ASSIGNED");
+        st.setScore(0);
+        st.setWarningsCount(0);
+        st.setIsSuspended(false);
+        st.setStartedAt(null);
+        st.setSubmittedAt(null);
+        st.setReattemptStatus(null);
+        
+        List<Warning> warnings = warningRepository.findByStudentTestId(st.getId());
+        if (warnings != null && !warnings.isEmpty()) {
+            warningRepository.deleteAll(warnings);
+        }
+        
+        List<Submission> submissions = submissionRepository.findByStudentTestId(st.getId());
+        if (submissions != null && !submissions.isEmpty()) {
+            submissionRepository.deleteAll(submissions);
+        }
+
+        return convertToStudentTestDto(studentTestRepository.save(st));
+    }
+
+    @Transactional
+    public com.chillcode.assessment.dto.StudentTestDto rejectReattempt(Long studentTestId) {
+        StudentTest st = studentTestRepository.findById(studentTestId)
+                .orElseThrow(() -> new RuntimeException("Student test not found"));
+        st.setReattemptStatus("REJECTED");
+        return convertToStudentTestDto(studentTestRepository.save(st));
     }
 }

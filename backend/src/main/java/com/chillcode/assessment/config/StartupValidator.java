@@ -50,48 +50,7 @@ public class StartupValidator implements ApplicationRunner {
         } else {
             System.err.println("[StartupValidator] Database seed data check FAILED: Default users are missing.");
         }
-
-        // 3. Print compiler versions
-        System.out.println("=== Compiler / Interpreter Versions ===");
-        printCmdVersion(new String[]{"java", "-version"}, "java");
-        printCmdVersion(new String[]{"javac", "-version"}, "javac");
-        printCmdVersion(new String[]{"python", "--version"}, "python");
-        
-        // C/C++ MinGW checks
-        String isWindows = System.getProperty("os.name").toLowerCase().contains("win") ? "true" : "false";
-        String gccPath = "gcc";
-        String gppPath = "g++";
-        if ("true".equals(isWindows)) {
-            java.io.File localGcc = new java.io.File("C:\\mingw64\\bin\\gcc.exe");
-            if (localGcc.exists()) gccPath = localGcc.getAbsolutePath();
-            java.io.File localGpp = new java.io.File("C:\\mingw64\\bin\\g++.exe");
-            if (localGpp.exists()) gppPath = localGpp.getAbsolutePath();
-        }
-        printCmdVersion(new String[]{gccPath, "--version"}, "gcc");
-        printCmdVersion(new String[]{gppPath, "--version"}, "g++");
-        printCmdVersion(new String[]{"node", "--version"}, "node");
-        System.out.println("========================================");
         
         System.out.println("=== Startup Diagnostics Complete ===");
-    }
-
-    private void printCmdVersion(String[] cmd, String name) {
-        try {
-            Process p = new ProcessBuilder(cmd).start();
-            // Some commands output version to stderr, some to stdout
-            java.io.BufferedReader r1 = new java.io.BufferedReader(new java.io.InputStreamReader(p.getInputStream()));
-            java.io.BufferedReader r2 = new java.io.BufferedReader(new java.io.InputStreamReader(p.getErrorStream()));
-            String line = r1.readLine();
-            if (line == null) {
-                line = r2.readLine();
-            }
-            if (line != null) {
-                System.out.println("[StartupValidator] " + name + ": " + line.trim());
-            } else {
-                System.out.println("[StartupValidator] " + name + ": Unknown/Failed to read version");
-            }
-        } catch (Exception e) {
-            System.err.println("[StartupValidator] " + name + " is NOT configured or missing: " + e.getMessage());
-        }
     }
 }

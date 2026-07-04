@@ -29,11 +29,48 @@ public class SubjectService {
         return subjectRepository.findAll();
     }
 
+    @org.springframework.transaction.annotation.Transactional
     public Subject createSubject(Subject subject) {
         if (subjectRepository.existsByName(subject.getName())) {
             throw new RuntimeException("Subject with name " + subject.getName() + " already exists.");
         }
-        return subjectRepository.save(subject);
+        Subject savedSubject = subjectRepository.save(subject);
+
+        // Auto-create Practice Arena test for the new subject
+        String testName = savedSubject.getName() + " Practice Arena";
+        com.chillcode.assessment.entity.Test test = com.chillcode.assessment.entity.Test.builder()
+                .subject(savedSubject)
+                .name(testName)
+                .durationMinutes(120)
+                .startTime(java.time.LocalDateTime.now().minusDays(1))
+                .endTime(java.time.LocalDateTime.now().plusYears(1))
+                .maxMarks(100)
+                .instructions("Write your solutions to the practice problems in the arena canvas.")
+                .shuffleQuestions(false)
+                .autoSubmit(true)
+                .negativeMarking(false)
+                .questions(new java.util.HashSet<>())
+                .build();
+        test = testRepository.save(test);
+
+        // Assign test to all existing students
+        java.util.List<com.chillcode.assessment.entity.User> students = userRepository.findAll().stream()
+                .filter(u -> u.getRole() == com.chillcode.assessment.entity.Role.STUDENT)
+                .collect(java.util.stream.Collectors.toList());
+
+        for (com.chillcode.assessment.entity.User student : students) {
+            com.chillcode.assessment.entity.StudentTest st = com.chillcode.assessment.entity.StudentTest.builder()
+                    .student(student)
+                    .test(test)
+                    .status("ASSIGNED")
+                    .score(0)
+                    .warningsCount(0)
+                    .isSuspended(false)
+                    .build();
+            studentTestRepository.save(st);
+        }
+
+        return savedSubject;
     }
 
     public Subject updateSubject(Long id, Subject subjectDetails) {

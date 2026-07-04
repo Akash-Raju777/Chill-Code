@@ -35,8 +35,8 @@ public class StudentService {
     public Map<String, Object> getStudentDashboardStats(Long studentId) {
         List<StudentTest> myTests = studentTestRepository.findByStudentId(studentId);
         
-        long upcomingCount = myTests.stream()
-                .filter(st -> "ASSIGNED".equals(st.getStatus()) && st.getTest().getStartTime().isAfter(LocalDateTime.now()))
+        long unattendedCount = myTests.stream()
+                .filter(st -> "ASSIGNED".equals(st.getStatus()))
                 .count();
 
         long completedCount = myTests.stream()
@@ -45,15 +45,46 @@ public class StudentService {
 
         double totalScore = myTests.stream()
                 .filter(st -> "SUBMITTED".equals(st.getStatus()) || "EVALUATED".equals(st.getStatus()))
-                .mapToInt(StudentTest::getScore)
+                .mapToInt(st -> st.getScore() != null ? st.getScore() : 0)
                 .average()
                 .orElse(0.0);
 
         Map<String, Object> stats = new HashMap<>();
-        stats.put("upcomingTests", upcomingCount);
+        stats.put("unattendedTests", unattendedCount);
         stats.put("completedTests", completedCount);
         stats.put("averageScore", Math.round(totalScore * 100.0) / 100.0);
-        stats.put("rank", 5); // Default rank for demo
+        
+        // Group myTests by Subject
+        Map<com.chillcode.assessment.entity.Subject, List<StudentTest>> testsBySubject = myTests.stream()
+                .filter(st -> st.getTest() != null && st.getTest().getSubject() != null)
+                .collect(Collectors.groupingBy(st -> st.getTest().getSubject()));
+
+        List<Map<String, Object>> subjectStatsList = new java.util.ArrayList<>();
+        for (Map.Entry<com.chillcode.assessment.entity.Subject, List<StudentTest>> entry : testsBySubject.entrySet()) {
+            com.chillcode.assessment.entity.Subject subject = entry.getKey();
+            List<StudentTest> subjectTests = entry.getValue();
+
+            long completed = subjectTests.stream()
+                    .filter(st -> "SUBMITTED".equals(st.getStatus()) || "EVALUATED".equals(st.getStatus()))
+                    .count();
+
+            long incomplete = subjectTests.stream()
+                    .filter(st -> "ASSIGNED".equals(st.getStatus()) || "STARTED".equals(st.getStatus()))
+                    .count();
+
+            Map<String, Object> subMap = new HashMap<>();
+            subMap.put("subjectId", subject.getId());
+            subMap.put("subjectName", subject.getName());
+            subMap.put("subjectColor", subject.getColor());
+            subMap.put("completedCount", completed);
+            subMap.put("incompleteCount", incomplete);
+            subMap.put("totalCount", subjectTests.size());
+            subMap.put("status", incomplete == 0 && subjectTests.size() > 0 ? "COMPLETED" : "INCOMPLETE");
+
+            subjectStatsList.add(subMap);
+        }
+        stats.put("subjectStats", subjectStatsList);
+
         stats.put("recentActivities", myTests.stream()
                 .map(st -> "Test '" + st.getTest().getName() + "' status: " + st.getStatus())
                 .limit(5)
@@ -62,7 +93,7 @@ public class StudentService {
     }
 
     public List<Notification> getNotificationsForUser(Long userId) {
-        return notificationRepository.findByUserIdOrderByCreatedAtDesc(userId);
+        return notificationRepository.findByUserIdAndTypeOrderByCreatedAtDesc(userId, "GENERAL");
     }
 
     @Transactional

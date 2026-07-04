@@ -25,8 +25,6 @@ interface Question {
   constraints?: string;
   inputFormat?: string;
   outputFormat?: string;
-  timeLimitMs: number;
-  memoryLimitMb: number;
   marks: number;
   negativeMarks: number;
   allowedLanguages: string;
@@ -43,6 +41,14 @@ export default function QuestionManagement() {
   const [showForm, setShowForm] = useState(false);
   const [error, setError] = useState('');
   const [formSubjectId, setFormSubjectId] = useState<number | null>(null);
+  const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
+
+  const showToast = (message: string, type: 'success' | 'error' = 'success') => {
+    setToast({ message, type });
+    setTimeout(() => {
+      setToast(null);
+    }, 3000);
+  };
 
   // Form Fields
   const [title, setTitle] = useState('');
@@ -51,8 +57,6 @@ export default function QuestionManagement() {
   const [constraints, setConstraints] = useState('');
   const [inputFormat, setInputFormat] = useState('');
   const [outputFormat, setOutputFormat] = useState('');
-  const [timeLimitMs, setTimeLimitMs] = useState(2000);
-  const [memoryLimitMb, setMemoryLimitMb] = useState(256);
   const [marks, setMarks] = useState(10);
   const [negativeMarks, setNegativeMarks] = useState(0);
   const [allowedLangs, setAllowedLangs] = useState({
@@ -109,8 +113,6 @@ export default function QuestionManagement() {
     setConstraints('');
     setInputFormat('');
     setOutputFormat('');
-    setTimeLimitMs(2000);
-    setMemoryLimitMb(256);
     setMarks(10);
     setNegativeMarks(0);
     setAllowedLangs({ java: true, python: true, cpp: false, c: false, javascript: false });
@@ -128,8 +130,6 @@ export default function QuestionManagement() {
     setConstraints(q.constraints || '');
     setInputFormat(q.inputFormat || '');
     setOutputFormat(q.outputFormat || '');
-    setTimeLimitMs(q.timeLimitMs);
-    setMemoryLimitMb(q.memoryLimitMb);
     setMarks(q.marks);
     setNegativeMarks(q.negativeMarks || 0);
     setTags(q.tags || '');
@@ -157,6 +157,8 @@ export default function QuestionManagement() {
     setTestCases(testCases.filter((_, i) => i !== index));
   };
 
+  const [saving, setSaving] = useState(false);
+
   const handleTestCaseChange = (index: number, field: keyof TestCase, value: any) => {
     const updated = [...testCases];
     updated[index] = { ...updated[index], [field]: value };
@@ -165,10 +167,14 @@ export default function QuestionManagement() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (saving) return; // Prevent double clicks
     if (!formSubjectId) {
       setError('Please select a subject before saving a question.');
       return;
     }
+
+    setSaving(true);
+    setError('');
 
     const langsStr = Object.keys(allowedLangs)
       .filter((k) => allowedLangs[k as keyof typeof allowedLangs])
@@ -182,8 +188,6 @@ export default function QuestionManagement() {
       constraints,
       inputFormat,
       outputFormat,
-      timeLimitMs,
-      memoryLimitMb,
       marks,
       negativeMarks,
       allowedLanguages: langsStr,
@@ -193,34 +197,42 @@ export default function QuestionManagement() {
 
     try {
       if (editingQuestion) {
-        await apiCall(`/api/admin/questions/${editingQuestion.id}`, {
+        const updatedQ = await apiCall(`/api/admin/questions/${editingQuestion.id}`, {
           method: 'PUT',
           body: JSON.stringify(payload),
         });
+        setQuestions((prev) => prev.map((q) => (q.id === editingQuestion.id ? updatedQ : q)));
+        showToast('Question updated successfully!');
       } else {
-        await apiCall('/api/admin/questions', {
+        const createdQ = await apiCall('/api/admin/questions', {
           method: 'POST',
           body: JSON.stringify(payload),
         });
+        if (selectedSubjectId === formSubjectId) {
+          setQuestions((prev) => [...prev, createdQ]);
+        }
+        showToast('Question created successfully!');
       }
       setShowForm(false);
-      if (selectedSubjectId) {
-        fetchQuestions(selectedSubjectId);
-      } else {
-        fetchQuestions(formSubjectId);
-      }
     } catch (err: any) {
       setError(err.message || 'Failed to save question');
+      showToast('Failed to save question', 'error');
+    } finally {
+      setSaving(false);
     }
   };
 
   const handleDelete = async (id: number) => {
     if (!confirm('Are you sure you want to delete this question?')) return;
+    const backup = [...questions];
+    setQuestions((prev) => prev.filter((q) => q.id !== id));
+    showToast('Question deleted successfully!');
     try {
       await apiCall(`/api/admin/questions/${id}`, { method: 'DELETE' });
-      if (selectedSubjectId) fetchQuestions(selectedSubjectId);
     } catch (err: any) {
+      setQuestions(backup);
       setError('Failed to delete question');
+      showToast('Failed to delete question', 'error');
     }
   };
 
@@ -282,8 +294,26 @@ export default function QuestionManagement() {
       {/* Questions list display */}
       {!showForm ? (
         loading ? (
-          <div className="flex justify-center py-12">
-            <Loader2 className="w-8 h-8 animate-spin text-indigo-500" />
+          <div className="space-y-4">
+            {[...Array(3)].map((_, i) => (
+              <div key={i} className="glass-panel p-6 rounded-2xl flex flex-col md:flex-row md:items-center justify-between gap-4 animate-pulse border border-white/5">
+                <div className="space-y-2 flex-1">
+                  <div className="flex items-center gap-3">
+                    <div className="h-5 w-16 bg-white/10 rounded-full" />
+                    <div className="h-6 w-1/3 bg-white/10 rounded-lg" />
+                  </div>
+                  <div className="flex gap-4 mt-2">
+                    <div className="h-4 w-20 bg-white/5 rounded" />
+                    <div className="h-4 w-24 bg-white/5 rounded" />
+                    <div className="h-4 w-32 bg-white/5 rounded" />
+                  </div>
+                </div>
+                <div className="flex gap-2">
+                  <div className="w-8 h-8 bg-white/5 rounded-xl" />
+                  <div className="w-8 h-8 bg-white/5 rounded-xl" />
+                </div>
+              </div>
+            ))}
           </div>
         ) : questions.length === 0 ? (
           <div className="glass-panel p-12 rounded-2xl text-center space-y-3">
@@ -309,7 +339,6 @@ export default function QuestionManagement() {
                   <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-gray-500 mt-2">
                     <span>Marks: <strong className="text-white">{q.marks}</strong></span>
                     <span>Penalty: <strong className="text-white">{q.negativeMarks}</strong></span>
-                    <span>Limit: <strong className="text-white">{q.timeLimitMs}ms</strong></span>
                     <span>Allowed: <strong className="text-white capitalize">{q.allowedLanguages.replaceAll(',', ', ')}</strong></span>
                   </div>
                 </div>
@@ -421,27 +450,7 @@ export default function QuestionManagement() {
           </div>
 
           {/* Configuration constraints */}
-          <div className="grid grid-cols-2 md:grid-cols-5 gap-4 border-t border-white/5 pt-6">
-            <div>
-              <label className="block text-xs font-semibold text-gray-400 uppercase mb-1">Time Limit (ms)</label>
-              <input
-                type="number"
-                required
-                className="w-full glass-input p-3 rounded-xl text-sm"
-                value={timeLimitMs}
-                onChange={(e) => setTimeLimitMs(Number(e.target.value))}
-              />
-            </div>
-            <div>
-              <label className="block text-xs font-semibold text-gray-400 uppercase mb-1">Memory Limit (MB)</label>
-              <input
-                type="number"
-                required
-                className="w-full glass-input p-3 rounded-xl text-sm"
-                value={memoryLimitMb}
-                onChange={(e) => setMemoryLimitMb(Number(e.target.value))}
-              />
-            </div>
+          <div className="grid grid-cols-2 md:grid-cols-3 gap-4 border-t border-white/5 pt-6">
             <div>
               <label className="block text-xs font-semibold text-gray-400 uppercase mb-1">Marks</label>
               <input
@@ -565,11 +574,30 @@ export default function QuestionManagement() {
             >
               Cancel
             </button>
-            <button type="submit" className="px-5 py-2.5 rounded-xl gradient-btn text-sm">
-              Save Problem
+            <button
+              type="submit"
+              disabled={saving}
+              className={`px-5 py-2.5 rounded-xl gradient-btn text-sm flex items-center gap-2 ${saving ? 'opacity-50 cursor-not-allowed' : ''}`}
+            >
+              {saving ? (
+                <>
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                  Saving...
+                </>
+              ) : (
+                'Save Problem'
+              )}
             </button>
           </div>
         </form>
+      )}
+      {toast && (
+        <div className="fixed bottom-5 right-5 z-50 flex items-center gap-3 px-4 py-3 bg-[#11131c] border border-white/5 shadow-2xl rounded-2xl animate-bounce">
+          <div className={`p-1 rounded-lg ${toast.type === 'success' ? 'bg-emerald-500/10 text-emerald-400' : 'bg-red-500/10 text-red-400'}`}>
+            <Check className="w-4 h-4" />
+          </div>
+          <span className="text-xs font-semibold text-white">{toast.message}</span>
+        </div>
       )}
     </div>
   );

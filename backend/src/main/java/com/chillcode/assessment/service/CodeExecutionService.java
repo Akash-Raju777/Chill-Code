@@ -6,17 +6,21 @@ import com.chillcode.assessment.dto.TestCaseResultDto;
 import com.chillcode.assessment.entity.*;
 import com.chillcode.assessment.repository.*;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.io.*;
+import java.net.URI;
+import java.net.http.HttpClient;
+import java.net.http.HttpRequest;
+import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
-import java.nio.file.Files;
-import java.nio.file.Path;
-import java.nio.file.Paths;
 import java.time.LocalDateTime;
 import java.util.*;
-import java.util.concurrent.TimeUnit;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.JsonNode;
+
 
 @Service
 public class CodeExecutionService {
@@ -39,6 +43,16 @@ public class CodeExecutionService {
     @Autowired
     private AchievementRepository achievementRepository;
 
+    @Value("${judge0.api.url}")
+    private String judge0ApiUrl;
+
+    @Value("${xai.api.key}")
+    private String xaiApiKey;
+
+    private final HttpClient httpClient = HttpClient.newBuilder()
+            .version(HttpClient.Version.HTTP_1_1)
+            .build();
+
     @Transactional
     public SubmissionResultDto submitCode(SubmitRequest request) {
         Question question = questionRepository.findById(request.getQuestionId())
@@ -50,274 +64,148 @@ public class CodeExecutionService {
         }
 
         List<TestCase> testCases = testCaseRepository.findByQuestionId(question.getId());
-
-        // Setup execution directory
-        String uuid = UUID.randomUUID().toString();
-        Path tempDir;
-        try {
-            tempDir = Files.createTempDirectory("chillcode-" + uuid);
-        } catch (IOException e) {
-            throw new RuntimeException("Failed to create temporary directory for compilation: " + e.getMessage());
-        }
+        String lang = request.getLanguage().toLowerCase();
+        int languageId = getJudge0LanguageId(lang);
 
         SubmissionResultDto resultDto = new SubmissionResultDto();
         resultDto.setTestCaseResults(new ArrayList<>());
         resultDto.setRunTimeMs(0);
         resultDto.setMemoryUsedKb(0);
 
-        String compileError = null;
-        boolean compileSuccess = true;
-
-        String lang = request.getLanguage().toLowerCase();
-        String code = request.getCode();
-
-        File sourceFile = null;
-        List<String> compileCmd = new ArrayList<>();
-        List<String> runCmd = new ArrayList<>();
-        boolean needsCompilation = false;
-
-        String isWindows = System.getProperty("os.name").toLowerCase().contains("win") ? "true" : "false";
-
-        String gccPath = "gcc";
-        String gppPath = "g++";
-        if ("true".equals(isWindows)) {
-            File localGcc = new File("C:\\mingw64\\bin\\gcc.exe");
-            if (localGcc.exists()) {
-                gccPath = localGcc.getAbsolutePath();
-            }
-            File localGpp = new File("C:\\mingw64\\bin\\g++.exe");
-            if (localGpp.exists()) {
-                gppPath = localGpp.getAbsolutePath();
-            }
-        }
-
-        // Define compiler & execution parameters
-        if ("java".equals(lang)) {
-            String className = "Solution";
-            java.util.regex.Matcher matcher = java.util.regex.Pattern.compile("public\\s+class\\s+(\\w+)").matcher(code);
-            if (matcher.find()) {
-                className = matcher.group(1);
-            } else {
-                java.util.regex.Matcher matcher2 = java.util.regex.Pattern.compile("class\\s+(\\w+)").matcher(code);
-                if (matcher2.find()) {
-                    className = matcher2.group(1);
-                }
-            }
-            sourceFile = new File(tempDir.toFile(), className + ".java");
-            needsCompilation = true;
-            compileCmd.addAll(Arrays.asList("javac", className + ".java"));
-            runCmd.addAll(Arrays.asList("java", "-Xmx" + question.getMemoryLimitMb() + "m", className));
-        } else if ("python".equals(lang)) {
-            sourceFile = new File(tempDir.toFile(), "solution.py");
-            runCmd.addAll(Arrays.asList("python", "solution.py"));
-        } else if ("cpp".equals(lang)) {
-            sourceFile = new File(tempDir.toFile(), "solution.cpp");
-            needsCompilation = true;
-            String binName = "true".equals(isWindows) ? "solution.exe" : "solution";
-            File exeFile = new File(tempDir.toFile(), binName);
-            compileCmd.addAll(Arrays.asList(gppPath, "solution.cpp", "-o", exeFile.getName()));
-            if ("true".equals(isWindows)) {
-                runCmd.add(exeFile.getAbsolutePath());
-            } else {
-                runCmd.add("./" + binName);
-            }
-        } else if ("c".equals(lang)) {
-            sourceFile = new File(tempDir.toFile(), "solution.c");
-            needsCompilation = true;
-            String binName = "true".equals(isWindows) ? "solution.exe" : "solution";
-            File exeFile = new File(tempDir.toFile(), binName);
-            compileCmd.addAll(Arrays.asList(gccPath, "solution.c", "-o", exeFile.getName()));
-            if ("true".equals(isWindows)) {
-                runCmd.add(exeFile.getAbsolutePath());
-            } else {
-                runCmd.add("./" + binName);
-            }
-        } else if ("javascript".equals(lang)) {
-            sourceFile = new File(tempDir.toFile(), "solution.js");
-            runCmd.addAll(Arrays.asList("node", "--max-old-space-size=" + question.getMemoryLimitMb(), "solution.js"));
-        } else {
-            cleanupDirectory(tempDir.toFile());
-            throw new RuntimeException("Unsupported language: " + lang);
-        }
-
-        // Write source code to file
-        try (FileWriter writer = new FileWriter(sourceFile)) {
-            writer.write(code);
-        } catch (IOException e) {
-            cleanupDirectory(tempDir.toFile());
-            throw new RuntimeException("Failed to write source code: " + e.getMessage());
-        }
-
-        // Compile if required
-        if (needsCompilation) {
-            try {
-                ProcessBuilder pb = new ProcessBuilder(compileCmd);
-                pb.directory(tempDir.toFile());
-                pb.redirectErrorStream(true);
-                Process process = pb.start();
-
-                String output = readStream(process.getInputStream());
-                boolean finished = process.waitFor(15, TimeUnit.SECONDS);
-
-                if (!finished || process.exitValue() != 0) {
-                    compileSuccess = false;
-                    compileError = output.isBlank() ? "Compilation Timeout/Failed" : output;
-                }
-            } catch (Exception e) {
-                compileSuccess = false;
-                compileError = "Compiler execution failed: " + e.getMessage();
-            }
-        }
-
-        if (!compileSuccess) {
-            resultDto.setStatus("COMPILATION_ERROR");
-            resultDto.setCompileError(compileError);
-            if (request.getRunOnly() == null || !request.getRunOnly()) {
-                saveSubmissionRecord(studentTest, question, request, resultDto);
-            }
-            cleanupDirectory(tempDir.toFile());
-            return resultDto;
-        }
-
         // Run Code workflow (LeetCode/HackerRank Run Code with custom stdin input)
         if (request.getRunOnly() != null && request.getRunOnly()) {
             try {
-                ProcessBuilder pb = new ProcessBuilder(runCmd);
-                pb.directory(tempDir.toFile());
-                Process process = pb.start();
-
-                // Inject Custom Input Data
-                if (request.getCustomInput() != null) {
-                    try (BufferedWriter writer = new BufferedWriter(new OutputStreamWriter(process.getOutputStream(), StandardCharsets.UTF_8))) {
-                        writer.write(request.getCustomInput());
-                        writer.flush();
-                    }
-                } else {
-                    process.getOutputStream().close();
+                JsonNode res = executeOnJudge0(request.getCode(), languageId, request.getCustomInput(), null);
+                int statusId = res.path("status").path("id").asInt();
+                String verdict = mapStatusIdToVerdict(statusId);
+                
+                resultDto.setStatus(verdict);
+                
+                double time = res.path("time").asDouble();
+                resultDto.setRunTimeMs((int)(time * 1000));
+                
+                int memory = res.path("memory").asInt();
+                resultDto.setMemoryUsedKb(memory);
+                
+                resultDto.setStdout(decodeBase64(res.path("stdout").asText()));
+                resultDto.setStderr(decodeBase64(res.path("stderr").asText()));
+                
+                String compileOutput = decodeBase64(res.path("compile_output").asText());
+                if (!compileOutput.isBlank()) {
+                    resultDto.setCompileError(compileOutput);
                 }
+                
+                resultDto.setExitCode(verdict.equals("ACCEPTED") ? 0 : -1);
 
-                // Wait with Time Limit
-                long startTime = System.currentTimeMillis();
-                boolean finished = process.waitFor(question.getTimeLimitMs(), TimeUnit.MILLISECONDS);
-                long runTime = System.currentTimeMillis() - startTime;
-                resultDto.setRunTimeMs((int) runTime);
-
-                if (!finished) {
-                    process.destroyForcibly();
-                    resultDto.setStatus("TIME_LIMIT_EXCEEDED");
-                    resultDto.setStderr("Time Limit Exceeded (TLE)");
-                } else if (process.exitValue() != 0) {
-                    String error = readStream(process.getErrorStream());
-                    String stdout = readStream(process.getInputStream());
-                    if (isMemoryLimitExceeded(error, stdout, process.exitValue())) {
-                        resultDto.setStatus("MEMORY_LIMIT_EXCEEDED");
-                        resultDto.setStderr("Memory Limit Exceeded (MLE)");
-                    } else {
-                        resultDto.setStatus("RUNTIME_ERROR");
-                        resultDto.setStderr(error.isBlank() ? "Runtime Error (RTE) exit code: " + process.exitValue() : error.trim());
-                    }
-                    resultDto.setStdout(stdout);
-                } else {
-                    String stdout = readStream(process.getInputStream());
-                    String stderr = readStream(process.getErrorStream());
-                    resultDto.setStatus("ACCEPTED");
-                    resultDto.setStdout(stdout);
-                    resultDto.setStderr(stderr);
+                if (!"ACCEPTED".equals(verdict)) {
+                    String explanation = getGrokExplanation(verdict, request.getCode(), resultDto.getCompileError(), resultDto.getStderr(), lang, request.getCustomInput(), null, resultDto.getStdout());
+                    resultDto.setAiExplanation(explanation);
                 }
-                resultDto.setMemoryUsedKb(estimateMemoryUsage(lang));
             } catch (Exception e) {
                 resultDto.setStatus("RUNTIME_ERROR");
-                resultDto.setStderr("Execution error: " + e.getMessage());
+                resultDto.setStderr("Execution failed: " + e.getMessage());
             }
-
-            cleanupDirectory(tempDir.toFile());
             return resultDto;
         }
 
         // Run Test Cases
         String overallVerdict = "ACCEPTED";
         int maxRunTimeMs = 0;
+        int maxMemoryUsedKb = 0;
 
-        for (TestCase tc : testCases) {
+        if (testCases.isEmpty()) {
+            overallVerdict = "WRONG_ANSWER";
             TestCaseResultDto tcResult = new TestCaseResultDto();
-            tcResult.setTestCaseId(tc.getId());
-            tcResult.setRunTimeMs(0);
-            tcResult.setMemoryUsedKb(0);
+            tcResult.setStatus("FAILED");
+            tcResult.setMessage("No test case has been set up for this question by the administrator. Please contact your coordinator.");
+            resultDto.getTestCaseResults().add(tcResult);
+        } else {
+            for (TestCase tc : testCases) {
+                TestCaseResultDto tcResult = new TestCaseResultDto();
+                tcResult.setTestCaseId(tc.getId());
 
-            try {
-                ProcessBuilder pb = new ProcessBuilder(runCmd);
-                pb.directory(tempDir.toFile());
-                Process process = pb.start();
+                try {
+                    JsonNode res = executeOnJudge0(request.getCode(), languageId, tc.getInputData(), tc.getExpectedOutput());
+                    int statusId = res.path("status").path("id").asInt();
+                    
+                    double time = res.path("time").asDouble();
+                    int timeMs = (int)(time * 1000);
+                    tcResult.setRunTimeMs(timeMs);
+                    if (timeMs > maxRunTimeMs) maxRunTimeMs = timeMs;
+                    
+                    int memory = res.path("memory").asInt();
+                    tcResult.setMemoryUsedKb(memory);
+                    if (memory > maxMemoryUsedKb) maxMemoryUsedKb = memory;
 
-                // Inject Input Data
-                if (tc.getInputData() != null) {
-                    try (BufferedWriter writer = new BufferedWriter(new OutputStreamWriter(process.getOutputStream(), StandardCharsets.UTF_8))) {
-                        writer.write(tc.getInputData());
-                        writer.flush();
-                    }
-                } else {
-                    process.getOutputStream().close();
-                }
+                    String stdout = decodeBase64(res.path("stdout").asText());
+                    String stderr = decodeBase64(res.path("stderr").asText());
+                    String compileOutput = decodeBase64(res.path("compile_output").asText());
 
-                // Wait with Time Limit
-                long startTime = System.currentTimeMillis();
-                boolean finished = process.waitFor(question.getTimeLimitMs(), TimeUnit.MILLISECONDS);
-                long runTime = System.currentTimeMillis() - startTime;
-                tcResult.setRunTimeMs((int) runTime);
-
-                if (runTime > maxRunTimeMs) {
-                    maxRunTimeMs = (int) runTime;
-                }
-
-                if (!finished) {
-                    process.destroyForcibly();
-                    tcResult.setStatus("TLE");
-                    tcResult.setMessage("Time Limit Exceeded");
-                    overallVerdict = updateVerdict(overallVerdict, "TIME_LIMIT_EXCEEDED");
-                } else if (process.exitValue() != 0) {
-                    String error = readStream(process.getErrorStream());
-                    String stdout = readStream(process.getInputStream());
-                    if (isMemoryLimitExceeded(error, stdout, process.exitValue())) {
-                        tcResult.setStatus("MLE");
-                        tcResult.setMessage("Memory Limit Exceeded");
-                        overallVerdict = updateVerdict(overallVerdict, "MEMORY_LIMIT_EXCEEDED");
-                    } else {
-                        tcResult.setStatus("RTE");
-                        tcResult.setMessage("Runtime Error: " + error.trim());
-                        overallVerdict = updateVerdict(overallVerdict, "RUNTIME_ERROR");
-                    }
-                } else {
-                    String output = readStream(process.getInputStream());
-                    String expected = tc.getExpectedOutput().trim();
-                    String actual = output.trim();
-
-                    // Compare output
-                    if (expected.replaceAll("\\r\\n", "\n").equals(actual.replaceAll("\\r\\n", "\n"))) {
+                    if (statusId == 3) {
                         tcResult.setStatus("PASSED");
                         tcResult.setMessage("Test Case Passed");
+                    } else if (statusId == 5) {
+                        tcResult.setStatus("TLE");
+                        tcResult.setMessage("Time Limit Exceeded");
+                        overallVerdict = updateVerdict(overallVerdict, "TIME_LIMIT_EXCEEDED");
+                    } else if (statusId == 6) {
+                        tcResult.setStatus("COMPILATION_ERROR");
+                        resultDto.setCompileError(compileOutput);
+                        tcResult.setMessage("Compilation Error: " + compileOutput);
+                        overallVerdict = "COMPILATION_ERROR";
+                    } else if (statusId == 7 || statusId == 8 || statusId == 9 || statusId == 10 || statusId == 11) {
+                        tcResult.setStatus("RTE");
+                        tcResult.setMessage("Runtime Error: " + stderr);
+                        overallVerdict = updateVerdict(overallVerdict, "RUNTIME_ERROR");
                     } else {
                         tcResult.setStatus("FAILED");
                         if (!tc.getIsHidden()) {
-                            tcResult.setMessage("Expected: " + expected + "\nActual: " + actual);
+                            tcResult.setMessage("Expected:\n" + tc.getExpectedOutput().trim() + "\nYour Output:\n" + stdout.trim());
                         } else {
                             tcResult.setMessage("Hidden testcase failed.");
                         }
                         overallVerdict = updateVerdict(overallVerdict, "WRONG_ANSWER");
                     }
+                } catch (Exception e) {
+                    tcResult.setStatus("FAILED");
+                    tcResult.setMessage("Execution error: " + e.getMessage());
+                    overallVerdict = updateVerdict(overallVerdict, "RUNTIME_ERROR");
                 }
-                tcResult.setMemoryUsedKb(estimateMemoryUsage(lang));
 
-            } catch (Exception e) {
-                tcResult.setStatus("RTE");
-                tcResult.setMessage("Execution error: " + e.getMessage());
-                overallVerdict = updateVerdict(overallVerdict, "RUNTIME_ERROR");
+                resultDto.getTestCaseResults().add(tcResult);
             }
-
-            resultDto.getTestCaseResults().add(tcResult);
         }
 
         resultDto.setStatus(overallVerdict);
         resultDto.setRunTimeMs(maxRunTimeMs);
+        resultDto.setMemoryUsedKb(maxMemoryUsedKb);
+        resultDto.setExitCode(overallVerdict.equals("ACCEPTED") ? 0 : -1);
+
+        // Fetch Grok explanation if not ACCEPTED
+        if (!"ACCEPTED".equals(overallVerdict)) {
+            TestCaseResultDto failedTc = resultDto.getTestCaseResults().stream()
+                    .filter(tc -> !"PASSED".equals(tc.getStatus()))
+                    .findFirst()
+                    .orElse(null);
+            
+            String expected = "";
+            String actual = "";
+            String runStderr = "";
+            if (failedTc != null) {
+                TestCase tcObj = testCaseRepository.findById(failedTc.getTestCaseId()).orElse(null);
+                if (tcObj != null) {
+                    expected = tcObj.getExpectedOutput();
+                }
+                if ("RTE".equals(failedTc.getStatus())) {
+                    runStderr = failedTc.getMessage();
+                } else if ("FAILED".equals(failedTc.getStatus())) {
+                    actual = failedTc.getMessage();
+                }
+            }
+            String explanation = getGrokExplanation(overallVerdict, request.getCode(), resultDto.getCompileError(), runStderr, lang, "", expected, actual);
+            resultDto.setAiExplanation(explanation);
+        }
+
         
         // Calculate score
         int totalTestCases = testCases.size();
@@ -335,18 +223,85 @@ public class CodeExecutionService {
             finalScore -= question.getNegativeMarks();
         }
 
-        resultDto.setMemoryUsedKb(estimateMemoryUsage(lang));
-
         // Save submission and individual test case runs
         Submission sub = saveSubmissionRecord(studentTest, question, request, resultDto);
         sub.setScore(finalScore);
         submissionRepository.save(sub);
 
         // Update overall StudentTest score
-        updateStudentTestScore(studentTest, question, finalScore);
+        if (studentTest != null) {
+            updateStudentTestScore(studentTest, question, finalScore);
+        }
 
-        cleanupDirectory(tempDir.toFile());
         return resultDto;
+    }
+
+    private JsonNode executeOnJudge0(String code, int languageId, String stdin, String expectedOutput) {
+        try {
+            ObjectMapper mapper = new ObjectMapper();
+            Map<String, Object> payload = new HashMap<>();
+            
+            String base64Source = Base64.getEncoder().encodeToString(code.getBytes(StandardCharsets.UTF_8));
+            payload.put("source_code", base64Source);
+            payload.put("language_id", languageId);
+            
+            if (stdin != null) {
+                payload.put("stdin", Base64.getEncoder().encodeToString(stdin.getBytes(StandardCharsets.UTF_8)));
+            }
+            if (expectedOutput != null) {
+                payload.put("expected_output", Base64.getEncoder().encodeToString(expectedOutput.getBytes(StandardCharsets.UTF_8)));
+            }
+            
+            String jsonPayload = mapper.writeValueAsString(payload);
+            
+            HttpRequest httpRequest = HttpRequest.newBuilder()
+                    .uri(URI.create(judge0ApiUrl + "/submissions?base64_encoded=true&wait=true"))
+                    .header("Content-Type", "application/json")
+                    .POST(HttpRequest.BodyPublishers.ofString(jsonPayload))
+                    .build();
+                    
+            HttpResponse<String> httpResponse = httpClient.send(httpRequest, HttpResponse.BodyHandlers.ofString());
+            
+            if (httpResponse.statusCode() != 201 && httpResponse.statusCode() != 200) {
+                throw new RuntimeException("Judge0 API returned status code " + httpResponse.statusCode() + ": " + httpResponse.body());
+            }
+            
+            return mapper.readTree(httpResponse.body());
+        } catch (Exception e) {
+            throw new RuntimeException("Failed to execute code on Judge0: " + e.getMessage(), e);
+        }
+    }
+
+    private String decodeBase64(String val) {
+        if (val == null || val.isBlank()) return "";
+        try {
+            byte[] bytes = Base64.getDecoder().decode(val.trim());
+            return new String(bytes, StandardCharsets.UTF_8);
+        } catch (Exception e) {
+            return val;
+        }
+    }
+
+    private String mapStatusIdToVerdict(int statusId) {
+        switch (statusId) {
+            case 3: return "ACCEPTED";
+            case 4: return "WRONG_ANSWER";
+            case 5: return "TIME_LIMIT_EXCEEDED";
+            case 6: return "COMPILATION_ERROR";
+            case 7: case 8: case 9: case 10: case 11: case 12: return "RUNTIME_ERROR";
+            default: return "WRONG_ANSWER";
+        }
+    }
+
+    private int getJudge0LanguageId(String lang) {
+        switch (lang.toLowerCase()) {
+            case "c": return 50;
+            case "cpp": case "c++": return 54;
+            case "java": return 62;
+            case "javascript": case "js": return 63;
+            case "python": case "py": return 71;
+            default: throw new RuntimeException("Unsupported language: " + lang);
+        }
     }
 
     private void updateStudentTestScore(StudentTest studentTest, Question question, int questionScore) {
@@ -434,51 +389,139 @@ public class CodeExecutionService {
         return challenger;
     }
 
-    private boolean isMemoryLimitExceeded(String stderr, String stdout, int exitValue) {
-        if (stderr != null) {
-            String lower = stderr.toLowerCase();
-            if (lower.contains("outofmemory") || 
-                lower.contains("memoryerror") || 
-                lower.contains("bad_alloc") || 
-                lower.contains("heap limit allocation failed") ||
-                lower.contains("allocation failed - javascript heap out of memory")) {
-                return true;
+
+    private String getGrokExplanation(String status, String code, String compileError, String stderr, String language, String customInput, String expectedOutput, String actualOutput) {
+        try {
+            String prompt = "You are an AI programming tutor assistant. Explain the following error or issue clearly and concisely in a few sentences.\n" +
+                            "Language: " + language + "\n" +
+                            "Verdict: " + status + "\n";
+            
+            if ("COMPILATION_ERROR".equals(status)) {
+                prompt += "Compilation Error Message:\n" + compileError + "\n";
+            } else if ("RUNTIME_ERROR".equals(status)) {
+                prompt += "Runtime Error / Stderr Output:\n" + stderr + "\n";
+            } else if ("WRONG_ANSWER".equals(status)) {
+                prompt += "Custom Input:\n" + customInput + "\n" +
+                          "Expected Output:\n" + expectedOutput + "\n" +
+                          "Actual Output:\n" + actualOutput + "\n";
+            } else {
+                return null;
             }
+            
+            prompt += "Code submitted by student:\n" + code + "\n";
+            prompt += "\nExplain the issue and suggest how to fix it without rewriting the entire code.";
+
+            ObjectMapper mapper = new ObjectMapper();
+            Map<String, Object> requestMap = new HashMap<>();
+            requestMap.put("model", "grok-2-1212");
+            
+            List<Map<String, String>> messages = new ArrayList<>();
+            Map<String, String> systemMsg = new HashMap<>();
+            systemMsg.put("role", "system");
+            systemMsg.put("content", "You are a helpful coding assistant who explains compiler and runtime errors clearly and concisely. Keep answers brief (under 3 sentences).");
+            messages.add(systemMsg);
+            
+            Map<String, String> userMsg = new HashMap<>();
+            userMsg.put("role", "user");
+            userMsg.put("content", prompt);
+            messages.add(userMsg);
+            
+            requestMap.put("messages", messages);
+            requestMap.put("temperature", 0.2);
+
+            String requestBody = mapper.writeValueAsString(requestMap);
+
+            java.net.http.HttpClient client = java.net.http.HttpClient.newBuilder()
+                .connectTimeout(java.time.Duration.ofSeconds(10))
+                .build();
+            java.net.http.HttpRequest httpRequest = java.net.http.HttpRequest.newBuilder()
+                .uri(java.net.URI.create("https://api.x.ai/v1/chat/completions"))
+                .header("Content-Type", "application/json")
+                .header("Authorization", "Bearer " + xaiApiKey)
+                .POST(java.net.http.HttpRequest.BodyPublishers.ofString(requestBody, StandardCharsets.UTF_8))
+                .build();
+
+            java.net.http.HttpResponse<String> response = client.send(httpRequest, java.net.http.HttpResponse.BodyHandlers.ofString());
+            
+            // Retry with grok-beta if grok-2 fails
+            if (response.statusCode() != 200) {
+                requestMap.put("model", "grok-beta");
+                requestBody = mapper.writeValueAsString(requestMap);
+                httpRequest = java.net.http.HttpRequest.newBuilder()
+                    .uri(java.net.URI.create("https://api.x.ai/v1/chat/completions"))
+                    .header("Content-Type", "application/json")
+                    .header("Authorization", "Bearer " + xaiApiKey)
+                    .POST(java.net.http.HttpRequest.BodyPublishers.ofString(requestBody, StandardCharsets.UTF_8))
+                    .build();
+                response = client.send(httpRequest, java.net.http.HttpResponse.BodyHandlers.ofString());
+            }
+
+            if (response.statusCode() == 200) {
+                JsonNode rootNode = mapper.readTree(response.body());
+                JsonNode contentNode = rootNode.path("choices").path(0).path("message").path("content");
+                if (!contentNode.isMissingNode()) {
+                    return contentNode.asText();
+                }
+            } else {
+                System.err.println("Grok API request failed with status: " + response.statusCode() + ", Body: " + response.body());
+            }
+        } catch (Exception e) {
+            System.err.println("Failed to fetch Grok explanation: " + e.getMessage());
         }
-        return false;
+        return getLocalFallbackExplanation(status, compileError, stderr);
     }
 
-    private int estimateMemoryUsage(String lang) {
-        Random rand = new Random();
-        if ("c".equals(lang) || "cpp".equals(lang)) {
-            return 1200 + rand.nextInt(1500); // 1.2MB - 2.7MB
-        } else if ("python".equals(lang)) {
-            return 8500 + rand.nextInt(4000); // 8.5MB - 12.5MB
-        } else if ("javascript".equals(lang)) {
-            return 28000 + rand.nextInt(8000); // 28MB - 36MB
-        } else { // java
-            return 32000 + rand.nextInt(12000); // 32MB - 44MB
+    private String getLocalFallbackExplanation(String status, String compileError, String stderr) {
+        if ("COMPILATION_ERROR".equals(status)) {
+            String err = compileError != null ? compileError : "";
+            if (err.contains("';' expected")) {
+                return "You forgot a semicolon at the end of the statement.";
+            } else if (err.contains("cannot find symbol")) {
+                return "The compiler cannot find the variable or class you referenced. Double check your variable names, spelling, and library imports.";
+            } else if (err.contains("class") && err.contains("should be declared in a file named")) {
+                return "Your Java class name must be declared as 'public class Solution' to match the online judge workspace execution files.";
+            } else if (err.contains("SyntaxError") || err.contains("invalid syntax")) {
+                return "Your code contains a syntax error. Verify your parentheses, colons, indentation alignment, and keyword spelling.";
+            }
+            return "Compilation failed. Review the compiler log details to resolve syntax errors or missing declaration identifiers.";
+        } else if ("RUNTIME_ERROR".equals(status)) {
+            String err = stderr != null ? stderr : "";
+            if (err.contains("NullPointerException") || err.contains("NoneType")) {
+                return "You are trying to access or manipulate an object reference that is null (NoneType).";
+            } else if (err.contains("/ by zero") || err.contains("ZeroDivisionError")) {
+                return "Your code attempted to divide a number by zero. Ensure your denominator variables are correctly verified before division.";
+            } else if (err.contains("IndexOutOfBoundsException") || err.contains("IndexError") || err.contains("out of bounds")) {
+                return "An index was accessed that is outside the bounds of the array, vector, or list. Double check your loop termination conditions.";
+            }
+            return "Your code threw an unhandled runtime exception. Check the execution stack trace for exceptions, segmentation faults, or non-zero exits.";
+        } else if ("WRONG_ANSWER".equals(status)) {
+            return "Your logic fails for some test cases. Consider checking boundary constraints, edge cases (empty inputs, negative values), or extreme numbers.";
+        } else if ("TIME_LIMIT_EXCEEDED".equals(status)) {
+            return "Your code took too long to execute and exceeded the maximum allowed limit. Check for infinite loops or optimize your algorithm's time complexity.";
+        } else if ("MEMORY_LIMIT_EXCEEDED".equals(status)) {
+            return "Your code allocated more memory than allowed by the platform limits. Optimize your data structure allocations and check for memory leaks.";
         }
+        return "An issue occurred during evaluation. Please inspect the logs to diagnose.";
     }
 
-    private String readStream(InputStream is) throws IOException {
-        StringBuilder sb = new StringBuilder();
-        try (BufferedReader r = new BufferedReader(new InputStreamReader(is, StandardCharsets.UTF_8))) {
-            String line;
-            while ((line = r.readLine()) != null) {
-                sb.append(line).append("\n");
+    private boolean compareOutputs(String expected, String actual) {
+        if (expected == null && actual == null) return true;
+        if (expected == null || actual == null) return false;
+        
+        String expClean = expected.replaceAll("\\r\\n", "\n").replaceAll("\\r", "\n").trim();
+        String actClean = actual.replaceAll("\\r\\n", "\n").replaceAll("\\r", "\n").trim();
+        
+        String[] expLines = expClean.split("\n");
+        String[] actLines = actClean.split("\n");
+        
+        if (expLines.length != actLines.length) return false;
+        
+        for (int i = 0; i < expLines.length; i++) {
+            if (!expLines[i].stripTrailing().equals(actLines[i].stripTrailing())) {
+                return false;
             }
         }
-        return sb.toString();
-    }
-
-    private void cleanupDirectory(File dir) {
-        File[] files = dir.listFiles();
-        if (files != null) {
-            for (File f : files) {
-                f.delete();
-            }
-        }
-        dir.delete();
+        return true;
     }
 }
+

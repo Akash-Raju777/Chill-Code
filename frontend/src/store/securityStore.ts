@@ -7,6 +7,7 @@ interface SecurityState {
   showWarningModal: boolean;
   isTestSuspended: boolean;
   incrementWarnings: (reason: string) => void;
+  setWarnings: (count: number) => void;
   resetWarnings: () => void;
   setWarningModal: (show: boolean) => void;
   suspendTest: () => void;
@@ -28,6 +29,10 @@ export const useSecurityStore = create<SecurityState>((set) => ({
       isTestSuspended: isSuspended,
     };
   }),
+  setWarnings: (count) => set((state) => ({
+    warnings: count,
+    isTestSuspended: count >= state.warningsLimit
+  })),
   resetWarnings: () => set({
     warnings: 0,
     lastWarningReason: '',

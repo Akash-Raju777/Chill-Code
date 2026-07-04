@@ -86,4 +86,28 @@ public class TestController {
         User student = getCurrentUser();
         return ResponseEntity.ok(testService.recordWarningDto(id, student.getId(), type, reason));
     }
+
+    @PostMapping("/student/tests/{id}/request-reattempt")
+    public ResponseEntity<com.chillcode.assessment.dto.StudentTestDto> requestReattempt(@PathVariable("id") Long id) {
+        User student = getCurrentUser();
+        return ResponseEntity.ok(testService.requestReattempt(id, student.getId()));
+    }
+
+    @GetMapping("/admin/tests/reattempt-requests")
+    @PreAuthorize("hasRole('ADMIN')")
+    public ResponseEntity<List<com.chillcode.assessment.dto.StudentTestDto>> getPendingReattempts() {
+        return ResponseEntity.ok(testService.getPendingReattempts());
+    }
+
+    @PostMapping("/admin/tests/reattempt-requests/{studentTestId}/approve")
+    @PreAuthorize("hasRole('ADMIN')")
+    public ResponseEntity<com.chillcode.assessment.dto.StudentTestDto> approveReattempt(@PathVariable("studentTestId") Long studentTestId) {
+        return ResponseEntity.ok(testService.approveReattempt(studentTestId));
+    }
+
+    @PostMapping("/admin/tests/reattempt-requests/{studentTestId}/reject")
+    @PreAuthorize("hasRole('ADMIN')")
+    public ResponseEntity<com.chillcode.assessment.dto.StudentTestDto> rejectReattempt(@PathVariable("studentTestId") Long studentTestId) {
+        return ResponseEntity.ok(testService.rejectReattempt(studentTestId));
+    }
 }

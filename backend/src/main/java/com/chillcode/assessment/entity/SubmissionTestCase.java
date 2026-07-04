@@ -10,6 +10,7 @@ import lombok.*;
 @NoArgsConstructor
 @AllArgsConstructor
 @Builder
+@com.fasterxml.jackson.annotation.JsonIgnoreProperties({"hibernateLazyInitializer", "handler"})
 public class SubmissionTestCase {
 
     @Id
@@ -18,10 +19,12 @@ public class SubmissionTestCase {
 
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "submission_id", nullable = false)
+    @com.fasterxml.jackson.annotation.JsonIgnore
     private Submission submission;
 
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "test_case_id", nullable = false)
+    @com.fasterxml.jackson.annotation.JsonIgnore
     private TestCase testCase;
 
     @Column(nullable = false, length = 30)

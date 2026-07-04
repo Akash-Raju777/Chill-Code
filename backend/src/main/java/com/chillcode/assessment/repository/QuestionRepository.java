@@ -8,4 +8,5 @@ import java.util.List;
 @Repository
 public interface QuestionRepository extends JpaRepository<Question, Long> {
     List<Question> findBySubjectId(Long subjectId);
+    java.util.Optional<Question> findBySubjectIdAndTitle(Long subjectId, String title);
 }
