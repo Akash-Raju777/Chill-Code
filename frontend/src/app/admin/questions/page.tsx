@@ -25,8 +25,6 @@ interface Question {
   constraints?: string;
   inputFormat?: string;
   outputFormat?: string;
-  marks: number;
-  negativeMarks: number;
   allowedLanguages: string;
   tags?: string;
   testCases: TestCase[];
@@ -57,8 +55,7 @@ export default function QuestionManagement() {
   const [constraints, setConstraints] = useState('');
   const [inputFormat, setInputFormat] = useState('');
   const [outputFormat, setOutputFormat] = useState('');
-  const [marks, setMarks] = useState(10);
-  const [negativeMarks, setNegativeMarks] = useState(0);
+
   const [allowedLangs, setAllowedLangs] = useState({
     java: true,
     python: true,
@@ -115,8 +112,7 @@ export default function QuestionManagement() {
     setConstraints('');
     setInputFormat('');
     setOutputFormat('');
-    setMarks(10);
-    setNegativeMarks(0);
+
     setAllowedLangs({ java: true, python: true, cpp: false, c: false, javascript: false });
     setTags('');
     setTestCases([{ inputData: '', expectedOutput: '', isHidden: false }]);
@@ -132,8 +128,6 @@ export default function QuestionManagement() {
     setConstraints(q.constraints || '');
     setInputFormat(q.inputFormat || '');
     setOutputFormat(q.outputFormat || '');
-    setMarks(q.marks);
-    setNegativeMarks(q.negativeMarks || 0);
     setTags(q.tags || '');
     setTestCases(q.testCases || []);
     
@@ -190,8 +184,7 @@ export default function QuestionManagement() {
       constraints,
       inputFormat,
       outputFormat,
-      marks,
-      negativeMarks,
+
       allowedLanguages: langsStr,
       tags,
       testCases,
@@ -339,8 +332,6 @@ export default function QuestionManagement() {
                     <h3 className="font-bold text-white text-lg">{q.title}</h3>
                   </div>
                   <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-gray-500 mt-2">
-                    <span>Marks: <strong className="text-white">{q.marks}</strong></span>
-                    <span>Penalty: <strong className="text-white">{q.negativeMarks}</strong></span>
                     <span>Allowed: <strong className="text-white capitalize">{q.allowedLanguages.replaceAll(',', ', ')}</strong></span>
                   </div>
                 </div>
@@ -453,27 +444,7 @@ export default function QuestionManagement() {
 
           {/* Configuration constraints */}
           <div className="grid grid-cols-2 md:grid-cols-3 gap-4 border-t border-white/5 pt-6">
-            <div>
-              <label className="block text-xs font-semibold text-gray-400 uppercase mb-1">Marks</label>
-              <input
-                type="number"
-                required
-                className="w-full glass-input p-3 rounded-xl text-sm"
-                value={marks}
-                onChange={(e) => setMarks(Number(e.target.value))}
-              />
-            </div>
-            <div>
-              <label className="block text-xs font-semibold text-gray-400 uppercase mb-1">Negative Marks</label>
-              <input
-                type="number"
-                required
-                className="w-full glass-input p-3 rounded-xl text-sm"
-                value={negativeMarks}
-                onChange={(e) => setNegativeMarks(Number(e.target.value))}
-              />
-            </div>
-            <div className="col-span-2 md:col-span-1">
+            <div className="col-span-2 md:col-span-3">
               <label className="block text-xs font-semibold text-gray-400 uppercase mb-1">Tags</label>
               <input
                 type="text"

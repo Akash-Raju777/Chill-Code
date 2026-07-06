@@ -73,9 +73,11 @@ public class TestController {
     }
 
     @PostMapping("/student/tests/{id}/submit")
-    public ResponseEntity<com.chillcode.assessment.dto.StudentTestDto> submitTest(@PathVariable("id") Long id) {
+    public ResponseEntity<com.chillcode.assessment.dto.StudentTestDto> submitTest(
+            @PathVariable("id") Long id,
+            @RequestBody(required = false) java.util.Map<String, java.util.Map<String, String>> questionCodes) {
         User student = getCurrentUser();
-        return ResponseEntity.ok(testService.submitTestDto(id, student.getId()));
+        return ResponseEntity.ok(testService.submitTestDto(id, student.getId(), questionCodes));
     }
 
     @PostMapping("/student/tests/{id}/warning")
@@ -88,9 +90,11 @@ public class TestController {
     }
 
     @PostMapping("/student/tests/{id}/request-reattempt")
-    public ResponseEntity<com.chillcode.assessment.dto.StudentTestDto> requestReattempt(@PathVariable("id") Long id) {
+    public ResponseEntity<com.chillcode.assessment.dto.StudentTestDto> requestReattempt(
+            @PathVariable("id") Long id,
+            @RequestParam("questionId") Long questionId) {
         User student = getCurrentUser();
-        return ResponseEntity.ok(testService.requestReattempt(id, student.getId()));
+        return ResponseEntity.ok(testService.requestReattempt(id, student.getId(), questionId));
     }
 
     @GetMapping("/admin/tests/reattempt-requests")

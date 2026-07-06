@@ -35,11 +35,6 @@ public class Question {
     @Column(name = "output_format", columnDefinition = "TEXT")
     private String outputFormat;
 
-    private Integer marks = 10;
-
-    @Column(name = "negative_marks")
-    private Integer negativeMarks = 0;
-
     @Column(name = "allowed_languages", columnDefinition = "TEXT")
     private String allowedLanguages; // Comma-separated: java,python,cpp,c,javascript
 
@@ -62,7 +57,7 @@ public class Question {
     public Question() {}
 
     public Question(Long id, Subject subject, String title, Difficulty difficulty, String problemStatement, 
-                    String constraints, String inputFormat, String outputFormat, Integer marks, Integer negativeMarks, 
+                    String constraints, String inputFormat, String outputFormat, 
                     String allowedLanguages, String tags, List<TestCase> testCases, List<Submission> submissions, LocalDateTime createdAt) {
         this.id = id;
         this.subject = subject;
@@ -72,8 +67,6 @@ public class Question {
         this.constraints = constraints;
         this.inputFormat = inputFormat;
         this.outputFormat = outputFormat;
-        this.marks = marks;
-        this.negativeMarks = negativeMarks;
         this.allowedLanguages = allowedLanguages;
         this.tags = tags;
         this.testCases = testCases;
@@ -108,11 +101,7 @@ public class Question {
 
 
 
-    public Integer getMarks() { return marks; }
-    public void setMarks(Integer marks) { this.marks = marks; }
 
-    public Integer getNegativeMarks() { return negativeMarks; }
-    public void setNegativeMarks(Integer negativeMarks) { this.negativeMarks = negativeMarks; }
 
     public String getAllowedLanguages() { return allowedLanguages; }
     public void setAllowedLanguages(String allowedLanguages) { this.allowedLanguages = allowedLanguages; }
@@ -142,8 +131,6 @@ public class Question {
         private String constraints;
         private String inputFormat;
         private String outputFormat;
-        private Integer marks = 10;
-        private Integer negativeMarks = 0;
         private String allowedLanguages;
         private String tags;
         private List<TestCase> testCases;
@@ -158,8 +145,7 @@ public class Question {
         public QuestionBuilder constraints(String constraints) { this.constraints = constraints; return this; }
         public QuestionBuilder inputFormat(String inputFormat) { this.inputFormat = inputFormat; return this; }
         public QuestionBuilder outputFormat(String outputFormat) { this.outputFormat = outputFormat; return this; }
-        public QuestionBuilder marks(Integer marks) { this.marks = marks; return this; }
-        public QuestionBuilder negativeMarks(Integer negativeMarks) { this.negativeMarks = negativeMarks; return this; }
+
         public QuestionBuilder allowedLanguages(String allowedLanguages) { this.allowedLanguages = allowedLanguages; return this; }
         public QuestionBuilder tags(String tags) { this.tags = tags; return this; }
         public QuestionBuilder testCases(List<TestCase> testCases) { this.testCases = testCases; return this; }
@@ -168,7 +154,7 @@ public class Question {
 
         public Question build() {
             return new Question(id, subject, title, difficulty, problemStatement, constraints, inputFormat, outputFormat, 
-                                marks, negativeMarks, allowedLanguages, tags, testCases, submissions, 
+                                allowedLanguages, tags, testCases, submissions, 
                                 createdAt != null ? createdAt : LocalDateTime.now());
         }
     }

@@ -18,6 +18,14 @@ public class SubmissionResultDto {
     private String stderr;
     private Integer exitCode;
     private String aiExplanation;
+    
+    // New fields for judging metrics
+    private Integer passedTests;
+    private Integer totalTests;
+    private String expectedOutput;
+    private String actualOutput;
+    private Integer failedTestCaseNumber;
+    private String judge0Status;
 }
 
 

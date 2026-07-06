@@ -32,6 +32,7 @@ interface TestState {
   timeLeftSeconds: number;
   isSessionActive: boolean;
   isViewMode: boolean;
+  securityShieldEnabled: boolean;
 
   startTestSession: (
     testId: number,
@@ -39,7 +40,8 @@ interface TestState {
     testName: string,
     questions: Question[],
     durationMinutes: number,
-    isViewMode?: boolean
+    isViewMode?: boolean,
+    securityShieldEnabled?: boolean
   ) => void;
   setActiveQuestionIndex: (index: number) => void;
   updateCode: (questionId: number, code: string) => void;
@@ -59,8 +61,9 @@ export const useTestStore = create<TestState>((set) => ({
   timeLeftSeconds: 0,
   isSessionActive: false,
   isViewMode: false,
+  securityShieldEnabled: false,
 
-  startTestSession: (testId, studentTestId, testName, questions, durationMinutes, isViewMode = false) => {
+  startTestSession: (testId, studentTestId, testName, questions, durationMinutes, isViewMode = false, securityShieldEnabled = false) => {
     // Initial codes and languages mapping
     const codes: Record<number, string> = {};
     const languages: Record<number, string> = {};
@@ -83,6 +86,7 @@ export const useTestStore = create<TestState>((set) => ({
       timeLeftSeconds: durationMinutes * 60,
       isSessionActive: true,
       isViewMode,
+      securityShieldEnabled,
     });
   },
 
@@ -118,5 +122,6 @@ export const useTestStore = create<TestState>((set) => ({
     timeLeftSeconds: 0,
     isSessionActive: false,
     isViewMode: false,
+    securityShieldEnabled: false,
   }),
 }));

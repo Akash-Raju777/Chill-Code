@@ -13,17 +13,7 @@ export function useExamSecurity({ testId, onWarning, isSessionActive }: Security
   useEffect(() => {
     if (!isSessionActive) return;
 
-    // 1. Enter Fullscreen automatically
-    const enterFullscreen = async () => {
-      try {
-        if (!document.fullscreenElement) {
-          await document.documentElement.requestFullscreen();
-        }
-      } catch (err) {
-        console.error('Failed to auto enter fullscreen', err);
-      }
-    };
-    enterFullscreen();
+
 
     // 2. Block Keyboard shortcuts (Ctrl+C, Ctrl+V, Ctrl+X, Inspect tools F12/Ctrl+Shift+I, View source Ctrl+U)
     const handleKeyDown = (e: KeyboardEvent) => {

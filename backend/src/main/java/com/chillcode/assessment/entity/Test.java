@@ -50,6 +50,10 @@ public class Test {
     @Column(name = "negative_marking")
     private Boolean negativeMarking = false;
 
+    @Column(name = "security_shield_enabled")
+    @Builder.Default
+    private Boolean securityShieldEnabled = false;
+
     @ManyToMany(fetch = FetchType.LAZY)
     @JoinTable(
         name = "test_questions",

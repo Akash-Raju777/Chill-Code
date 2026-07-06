@@ -68,14 +68,15 @@ public class SubmissionController {
         }
         
         response.setAiHint(result.getAiExplanation());
+        response.setTestCaseResults(result.getTestCaseResults());
         return ResponseEntity.ok(response);
     }
 
     @GetMapping("/submissions/solved")
-    public ResponseEntity<List<Long>> getSolvedQuestionIds() {
+    public ResponseEntity<List<String>> getSolvedQuestionIds() {
         com.chillcode.assessment.entity.User student = getCurrentUser();
-        List<Long> solvedIds = submissionRepository.findSolvedQuestionIdsByStudentId(student.getId());
-        return ResponseEntity.ok(solvedIds);
+        List<String> solvedPairs = submissionRepository.findSolvedTestQuestionPairsByStudentId(student.getId());
+        return ResponseEntity.ok(solvedPairs);
     }
 
     @GetMapping("/submissions/test/{studentTestId}/question/{questionId}")

@@ -12,7 +12,7 @@ interface Subject {
 interface Question {
   id: number;
   title: string;
-  marks: number;
+  difficulty: string;
 }
 
 interface Test {
@@ -113,9 +113,7 @@ export default function TestManagement() {
       shuffleQuestions,
       autoSubmit,
       negativeMarking,
-      maxMarks: questions
-        .filter((q) => selectedQuestionIds.includes(q.id))
-        .reduce((sum, q) => sum + q.marks, 0),
+      maxMarks: selectedQuestionIds.length * 10,
     };
 
     try {
@@ -270,7 +268,7 @@ export default function TestManagement() {
                         checked={selectedQuestionIds.includes(q.id)}
                         onChange={() => handleToggleQuestion(q.id)}
                       />
-                      <span>{q.title} ({q.marks} pts)</span>
+                      <span>{q.title}</span>
                     </label>
                   ))}
                   {questions.length === 0 && (

@@ -256,7 +256,7 @@ export default function SubjectManagement() {
                   </div>
                   <div className="bg-[#0b0c10] border border-white/5 p-4 rounded-xl">
                     <div className="text-[10px] text-gray-500 font-bold uppercase">Average Score</div>
-                    <div className="text-lg font-black text-white mt-1">{subjectStats.avgScore} pts</div>
+                    <div className="text-lg font-black text-white mt-1">{subjectStats.avgScore}</div>
                   </div>
                   <div className="bg-[#0b0c10] border border-white/5 p-4 rounded-xl">
                     <div className="text-[10px] text-gray-500 font-bold uppercase">Rank Holder</div>

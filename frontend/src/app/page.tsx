@@ -215,6 +215,7 @@ export default function LoginPage() {
                     className="w-full glass-input py-3 pl-10 pr-4 rounded-xl text-sm"
                     value={name}
                     onChange={(e) => setName(e.target.value)}
+                    suppressHydrationWarning
                   />
                 </div>
               </div>
@@ -233,6 +234,7 @@ export default function LoginPage() {
                     className="w-full glass-input py-3 pl-10 pr-4 rounded-xl text-sm"
                     value={email}
                     onChange={(e) => setEmail(e.target.value)}
+                    suppressHydrationWarning
                   />
                 </div>
               </div>
@@ -250,6 +252,7 @@ export default function LoginPage() {
                     className="w-full glass-input py-3 pl-10 pr-4 rounded-xl text-sm"
                     value={phone}
                     onChange={(e) => setPhone(e.target.value)}
+                    suppressHydrationWarning
                   />
                 </div>
               </div>
@@ -280,6 +283,7 @@ export default function LoginPage() {
                     setIdentifier(e.target.value);
                   }
                 }}
+                suppressHydrationWarning
               />
             </div>
           </div>
@@ -299,6 +303,7 @@ export default function LoginPage() {
                 className="w-full glass-input py-3 pl-10 pr-4 rounded-xl text-sm"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
+                suppressHydrationWarning
               />
             </div>
           </div>

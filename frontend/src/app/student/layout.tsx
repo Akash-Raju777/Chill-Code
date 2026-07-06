@@ -29,8 +29,9 @@ export default function StudentLayout({ children }: { children: React.ReactNode 
 
   const isSessionActive = useTestStore((s) => s.isSessionActive);
   const isViewMode = useTestStore((s) => s.isViewMode);
+  const securityShieldEnabled = useTestStore((s) => s.securityShieldEnabled);
 
-  const isSecurityActive = isSessionActive && !isViewMode && user?.status === 'ACTIVE';
+  const isSecurityActive = isSessionActive && !isViewMode && user?.status === 'ACTIVE' && securityShieldEnabled;
   const setUser = useAuthStore((s) => s.setUser);
 
   useEffect(() => {

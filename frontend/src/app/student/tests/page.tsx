@@ -27,6 +27,7 @@ interface Test {
   endTime: string;
   maxMarks: number;
   instructions: string;
+  securityShieldEnabled?: boolean;
   subject: {
     id: number;
     name: string;
@@ -43,6 +44,8 @@ interface StudentTest {
   test: Test;
   submittedAt?: string;
   startedAt?: string;
+  reattemptStatus?: string | null;
+  reattemptQuestionId?: number | null;
 }
 
 export default function TestsWorkspace() {
@@ -51,7 +54,7 @@ export default function TestsWorkspace() {
   const [studentTests, setStudentTests] = useState<StudentTest[]>([]);
   const [questionsList, setQuestionsList] = useState<any[]>([]);
   const [subjects, setSubjects] = useState<any[]>([]);
-  const [solvedQuestionIds, setSolvedQuestionIds] = useState<number[]>([]);
+  const [solvedQuestionIds, setSolvedQuestionIds] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [selectedTest, setSelectedTest] = useState<StudentTest | null>(null);
@@ -117,7 +120,7 @@ export default function TestsWorkspace() {
   const handleStartQuestionAttempt = (q: any) => {
     const associatedTest = getAssociatedTest(q.subjectId);
     if (associatedTest) {
-      if (associatedTest.status === 'SUBMITTED' || associatedTest.status === 'EVALUATED') {
+      if ((associatedTest.status === 'SUBMITTED' || associatedTest.status === 'EVALUATED') && q.status === 'COMPLETED') {
         handleViewQuestionAttempt(q);
         return;
       }
@@ -139,18 +142,19 @@ export default function TestsWorkspace() {
         q.title,
         [q],
         0,
-        true // isViewMode = true
+        true, // isViewMode = true
+        associatedTest.test.securityShieldEnabled ?? false
       );
-      router.push(`/student/tests/${associatedTest.test.id}`);
+      router.push(`/student/tests/${associatedTest.test.id}?question=${q.id}`);
     } catch (err: any) {
       setError(err.message || 'Failed to enter view mode.');
     }
   };
 
-  const handleRequestReattempt = async (testId: number) => {
-    if (!confirm('Are you sure you want to request another attempt from the admin? This will let you write the test again once approved.')) return;
+  const handleRequestReattempt = async (testId: number, questionId: number) => {
+    if (!confirm('Are you sure you want to request another attempt from the admin? This will let you write this problem again once approved.')) return;
     try {
-      await apiCall(`/api/student/tests/${testId}/request-reattempt`, {
+      await apiCall(`/api/student/tests/${testId}/request-reattempt?questionId=${questionId}`, {
         method: 'POST',
       });
       alert('Your reattempt request has been submitted to the admin successfully.');
@@ -160,17 +164,37 @@ export default function TestsWorkspace() {
     }
   };
 
+  const handleAnotherAttempt = async (questionId: number) => {
+    if (!confirm('Are you sure you want to attempt this question again? Only this question will be reset.')) return;
+    try {
+      await apiCall(`/api/student/question/${questionId}/another-attempt`, {
+        method: 'POST',
+      });
+      setQuestionsList((prev) =>
+        prev.map((q) =>
+          q.id === questionId
+            ? { ...q, status: 'NOT_COMPLETED' }
+            : q
+        )
+      );
+    } catch (err: any) {
+      alert(err.message || 'Failed to request another attempt.');
+    }
+  };
+
   const confirmStart = async () => {
     if (!selectedTest || !selectedQuestion) return;
     try {
-      // Auto fullscreen request on interaction gesture
-      try {
-        const docEl = document.documentElement;
-        if (docEl.requestFullscreen) {
-          await docEl.requestFullscreen();
+      // Auto fullscreen request on interaction gesture only if security shield is enabled
+      if (selectedTest.test.securityShieldEnabled) {
+        try {
+          const docEl = document.documentElement;
+          if (docEl.requestFullscreen) {
+            await docEl.requestFullscreen();
+          }
+        } catch (fsErr) {
+          console.warn("Fullscreen request was rejected/unsupported", fsErr);
         }
-      } catch (fsErr) {
-        console.warn("Fullscreen request was rejected/unsupported", fsErr);
       }
 
       const updatedSt = await apiCall(`/api/student/tests/${selectedTest.test.id}/start`, {
@@ -184,11 +208,12 @@ export default function TestsWorkspace() {
         selectedQuestion.title,
         [selectedQuestion],
         selectedTest.test.durationMinutes,
-        false // isViewMode = false
+        false, // isViewMode = false
+        selectedTest.test.securityShieldEnabled ?? false
       );
 
       setShowConfirmModal(false);
-      router.push(`/student/tests/${selectedTest.test.id}`);
+      router.push(`/student/tests/${selectedTest.test.id}?question=${selectedQuestion.id}`);
     } catch (err: any) {
       setError(err.message || 'Failed to start test session.');
       setShowConfirmModal(false);
@@ -211,9 +236,7 @@ export default function TestsWorkspace() {
 
     const matchesSubject = subjectFilter === 'ALL' || q.subjectId === subjectFilter;
 
-    const associatedTest = getAssociatedTest(q.subjectId);
-    const isSubmitted = associatedTest ? (associatedTest.status === 'SUBMITTED' || associatedTest.status === 'EVALUATED') : false;
-    const isSolved = solvedQuestionIds.includes(q.id) || isSubmitted;
+    const isSolved = q.status === 'COMPLETED';
     const matchesSolved = !hideSolved || !isSolved;
 
     return matchesSearch && matchesDifficulty && matchesSubject && matchesSolved;
@@ -232,17 +255,14 @@ export default function TestsWorkspace() {
     const matchesDifficulty = difficultyFilter === 'ALL' || q.difficulty === difficultyFilter;
     const matchesSubject = subjectFilter === 'ALL' || q.subjectId === subjectFilter;
 
-    const associatedTest = getAssociatedTest(q.subjectId);
-    const isSubmitted = associatedTest ? (associatedTest.status === 'SUBMITTED' || associatedTest.status === 'EVALUATED') : false;
-    const isSolved = solvedQuestionIds.includes(q.id) || isSubmitted;
+    const isSolved = q.status === 'COMPLETED';
 
     return matchesSearch && matchesDifficulty && matchesSubject && isSolved;
   });
 
   const notCompletedQuestions = filteredQuestions.filter((q) => {
-    const associatedTest = getAssociatedTest(q.subjectId);
-    const isSubmitted = associatedTest ? (associatedTest.status === 'SUBMITTED' || associatedTest.status === 'EVALUATED') : false;
-    return !solvedQuestionIds.includes(q.id) && !isSubmitted;
+    const isSolved = q.status === 'COMPLETED';
+    return !isSolved;
   });
 
   const renderQuestionsTable = (list: any[], isCompletedTable: boolean) => {
@@ -264,7 +284,6 @@ export default function TestsWorkspace() {
                 <th className="p-4">Problem Name</th>
                 <th className="p-4 w-32">Difficulty</th>
                 <th className="p-4">Tags</th>
-                <th className="p-4 w-28 text-center">Points</th>
                 <th className="p-4 w-40 text-center">Last Attempt</th>
                 {isCompletedTable && <th className="p-4 w-40 text-center">Solved Time</th>}
                 <th className="p-4 w-36 pr-6 text-right">Action</th>
@@ -273,32 +292,27 @@ export default function TestsWorkspace() {
             <tbody className="divide-y divide-white/5 text-xs text-gray-400">
               {list.map((q) => {
                 const associatedTest = getAssociatedTest(q.subjectId);
-                const isSolved = solvedQuestionIds.includes(q.id);
+                const isSolved = q.status === 'COMPLETED';
                 const isSuspended = (associatedTest ? (associatedTest.isSuspended || associatedTest.status === 'SUSPENDED') : false) && user?.status === 'ACTIVE';
                 const isStarted = associatedTest ? associatedTest.status === 'STARTED' : false;
-                const isSubmitted = associatedTest ? (associatedTest.status === 'SUBMITTED' || associatedTest.status === 'EVALUATED') : false;
                 const subject = subjects.find((s) => s.id === q.subjectId);
                 const subjectName = subject ? subject.name : 'Unknown';
 
                 let statusStr = "Not Solved";
                 if (isSolved) statusStr = "Solved";
                 else if (isSuspended) statusStr = "Suspended";
-                else if (isSubmitted) statusStr = "Submitted";
                 else if (isStarted) statusStr = "In Progress";
 
                 let lastAttemptStr = "No attempt yet";
-                if (associatedTest) {
-                  const dateVal = associatedTest.submittedAt || associatedTest.startedAt;
-                  if (dateVal) {
-                    lastAttemptStr = new Date(dateVal).toLocaleDateString();
-                  } else {
-                    lastAttemptStr = isStarted ? "Active Session" : "Recent";
-                  }
+                if (q.lastAttemptAt) {
+                  lastAttemptStr = new Date(q.lastAttemptAt).toLocaleDateString();
+                } else if (associatedTest && isStarted) {
+                  lastAttemptStr = "Active Session";
                 }
 
                 let solvedTimeStr = "-";
-                if (isSolved && associatedTest && associatedTest.submittedAt) {
-                  solvedTimeStr = new Date(associatedTest.submittedAt).toLocaleString();
+                if (isSolved && q.lastAttemptAt) {
+                  solvedTimeStr = new Date(q.lastAttemptAt).toLocaleString();
                 }
 
                 return (
@@ -306,7 +320,7 @@ export default function TestsWorkspace() {
                     key={q.id} 
                     className="hover:bg-white/5 transition-all group cursor-pointer"
                     onClick={() => {
-                      if (isSolved || isSubmitted) {
+                      if (isSolved) {
                         handleViewQuestionAttempt(q);
                       } else if (!isSuspended) {
                         handleStartQuestionAttempt(q);
@@ -315,7 +329,7 @@ export default function TestsWorkspace() {
                   >
                     <td className="p-4 pl-6 text-center">
                       <div className="inline-flex items-center justify-center">
-                        {isSolved || isSubmitted ? (
+                        {isSolved ? (
                           <CheckCircle2 className="w-5 h-5 text-emerald-400 fill-emerald-400/5" />
                         ) : isSuspended ? (
                           <XCircle className="w-5 h-5 text-red-500 fill-red-500/5" />
@@ -336,6 +350,8 @@ export default function TestsWorkspace() {
                         </span>
                         <div className="text-[10px] text-gray-500 font-semibold flex items-center gap-1.5">
                           <span>{statusStr}</span>
+                          <span>•</span>
+                          <span>{subjectName}</span>
                         </div>
                       </div>
                     </td>
@@ -352,19 +368,12 @@ export default function TestsWorkspace() {
 
                     <td className="p-4">
                       <div className="flex gap-1.5 flex-wrap">
-                        <span className="px-2 py-0.5 rounded-lg bg-white/5 border border-white/5 text-[10px] font-semibold text-gray-400 capitalize">
-                          {subjectName}
-                        </span>
                         {q.tags && q.tags.split(',').map((tag: string) => (
                           <span key={tag} className="px-2 py-0.5 rounded-lg bg-white/5 border border-white/5 text-[10px] font-semibold text-gray-400">
                             {tag}
                           </span>
                         ))}
                       </div>
-                    </td>
-
-                    <td className="p-4 text-center text-white font-semibold">
-                      {q.marks} pts
                     </td>
 
                     <td className="p-4 text-center text-gray-500">
@@ -381,7 +390,7 @@ export default function TestsWorkspace() {
                       <button
                         onClick={(e) => {
                           e.stopPropagation();
-                          if (isSolved || isSubmitted) {
+                          if (isSolved) {
                             handleViewQuestionAttempt(q);
                           } else if (!isSuspended) {
                             handleStartQuestionAttempt(q);
@@ -389,40 +398,26 @@ export default function TestsWorkspace() {
                         }}
                         disabled={isSuspended}
                         className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all select-none ${
-                          isSolved || isSubmitted
+                          isSolved
                             ? 'bg-emerald-500/10 hover:bg-emerald-500/25 border border-emerald-500/20 text-emerald-400'
                             : isSuspended
                             ? 'bg-red-500/10 text-red-400 border border-red-500/10 cursor-not-allowed opacity-50'
                             : 'bg-[#7c3aed] hover:bg-[#8b5cf6] text-white shadow-md'
                         }`}
                       >
-                        {isSolved || isSubmitted ? 'View Attempt' : isSuspended ? 'Suspended' : 'Write Test'}
+                        {isSolved ? 'View Attempt' : isSuspended ? 'Suspended' : 'Write Test'}
                       </button>
 
-                      {isSubmitted && associatedTest && (
-                        <>
-                          {!associatedTest.reattemptStatus && (
-                            <button
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                handleRequestReattempt(associatedTest.test.id);
-                              }}
-                              className="px-3 py-1.5 rounded-lg text-xs font-bold bg-indigo-500/10 hover:bg-indigo-500/25 border border-indigo-500/20 text-indigo-400 transition-all select-none"
-                            >
-                              Another Attempt
-                            </button>
-                          )}
-                          {associatedTest.reattemptStatus === 'PENDING' && (
-                            <span className="px-2.5 py-1.5 rounded-lg text-[10px] font-bold bg-amber-500/10 text-amber-400 border border-amber-500/20 select-none">
-                              Pending Approval
-                            </span>
-                          )}
-                          {associatedTest.reattemptStatus === 'REJECTED' && (
-                            <span className="px-2.5 py-1.5 rounded-lg text-[10px] font-bold bg-rose-500/10 text-rose-400 border border-rose-500/20 select-none">
-                              Rejected
-                            </span>
-                          )}
-                        </>
+                      {isSolved && (
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleAnotherAttempt(q.id);
+                          }}
+                          className="px-3 py-1.5 rounded-lg text-xs font-bold bg-indigo-500/10 hover:bg-indigo-500/25 border border-indigo-500/20 text-indigo-400 transition-all select-none"
+                        >
+                          Another Attempt
+                        </button>
                       )}
                     </td>
                   </tr>
@@ -589,12 +584,22 @@ export default function TestsWorkspace() {
         <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
           <div className="w-full max-w-md bg-[#11131c] border border-white/10 p-6 rounded-2xl text-center shadow-2xl relative">
             <AlertCircle className="w-12 h-12 text-[#7c3aed] mx-auto mb-4" />
-            <h3 className="text-lg font-bold text-white mb-2">Initiate Coding Examination</h3>
+            <h3 className="text-lg font-bold text-white mb-2">
+              {selectedTest.test.securityShieldEnabled ? 'Initiate Coding Examination' : 'Start Practice Challenge'}
+            </h3>
             <p className="text-xs text-gray-400 mb-6 leading-relaxed">
               You are about to start <strong className="text-white">{selectedTest.test.name}</strong>.<br />
-              This exam has strict anti-cheating controls. 
-              <br /><br />
-              <strong className="text-red-400 font-semibold">Warning:</strong> Leaving full-screen mode, switching tabs, or opening developer tools will record warning logs. Accumulating 3 warnings will result in automatic submission and account suspension.
+              {selectedTest.test.securityShieldEnabled ? (
+                <>
+                  This exam has strict anti-cheating controls. 
+                  <br /><br />
+                  <strong className="text-red-400 font-semibold">Warning:</strong> Leaving full-screen mode, switching tabs, or opening developer tools will record warning logs. Accumulating 3 warnings will result in automatic submission and account suspension.
+                </>
+              ) : (
+                <>
+                  This is a practice environment. Feel free to reference documentation, copy/paste code snippets, and solve the problem at your own pace.
+                </>
+              )}
             </p>
             <div className="flex gap-3 justify-center">
               <button

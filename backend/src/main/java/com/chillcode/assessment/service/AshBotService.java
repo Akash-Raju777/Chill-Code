@@ -66,6 +66,7 @@ public class AshBotService {
             List<Map<String, String>> messages = new ArrayList<>();
             
             Map<String, String> systemMsg = new HashMap<>();
+            
             systemMsg.put("role", "system");
             systemMsg.put("content", systemInstructions);
             messages.add(systemMsg);
@@ -132,8 +133,8 @@ public class AshBotService {
             sb.append(String.format("Subject Name: %s (ID: %d)\n", sub.getName(), sub.getId()));
             List<Question> questions = questionRepository.findBySubjectId(sub.getId());
             for (Question q : questions) {
-                sb.append(String.format("  - Question ID: %d, Title: %s, Marks: %d, Difficulty: %s\n", 
-                        q.getId(), q.getTitle(), q.getMarks(), q.getDifficulty()));
+                sb.append(String.format("  - Question ID: %d, Title: %s, Difficulty: %s\n", 
+                        q.getId(), q.getTitle(), q.getDifficulty()));
             }
         }
         sb.append("\n");

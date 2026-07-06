@@ -5,6 +5,7 @@ import com.chillcode.assessment.dto.TestCaseDto;
 import com.chillcode.assessment.entity.Question;
 import com.chillcode.assessment.entity.Subject;
 import com.chillcode.assessment.entity.TestCase;
+import com.chillcode.assessment.entity.StudentQuestionStatus;
 import com.chillcode.assessment.repository.QuestionRepository;
 import com.chillcode.assessment.repository.SubjectRepository;
 import com.chillcode.assessment.repository.TestCaseRepository;
@@ -34,20 +35,28 @@ public class QuestionService {
     @Autowired
     private com.chillcode.assessment.repository.TestRepository testRepository;
 
+    @Autowired
+    private com.chillcode.assessment.repository.StudentQuestionStatusRepository studentQuestionStatusRepository;
+
+    @Autowired
+    private com.chillcode.assessment.repository.UserRepository userRepository;
+
     @jakarta.persistence.PersistenceContext
     private jakarta.persistence.EntityManager entityManager;
 
     public List<QuestionDto> getAllQuestions() {
         log.info("Repository Call: Load all questions from database");
+        java.util.Map<Long, StudentQuestionStatus> statusMap = getStatusMapForCurrentStudent();
         return questionRepository.findAll().stream()
-                .map(this::convertToDto)
+                .map(q -> convertToDto(q, statusMap))
                 .collect(Collectors.toList());
     }
 
     public List<QuestionDto> getQuestionsBySubject(Long subjectId) {
         log.info("Repository Call: Load questions for subject ID: {} from database", subjectId);
+        java.util.Map<Long, StudentQuestionStatus> statusMap = getStatusMapForCurrentStudent();
         return questionRepository.findBySubjectId(subjectId).stream()
-                .map(this::convertToDto)
+                .map(q -> convertToDto(q, statusMap))
                 .collect(Collectors.toList());
     }
 
@@ -55,7 +64,8 @@ public class QuestionService {
         log.info("Repository Call: Load question by ID: {} from database", id);
         Question question = questionRepository.findById(id)
                 .orElseThrow(() -> new RuntimeException("Question not found with id: " + id));
-        return convertToDto(question);
+        java.util.Map<Long, StudentQuestionStatus> statusMap = getStatusMapForCurrentStudent();
+        return convertToDto(question, statusMap);
     }
 
     @Transactional
@@ -79,8 +89,6 @@ public class QuestionService {
                 .constraints(questionDto.getConstraints())
                 .inputFormat(questionDto.getInputFormat())
                 .outputFormat(questionDto.getOutputFormat())
-                .marks(questionDto.getMarks())
-                .negativeMarks(questionDto.getNegativeMarks())
                 .allowedLanguages(questionDto.getAllowedLanguages())
                 .tags(questionDto.getTags())
                 .build();
@@ -130,8 +138,6 @@ public class QuestionService {
         question.setConstraints(questionDto.getConstraints());
         question.setInputFormat(questionDto.getInputFormat());
         question.setOutputFormat(questionDto.getOutputFormat());
-        question.setMarks(questionDto.getMarks());
-        question.setNegativeMarks(questionDto.getNegativeMarks());
         question.setAllowedLanguages(questionDto.getAllowedLanguages());
         question.setTags(questionDto.getTags());
 
@@ -218,6 +224,10 @@ public class QuestionService {
     }
 
     private QuestionDto convertToDto(Question question) {
+        return convertToDto(question, java.util.Collections.emptyMap());
+    }
+
+    private QuestionDto convertToDto(Question question, java.util.Map<Long, StudentQuestionStatus> statusMap) {
         List<TestCase> testCases = testCaseRepository.findByQuestionId(question.getId());
         List<TestCaseDto> tcDtos = testCases.stream()
                 .map(tc -> TestCaseDto.builder()
@@ -228,7 +238,7 @@ public class QuestionService {
                         .build())
                 .collect(Collectors.toList());
 
-        return QuestionDto.builder()
+        QuestionDto dto = QuestionDto.builder()
                 .id(question.getId())
                 .subjectId(question.getSubject().getId())
                 .title(question.getTitle())
@@ -237,11 +247,48 @@ public class QuestionService {
                 .constraints(question.getConstraints())
                 .inputFormat(question.getInputFormat())
                 .outputFormat(question.getOutputFormat())
-                .marks(question.getMarks())
-                .negativeMarks(question.getNegativeMarks())
                 .allowedLanguages(question.getAllowedLanguages())
                 .tags(question.getTags())
                 .testCases(tcDtos)
                 .build();
+
+        StudentQuestionStatus status = statusMap.get(question.getId());
+        if (status != null) {
+            dto.setStatus(status.getStatus());
+            dto.setAttemptCount(status.getAttemptCount());
+            dto.setLastAttemptAt(status.getLastAttemptAt() != null ? status.getLastAttemptAt().toString() : null);
+        } else {
+            dto.setStatus("NOT_COMPLETED");
+            dto.setAttemptCount(0);
+        }
+        return dto;
+    }
+
+    private java.util.Map<Long, StudentQuestionStatus> getStatusMapForCurrentStudent() {
+        try {
+            org.springframework.security.core.Authentication auth = org.springframework.security.core.context.SecurityContextHolder.getContext().getAuthentication();
+            if (auth == null) return java.util.Collections.emptyMap();
+            String identifier = auth.getName();
+            if (identifier == null || "anonymousUser".equals(identifier)) {
+                return java.util.Collections.emptyMap();
+            }
+            java.util.Optional<com.chillcode.assessment.entity.User> userOpt = userRepository.findByRegisterNumber(identifier);
+            if (userOpt.isEmpty()) {
+                userOpt = userRepository.findByUsername(identifier);
+            }
+            if (userOpt.isEmpty()) {
+                userOpt = userRepository.findByEmail(identifier);
+            }
+            if (userOpt.isPresent()) {
+                com.chillcode.assessment.entity.User student = userOpt.get();
+                if (student.getRole() == com.chillcode.assessment.entity.Role.STUDENT) {
+                    List<StudentQuestionStatus> statuses = studentQuestionStatusRepository.findByStudentId(student.getId());
+                    return statuses.stream().collect(Collectors.toMap(StudentQuestionStatus::getQuestionId, s -> s, (s1, s2) -> s1));
+                }
+            }
+        } catch (Exception e) {
+            log.warn("Failed to fetch student status map: {}", e.getMessage());
+        }
+        return java.util.Collections.emptyMap();
     }
 }

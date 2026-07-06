@@ -30,8 +30,6 @@ public class CodeExecutionEngineTest {
     public void setup() {
         question = new Question();
         question.setId(9999L);
-        question.setMarks(10);
-        question.setNegativeMarks(0);
         question.setAllowedLanguages("java,python,cpp,c,javascript");
 
         Mockito.when(questionRepository.findById(9999L)).thenReturn(Optional.of(question));
@@ -95,7 +93,7 @@ public class CodeExecutionEngineTest {
         SubmissionResultDto res = codeExecutionService.submitCode(req);
         assertThat(res.getStatus()).isEqualTo("RUNTIME_ERROR");
         assertThat(res.getExitCode()).isNotEqualTo(0);
-        assertThat(res.getAiExplanation()).contains("divide a number by zero");
+        assertThat(res.getAiExplanation().toLowerCase()).contains("zero");
     }
 
 

@@ -32,11 +32,33 @@ public class StudentService {
     @Autowired
     private com.chillcode.assessment.repository.UserRepository userRepository;
 
+    @Autowired
+    private com.chillcode.assessment.repository.TestRepository testRepository;
+
+    @Transactional
     public Map<String, Object> getStudentDashboardStats(Long studentId) {
+        com.chillcode.assessment.entity.User student = userRepository.findById(studentId)
+                .orElseThrow(() -> new RuntimeException("Student not found"));
+
+        List<com.chillcode.assessment.entity.Test> allTests = testRepository.findAll();
+        for (com.chillcode.assessment.entity.Test test : allTests) {
+            if (studentTestRepository.findByStudentIdAndTestId(studentId, test.getId()).isEmpty()) {
+                com.chillcode.assessment.entity.StudentTest st = com.chillcode.assessment.entity.StudentTest.builder()
+                        .student(student)
+                        .test(test)
+                        .status("ASSIGNED")
+                        .score(0)
+                        .warningsCount(0)
+                        .isSuspended(false)
+                        .build();
+                studentTestRepository.save(st);
+            }
+        }
+
         List<StudentTest> myTests = studentTestRepository.findByStudentId(studentId);
         
         long unattendedCount = myTests.stream()
-                .filter(st -> "ASSIGNED".equals(st.getStatus()))
+                .filter(st -> "ASSIGNED".equals(st.getStatus()) || "STARTED".equals(st.getStatus()))
                 .count();
 
         long completedCount = myTests.stream()

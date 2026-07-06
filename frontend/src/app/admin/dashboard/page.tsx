@@ -140,7 +140,7 @@ export default function AdminDashboard() {
     return (
       <div className="glass-panel p-6 rounded-xl border border-red-500/20 text-center space-y-4">
         <p className="text-red-400 font-semibold">{error}</p>
-        <button onClick={fetchMetrics} className="px-4 py-2 bg-indigo-600 rounded-lg text-white text-sm">
+        <button onClick={() => fetchMetrics()} className="px-4 py-2 bg-indigo-600 rounded-lg text-white text-sm">
           Try Again
         </button>
       </div>
@@ -167,7 +167,7 @@ export default function AdminDashboard() {
           <p className="text-sm text-gray-500">Realtime activity tracking and statistics</p>
         </div>
         <button 
-          onClick={fetchMetrics} 
+          onClick={() => fetchMetrics()} 
           className="flex items-center gap-2 px-4 py-2 border border-white/10 rounded-xl text-sm font-semibold hover:bg-white/5 transition-all text-white"
         >
           <RefreshCw className="w-4 h-4" />
@@ -242,8 +242,15 @@ export default function AdminDashboard() {
                 {reattemptRequests.map((req) => (
                   <div key={req.id} className="flex gap-3 text-sm p-3 rounded-lg bg-white/5 items-start justify-between">
                     <div className="flex-1">
-                      <div className="font-medium text-white">{req.test.name}</div>
-                      <p className="text-gray-400 text-xs mt-1">Requested by {req.studentName || 'Student'} ({req.studentRegisterNumber || 'N/A'})</p>
+                      <div className="font-medium text-white">
+                        {req.reattemptQuestionTitle || req.test.name} <span className="text-gray-500 font-normal">({req.test.subject?.name || req.test.name})</span>
+                      </div>
+                      <p className="text-gray-400 text-xs mt-1">
+                        Requested by <strong className="text-indigo-400">{req.studentName || 'Student'}</strong> ({req.studentRegisterNumber || 'N/A'})
+                      </p>
+                      <p className="text-gray-500 text-[10px] mt-0.5 font-semibold">
+                        Attempt #2 (Re-attempt Request)
+                      </p>
                     </div>
                     <div className="flex gap-2">
                       <button

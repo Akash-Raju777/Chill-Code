@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useEffect, useState, useRef } from 'react';
-import { useParams, useRouter } from 'next/navigation';
+import { useParams, useRouter, useSearchParams } from 'next/navigation';
 import { useTestStore } from '../../../../store/testStore';
 import { useAuthStore } from '../../../../store/authStore';
 import { useSecurityStore } from '../../../../store/securityStore';
@@ -26,7 +26,7 @@ import {
   Loader2, 
   CheckCircle, 
   XCircle,
-  Settings as GearIcon,
+  Type as FontSizeIcon,
   Moon,
   RotateCcw,
   ChevronUp,
@@ -38,8 +38,10 @@ import Link from 'next/link';
 
 export default function CodingWorkspace() {
   const params = useParams();
+  const searchParams = useSearchParams();
   const router = useRouter();
   const testId = Number(params.id);
+  const questionIdParam = searchParams.get('question');
 
   const activeTestName = useTestStore((s) => s.activeTestName);
   const questions = useTestStore((s) => s.questions);
@@ -48,8 +50,9 @@ export default function CodingWorkspace() {
   const languages = useTestStore((s) => s.languages);
   const isSessionActive = useTestStore((s) => s.isSessionActive);
   const isViewMode = useTestStore((s) => s.isViewMode);
+  const activeStudentTestId = useTestStore((s) => s.activeStudentTestId);
   const user = useAuthStore((s) => s.user);
-  const isSecurityStatusActive = user?.status === 'ACTIVE';
+
   const setActiveQuestionIndex = useTestStore((s) => s.setActiveQuestionIndex);
   const updateCode = useTestStore((s) => s.updateCode);
   const updateLanguage = useTestStore((s) => s.updateLanguage);
@@ -84,6 +87,9 @@ export default function CodingWorkspace() {
   const [fontSize, setFontSize] = useState(14);
   const [customInput, setCustomInput] = useState('');
   const [consoleTab, setConsoleTab] = useState<'TESTCASE' | 'RESULT'>('TESTCASE');
+  const [securityShieldEnabled, setSecurityShieldEnabled] = useState(true);
+  const [submittingExam, setSubmittingExam] = useState(false);
+  const isSecurityStatusActive = user?.status === 'ACTIVE' && securityShieldEnabled;
 
   const setUser = useAuthStore((s) => s.setUser);
 
@@ -93,20 +99,35 @@ export default function CodingWorkspace() {
       .then((data) => {
         if (data) {
           setUser(data);
-          if (typeof window !== 'undefined' && !useTestStore.getState().isViewMode && data.status === 'ACTIVE') {
-            // Delay fullscreen check slightly to allow transition animation to finish
-            const timer = setTimeout(() => {
-              if (!document.fullscreenElement) {
-                setFullscreenRequired(true);
-              }
-            }, 1000);
-          }
         }
       })
       .catch((err) => {
         console.error('Failed to sync student user profile on workspace mount', err);
       });
   }, [setUser]);
+
+  useEffect(() => {
+    if (!mounted) return;
+    apiCall('/api/student/tests')
+      .then((tests) => {
+        const activeTest = tests.find((st: any) => st.test.id === testId);
+        if (activeTest) {
+          const isEnabled = activeTest.test.securityShieldEnabled ?? false;
+          setSecurityShieldEnabled(isEnabled);
+          
+          // Auto enter fullscreen only if security shield is enabled
+          if (isEnabled && typeof window !== 'undefined' && !useTestStore.getState().isViewMode && user?.status === 'ACTIVE') {
+            const timer = setTimeout(() => {
+              if (!document.fullscreenElement) {
+                setFullscreenRequired(true);
+              }
+            }, 1000);
+            return () => clearTimeout(timer);
+          }
+        }
+      })
+      .catch((err) => console.error('Failed to sync security shield status', err));
+  }, [mounted, testId, user]);
 
   // Auto-restore test session state on direct URL loads/reloads
   useEffect(() => {
@@ -134,6 +155,15 @@ export default function CodingWorkspace() {
         const allQuestions = await apiCall(`/api/student/subjects/${subjectId}/questions`);
 
         if (allQuestions && allQuestions.length > 0) {
+          let targetQuestions = allQuestions;
+          if (questionIdParam) {
+            const qId = Number(questionIdParam);
+            targetQuestions = allQuestions.filter((q: any) => q.id === qId);
+            if (targetQuestions.length === 0) {
+              targetQuestions = [allQuestions[0]];
+            }
+          }
+
           // Calculate remaining time
           const totalSeconds = activeTest.test.durationMinutes * 60;
           let remainingSeconds = totalSeconds;
@@ -146,10 +176,11 @@ export default function CodingWorkspace() {
           startTestSession(
             activeTest.test.id,
             activeTest.id,
-            allQuestions[0].title,
-            allQuestions,
+            targetQuestions[0]?.title || '',
+            targetQuestions,
             remainingSeconds / 60,
-            activeTest.status === 'SUBMITTED' || activeTest.status === 'EVALUATED'
+            activeTest.status === 'SUBMITTED' || activeTest.status === 'EVALUATED',
+            activeTest.test.securityShieldEnabled ?? false
           );
         } else {
           router.push('/student/tests');
@@ -165,42 +196,44 @@ export default function CodingWorkspace() {
 
   // Set up Timer interval (without subscribing to time changes here to avoid re-renders)
   useEffect(() => {
-    if (!mounted || !isSessionActive) return;
+    if (!mounted || !isSessionActive || isViewMode) return;
     const interval = setInterval(() => {
       decrementTime();
     }, 1000);
 
     return () => clearInterval(interval);
-  }, [mounted, isSessionActive, decrementTime]);
+  }, [mounted, isSessionActive, isViewMode, decrementTime]);
 
   // Check Timer finish -> Auto submit (using transient subscriber to avoid re-rendering workspace)
   useEffect(() => {
-    if (!mounted) return;
+    if (!mounted || isViewMode) return;
     const unsubscribe = useTestStore.subscribe(
       (state) => {
-        if (state.isSessionActive && state.timeLeftSeconds === 0) {
+        if (!state.isViewMode && state.isSessionActive && state.timeLeftSeconds === 0) {
           handleAutoSubmit();
         }
       }
     );
     return () => unsubscribe();
-  }, [mounted, isSessionActive]);
+  }, [mounted, isSessionActive, isViewMode]);
 
   // Fetch submissions history
   const currentQuestion = questions && questions[activeQuestionIndex];
   
   const fetchSubmissionsHistory = async () => {
-    if (!currentQuestion || !useTestStore.getState().activeStudentTestId) return;
+    if (!currentQuestion || !activeStudentTestId) return;
     try {
-      const data = await apiCall(`/api/student/submissions/test/${useTestStore.getState().activeStudentTestId}/question/${currentQuestion.id}`);
+      const data = await apiCall(`/api/student/submissions/test/${activeStudentTestId}/question/${currentQuestion.id}`);
       setSubmissionsHistory(data || []);
       
-      // In view mode, populate the editor with the latest submission code if empty
-      if (useTestStore.getState().isViewMode && data && data.length > 0 && !codes[currentQuestion.id]) {
-        updateCode(currentQuestion.id, data[0].code);
-        if (data[0].language) {
-          updateLanguage(currentQuestion.id, data[0].language);
-        }
+      // In view mode, populate the editor with the latest submission code (sorted descending by id)
+      const currentIsViewMode = useTestStore.getState().isViewMode;
+      if (currentIsViewMode && data && data.length > 0) {
+        const sortedData = [...data].sort((a: any, b: any) => b.id - a.id);
+        const latestCode = sortedData[0].code || '';
+        const latestLang = sortedData[0].language || 'java';
+        updateCode(currentQuestion.id, latestCode);
+        updateLanguage(currentQuestion.id, latestLang);
       }
     } catch (e) {
       console.error(e);
@@ -209,7 +242,7 @@ export default function CodingWorkspace() {
 
   useEffect(() => {
     fetchSubmissionsHistory();
-  }, [activeQuestionIndex]);
+  }, [activeQuestionIndex, activeStudentTestId, questions]);
 
   useEffect(() => {
     if (mounted && currentQuestion && !isViewMode && !codes[currentQuestion.id]) {
@@ -230,32 +263,60 @@ export default function CodingWorkspace() {
   };
 
   const handleAutoSubmit = async () => {
+    setSubmittingExam(true);
     try {
-      await apiCall(`/api/student/tests/${testId}/submit`, { method: 'POST' });
+      const questionCodes: Record<string, { code: string; language: string }> = {};
+      Object.keys(codes).forEach((qId) => {
+        questionCodes[qId] = {
+          code: codes[Number(qId)],
+          language: languages[Number(qId)] || 'java',
+        };
+      });
+
+      await apiCall(`/api/student/tests/${testId}/submit`, {
+        method: 'POST',
+        body: JSON.stringify(questionCodes),
+      });
       clearTestSession();
       resetWarnings();
       if (document.fullscreenElement) {
         document.exitFullscreen();
       }
       alert('Time is up! Your exam attempt has been auto-submitted.');
-      router.push('/student/tests');
+      router.push('/student/results');
     } catch (e) {
       console.error('Auto submit failed', e);
+    } finally {
+      setSubmittingExam(false);
     }
   };
 
   const handleManualSubmitExam = async () => {
     if (!confirm('Are you sure you want to finish and submit your exam?')) return;
+    setSubmittingExam(true);
     try {
-      await apiCall(`/api/student/tests/${testId}/submit`, { method: 'POST' });
+      const questionCodes: Record<string, { code: string; language: string }> = {};
+      Object.keys(codes).forEach((qId) => {
+        questionCodes[qId] = {
+          code: codes[Number(qId)],
+          language: languages[Number(qId)] || 'java',
+        };
+      });
+
+      await apiCall(`/api/student/tests/${testId}/submit`, {
+        method: 'POST',
+        body: JSON.stringify(questionCodes),
+      });
       clearTestSession();
       resetWarnings();
       if (document.fullscreenElement) {
         document.exitFullscreen();
       }
-      router.push('/student/tests');
+      router.push('/student/results');
     } catch (e) {
       alert('Failed to submit exam. Please try again.');
+    } finally {
+      setSubmittingExam(false);
     }
   };
 
@@ -299,12 +360,16 @@ export default function CodingWorkspace() {
     isSessionActive: isSessionActive && !isViewMode && isSecurityStatusActive && !isTestSuspended && !fullscreenRequired,
   });
 
-  const handleReEnterFullscreen = async () => {
+  const handleToggleFullscreen = async () => {
     try {
-      await document.documentElement.requestFullscreen();
-      setFullscreenRequired(false);
+      if (document.fullscreenElement) {
+        await document.exitFullscreen();
+      } else {
+        await document.documentElement.requestFullscreen();
+        setFullscreenRequired(false);
+      }
     } catch (e) {
-      console.error('Fullscreen re-entry failed', e);
+      console.error('Fullscreen toggle failed', e);
     }
   };
 
@@ -336,7 +401,7 @@ export default function CodingWorkspace() {
     };
 
     try {
-      const response = await apiCall('/api/student/submissions', {
+      const response = await apiCall(`/api/student/question/${currentQuestion.id}/submit`, {
         method: 'POST',
         body: JSON.stringify(payload),
       });
@@ -369,7 +434,7 @@ export default function CodingWorkspace() {
     };
 
     try {
-      const response = await apiCall('/api/student/submissions', {
+      const response = await apiCall(`/api/student/question/${currentQuestion.id}/submit`, {
         method: 'POST',
         body: JSON.stringify(payload),
       });
@@ -430,7 +495,7 @@ export default function CodingWorkspace() {
             This coding examination is locked inside full-screen view. You must return to fullscreen to resume writing your solution.
           </p>
           <button
-            onClick={handleReEnterFullscreen}
+            onClick={handleToggleFullscreen}
             className="px-6 py-2.5 bg-[#7c3aed] hover:bg-[#8b5cf6] rounded-xl text-sm w-full text-white font-bold tracking-wider shadow-lg"
           >
             Re-enter Fullscreen
@@ -463,98 +528,230 @@ export default function CodingWorkspace() {
 
     if (!execResult) {
       return (
-        <div className="text-gray-500 flex items-center justify-center py-8 font-sans">
-          Click 'Compile & Run' or 'Submit' to evaluate your solution.
+        <div className="text-gray-500 flex items-center justify-center py-12 font-sans select-none flex-col gap-2">
+          <Terminal className="w-8 h-8 text-gray-600 animate-pulse" />
+          <span>Click 'Compile & Run' or 'Submit' to evaluate your solution.</span>
         </div>
       );
     }
 
     const status = execResult.status;
+    const isAccepted = status === 'ACCEPTED' || status === 'FINISHED';
+    
+    // Status colors and text
+    let statusText = status;
+    let statusColor = "text-red-400 bg-red-500/10 border-red-500/20";
+    if (isAccepted) {
+      statusText = status === 'ACCEPTED' ? 'Accepted' : 'Finished';
+      statusColor = "text-emerald-400 bg-[#10b981]/10 border-[#10b981]/20";
+    } else if (status === 'COMPILATION_ERROR') {
+      statusText = 'Compilation Error';
+      statusColor = "text-amber-400 bg-amber-500/10 border-amber-500/20";
+    } else if (status === 'RUNTIME_ERROR') {
+      statusText = 'Runtime Error';
+      statusColor = "text-red-400 bg-red-500/10 border-red-500/20";
+    } else if (status === 'TIME_LIMIT_EXCEEDED') {
+      statusText = 'Time Limit Exceeded';
+      statusColor = "text-orange-400 bg-orange-500/10 border-orange-500/20";
+    } else if (status === 'MEMORY_LIMIT_EXCEEDED') {
+      statusText = 'Memory Limit Exceeded';
+      statusColor = "text-purple-400 bg-purple-500/10 border-purple-500/20";
+    } else if (status === 'WRONG_ANSWER') {
+      statusText = 'Wrong Answer';
+      statusColor = "text-red-400 bg-red-500/10 border-red-500/20";
+    }
+
+    // Extraction helper for statistics
+    const executionTime = execResult.executionTimeMs !== undefined ? execResult.executionTimeMs : execResult.runTimeMs;
+    const memoryUsed = execResult.memoryUsedKb !== undefined ? execResult.memoryUsedKb : execResult.memoryUsedKb;
+    const passedCount = execResult.passedTests !== undefined ? execResult.passedTests : 
+                        (execResult.testCaseResults ? execResult.testCaseResults.filter((tc: any) => tc.status === 'PASSED').length : 0);
+    const totalCount = execResult.totalTests !== undefined ? execResult.totalTests : 
+                       (execResult.testCaseResults ? execResult.testCaseResults.length : 0);
+    const failedCount = totalCount - passedCount;
 
     return (
-      <div className="space-y-4 font-sans text-xs">
-        {/* Overall Verdict Header */}
-        <div className="flex justify-between items-center p-3.5 rounded-xl border border-white/5 bg-[#11131c]">
-          <div className="flex items-center gap-2">
-            <span className="text-gray-500 uppercase font-bold tracking-wider text-[10px]">Verdict</span>
-            <span className={`font-bold px-2.5 py-0.5 rounded-full text-[10px] uppercase ${
-              status === 'ACCEPTED' ? 'bg-emerald-500/10 text-emerald-400' : 'bg-red-500/10 text-red-400'
-            }`}>
-              {status === 'ACCEPTED' ? 'Accepted' :
-               status === 'WRONG_ANSWER' ? 'Wrong Answer' :
-               status === 'COMPILATION_ERROR' ? 'Compilation Error' :
-               status === 'RUNTIME_ERROR' ? 'Runtime Error' :
-               status === 'TIME_LIMIT_EXCEEDED' ? 'Time Limit Exceeded' :
-               status === 'MEMORY_LIMIT_EXCEEDED' ? 'Memory Limit Exceeded' :
-               status}
+      <div className="space-y-4 font-sans text-xs pb-6">
+        {/* Main Verdict Header Card */}
+        <div className={`p-4 rounded-xl border ${statusColor} backdrop-blur-md flex items-center justify-between`}>
+          <div className="flex items-center gap-3">
+            {isAccepted ? (
+              <CheckCircle className="w-6 h-6 text-emerald-400" />
+            ) : (
+              <XCircle className="w-6 h-6 text-red-400" />
+            )}
+            <div>
+              <div className="text-[10px] text-gray-400 font-bold uppercase tracking-wider">Evaluation Verdict</div>
+              <div className="text-base font-extrabold font-sans tracking-tight">{statusText}</div>
+            </div>
+          </div>
+          {execResult.judge0Status && (
+            <div className="text-right">
+              <div className="text-[10px] text-gray-400 font-bold uppercase tracking-wider">Engine Status</div>
+              <div className="font-mono text-xs font-bold text-gray-300">{execResult.judge0Status}</div>
+            </div>
+          )}
+        </div>
+
+        {/* 4-Column Statistics Grid */}
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+          {/* Passed Cases */}
+          <div className="p-3 bg-[#11131c] border border-white/5 rounded-xl flex flex-col gap-1">
+            <span className="text-[10px] text-gray-400 uppercase font-bold tracking-wider">Passed Tests</span>
+            <span className="text-base font-extrabold text-emerald-400 font-mono">
+              {passedCount} / {totalCount}
+            </span>
+          </div>
+
+          {/* Failed Cases */}
+          <div className="p-3 bg-[#11131c] border border-white/5 rounded-xl flex flex-col gap-1">
+            <span className="text-[10px] text-gray-400 uppercase font-bold tracking-wider">Failed Tests</span>
+            <span className={`text-base font-extrabold font-mono ${failedCount > 0 ? 'text-red-400' : 'text-gray-400'}`}>
+              {failedCount}
+            </span>
+          </div>
+
+          {/* Run Time */}
+          <div className="p-3 bg-[#11131c] border border-white/5 rounded-xl flex flex-col gap-1">
+            <span className="text-[10px] text-gray-400 uppercase font-bold tracking-wider">Execution Time</span>
+            <span className="text-base font-extrabold text-white font-mono">
+              {executionTime !== null && executionTime !== undefined ? `${executionTime} ms` : 'N/A'}
+            </span>
+          </div>
+
+          {/* Memory Used */}
+          <div className="p-3 bg-[#11131c] border border-white/5 rounded-xl flex flex-col gap-1">
+            <span className="text-[10px] text-gray-400 uppercase font-bold tracking-wider">Memory Used</span>
+            <span className="text-base font-extrabold text-white font-mono">
+              {memoryUsed !== null && memoryUsed !== undefined ? `${memoryUsed} KB` : 'N/A'}
             </span>
           </div>
         </div>
 
-        {/* Case 1: Compilation Error */}
+        {/* Output Console for successful runs (ACCEPTED or FINISHED) */}
+        {(status === 'ACCEPTED' || status === 'FINISHED') && execResult.runtimeOutput && (
+          <div className="space-y-2">
+            <div className="text-[10px] text-emerald-400 font-bold uppercase tracking-wider flex items-center gap-1">
+              <Terminal className="w-3.5 h-3.5" />
+              Standard Output (stdout)
+            </div>
+            <pre className="p-3.5 bg-[#08090f]/90 border border-white/5 text-emerald-300 rounded-xl whitespace-pre-wrap font-mono select-text text-xs leading-relaxed max-h-[300px] overflow-y-auto">
+              {execResult.runtimeOutput}
+            </pre>
+          </div>
+        )}
+
+        {/* Compilation Error Console */}
         {status === 'COMPILATION_ERROR' && (
           <div className="space-y-2">
-            <div className="text-[10px] text-red-400 font-bold uppercase tracking-wider font-sans">Compilation Error</div>
-            <pre className="p-3 bg-red-500/5 border border-red-500/15 text-red-400 rounded-xl whitespace-pre-wrap font-mono select-text text-xs leading-relaxed">
+            <div className="text-[10px] text-amber-400 font-bold uppercase tracking-wider flex items-center gap-1">
+              <Terminal className="w-3.5 h-3.5" />
+              Compiler Output
+            </div>
+            <pre className="p-3.5 bg-[#08090f]/90 border border-amber-500/10 text-amber-300 rounded-xl whitespace-pre-wrap font-mono select-text text-xs leading-relaxed max-h-[300px] overflow-y-auto">
               {execResult.compilerOutput || "Unknown compilation error."}
             </pre>
           </div>
         )}
 
-        {/* Case 2: Runtime Error */}
+        {/* Runtime Error Console */}
         {status === 'RUNTIME_ERROR' && (
           <div className="space-y-2">
-            <div className="text-[10px] text-red-400 font-bold uppercase tracking-wider font-sans">Runtime Error</div>
-            <pre className="p-3 bg-red-500/5 border border-red-500/15 text-red-400 rounded-xl whitespace-pre-wrap font-mono select-text text-xs leading-relaxed">
+            <div className="text-[10px] text-red-400 font-bold uppercase tracking-wider flex items-center gap-1">
+              <Terminal className="w-3.5 h-3.5" />
+              Runtime Error Trace
+            </div>
+            <pre className="p-3.5 bg-[#08090f]/90 border border-red-500/10 text-red-400 rounded-xl whitespace-pre-wrap font-mono select-text text-xs leading-relaxed max-h-[300px] overflow-y-auto">
               {execResult.runtimeOutput || "Runtime exception or non-zero exit code."}
             </pre>
           </div>
         )}
 
-        {/* Case 3: Wrong Answer */}
+        {/* Output Comparison (Expected vs Actual) */}
         {status === 'WRONG_ANSWER' && (
-          <div className="space-y-2">
-            <div className="text-[10px] text-red-400 font-bold uppercase tracking-wider font-sans">Wrong Answer</div>
-            <pre className="p-3 bg-red-500/5 border border-red-500/15 text-red-400 rounded-xl whitespace-pre-wrap font-mono select-text text-xs leading-relaxed">
-              {execResult.runtimeOutput || "Output mismatch."}
-            </pre>
-          </div>
-        )}
-
-        {/* Case 4: Accepted */}
-        {status === 'ACCEPTED' && (
           <div className="space-y-3">
-            <div className="text-[10px] text-emerald-400 font-bold uppercase tracking-wider font-sans flex items-center gap-1">
-              <CheckCircle className="w-3.5 h-3.5" />
-              Accepted
-            </div>
-            <div className="p-4 bg-emerald-500/5 border border-emerald-500/15 text-emerald-400 rounded-xl text-xs font-sans space-y-1.5">
-              <div>✅ Accepted</div>
-              <div>✅ Test Cases Passed</div>
-            </div>
+            {execResult.failedTestCaseNumber !== null && execResult.failedTestCaseNumber !== undefined && (
+              <div className="text-[10px] text-red-400 font-bold uppercase tracking-wider">
+                Failed at Test Case: #{execResult.failedTestCaseNumber}
+              </div>
+            )}
+            
+            {execResult.expectedOutput !== null && execResult.expectedOutput !== undefined ? (
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {/* Expected Output Card */}
+                <div className="space-y-1.5">
+                  <div className="text-[10px] text-emerald-400 font-bold uppercase tracking-wider">Expected Output</div>
+                  <pre className="p-3 bg-[#08090f]/80 border border-white/5 text-emerald-300 rounded-xl whitespace-pre-wrap font-mono select-text text-xs leading-relaxed max-h-[200px] overflow-y-auto">
+                    {execResult.expectedOutput}
+                  </pre>
+                </div>
+                {/* Actual Output Card */}
+                <div className="space-y-1.5">
+                  <div className="text-[10px] text-red-400 font-bold uppercase tracking-wider">Your Output</div>
+                  <pre className="p-3 bg-[#08090f]/80 border border-white/5 text-red-300 rounded-xl whitespace-pre-wrap font-mono select-text text-xs leading-relaxed max-h-[200px] overflow-y-auto">
+                    {execResult.actualOutput}
+                  </pre>
+                </div>
+              </div>
+            ) : (
+              <div className="p-4 bg-red-500/5 border border-red-500/10 rounded-xl text-red-400 flex items-center justify-center font-bold">
+                🔒 Hidden Test Case Failed
+              </div>
+            )}
           </div>
         )}
 
-        {/* Case 5: Time Limit Exceeded / Memory Limit Exceeded */}
-        {(status === 'TIME_LIMIT_EXCEEDED' || status === 'MEMORY_LIMIT_EXCEEDED') && (
-          <div className="space-y-2">
-            <div className="text-[10px] text-red-400 font-bold uppercase tracking-wider font-sans">
-              {status === 'TIME_LIMIT_EXCEEDED' ? 'Time Limit Exceeded' : 'Memory Limit Exceeded'}
+        {/* Detailed Individual Test Cases results render list */}
+        {execResult.testCaseResults && execResult.testCaseResults.length > 0 && (
+          <div className="space-y-3 pt-2">
+            <div className="text-[10px] text-gray-500 font-bold uppercase tracking-wider">Verification Test Cases</div>
+            <div className="space-y-2">
+              {execResult.testCaseResults.map((tc: any, index: number) => {
+                const isPassed = tc.status === 'PASSED';
+                // If it is hidden, we obscure message details
+                const isHidden = tc.message && tc.message.includes("(Hidden testcase failed)");
+                return (
+                  <div key={tc.testCaseId || index} className="p-3 rounded-xl border border-white/5 bg-[#11131c] flex flex-col gap-2">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        {isPassed ? (
+                          <CheckCircle className="w-4 h-4 text-emerald-400" />
+                        ) : (
+                          <XCircle className="w-4 h-4 text-red-400" />
+                        )}
+                        <span className="font-bold text-white font-sans text-xs">Test Case {index + 1}</span>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        {tc.runTimeMs !== null && tc.runTimeMs !== undefined && (
+                          <span className="text-gray-500 font-mono text-[10px]">{tc.runTimeMs} ms</span>
+                        )}
+                        <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full uppercase ${
+                          isPassed ? 'bg-[#10b981]/10 text-[#10b981]' : 'bg-[#ef4444]/10 text-[#ef4444]'
+                        }`}>
+                          {tc.status}
+                        </span>
+                      </div>
+                    </div>
+                    {tc.message && !isPassed && (
+                      <pre className="p-2.5 bg-[#0b0c10] border border-white/5 text-red-300 rounded-lg whitespace-pre-wrap font-mono text-[10px] leading-relaxed">
+                        {isHidden ? "Hidden Test Case Failed" : tc.message}
+                      </pre>
+                    )}
+                  </div>
+                );
+              })}
             </div>
-            <pre className="p-3 bg-red-500/5 border border-red-500/15 text-red-400 rounded-xl whitespace-pre-wrap font-mono select-text text-xs leading-relaxed">
-              {execResult.runtimeOutput || (status === 'TIME_LIMIT_EXCEEDED' ? "Time Limit Exceeded" : "Memory Limit Exceeded")}
-            </pre>
           </div>
         )}
 
         {/* AI Hint Panel */}
         {execResult.aiHint && (
           <div className="space-y-1.5 p-4 rounded-xl bg-indigo-950/20 border border-indigo-500/20 text-indigo-200">
-            <div className="flex items-center gap-1.5 text-xs font-bold text-indigo-400 uppercase tracking-wider font-sans">
-              <Sparkles className="w-3.5 h-3.5 fill-indigo-400 animate-pulse" />
+            <div className="flex items-center gap-1.5 text-xs font-bold text-indigo-400 uppercase tracking-wider">
+              <Sparkles className="w-3.5 h-3.5 fill-indigo-400 animate-pulse text-indigo-400" />
               AI Hint
             </div>
-            <p className="text-xs leading-relaxed font-sans select-text whitespace-pre-wrap font-mono">
+            <p className="text-xs leading-relaxed select-text whitespace-pre-wrap font-mono">
               {execResult.aiHint}
             </p>
           </div>
@@ -585,11 +782,12 @@ export default function CodingWorkspace() {
         {/* Right Tools: Timer, Warnings, Submit */}
         <div className="flex items-center gap-6">
 
-
-          {/* Timer count down */}
+          {/* Security Shield Indicator */}
           <div className="flex items-center gap-2 px-3 py-1.5 bg-[#0b0c10] border border-white/5 rounded-xl">
-            <span className="text-[10px] text-gray-500 uppercase font-bold tracking-wider">{isViewMode ? 'Status' : 'Timer'}</span>
-            <TimerDisplay isViewMode={isViewMode} />
+            <span className="text-[10px] text-gray-500 uppercase font-bold tracking-wider">Security Shield</span>
+            <span className={`text-xs font-bold ${securityShieldEnabled ? 'text-emerald-400 animate-pulse' : 'text-gray-500'}`}>
+              {securityShieldEnabled ? 'Active' : 'Inactive'}
+            </span>
           </div>
 
           {/* Warnings Log counter */}
@@ -603,9 +801,11 @@ export default function CodingWorkspace() {
           {!isViewMode ? (
             <button
               onClick={handleManualSubmitExam}
-              className="px-4 py-2 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white rounded-xl text-xs font-bold transition-all shadow-md shadow-emerald-500/10"
+              disabled={submittingExam}
+              className="px-4 py-2 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white rounded-xl text-xs font-bold transition-all shadow-md shadow-emerald-500/10 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-1.5"
             >
-              Submit Exam
+              {submittingExam && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
+              {submittingExam ? 'Submitting...' : 'Submit Exam'}
             </button>
           ) : (
             <button
@@ -633,9 +833,6 @@ export default function CodingWorkspace() {
                 <h2 className="text-2xl font-bold text-white leading-tight font-sans">
                   {currentQuestion.title}
                 </h2>
-              </div>
-              <div className="flex items-center gap-4 text-xs text-gray-500">
-                <span>Marks: <strong className="text-indigo-400">{currentQuestion.marks} Marks</strong></span>
               </div>
             </div>
 
@@ -722,7 +919,7 @@ export default function CodingWorkspace() {
                 className="hover:text-white transition-colors p-1" 
                 title={`Change font size (current: ${fontSize}px)`}
               >
-                <GearIcon className="w-4 h-4" />
+                <FontSizeIcon className="w-4 h-4" />
               </button>
               <button 
                 onClick={() => setEditorTheme(editorTheme === 'vs-dark' ? 'light' : 'vs-dark')} 
@@ -736,7 +933,7 @@ export default function CodingWorkspace() {
                   <RotateCcw className="w-4 h-4" />
                 </button>
               )}
-              <button onClick={handleReEnterFullscreen} className="hover:text-white transition-colors p-1" title="Force Fullscreen">
+              <button onClick={handleToggleFullscreen} className="hover:text-white transition-colors p-1" title="Toggle Fullscreen">
                 <Maximize2 className="w-4 h-4" />
               </button>
             </div>
@@ -778,17 +975,17 @@ export default function CodingWorkspace() {
 
             />
           </div>          {/* 3. Output Console Bottom Drawer */}
-          <div className={`border-t border-white/5 bg-[#11131c] flex flex-col overflow-hidden transition-all duration-300 ${
-            consoleOpen ? 'h-[28rem]' : 'h-11'
+          <div className={`border-t border-white/5 bg-[#11131c] flex flex-col overflow-hidden transition-all duration-300 shrink-0 ${
+            consoleOpen ? 'h-[280px]' : 'h-[96px]'
           }`}>
             {/* Console Header bar */}
             <div 
               onClick={() => setConsoleOpen(!consoleOpen)}
-              className="px-6 py-2.5 bg-[#11131c] flex justify-between items-center cursor-pointer select-none border-b border-white/5"
+              className="px-6 py-2.5 bg-[#11131c] flex justify-between items-center cursor-pointer select-none border-b border-white/5 shrink-0"
             >
               <div className="flex items-center gap-2">
                 <Terminal className="w-4 h-4 text-[#8b5cf6]" />
-                <span className="text-[10px] font-bold text-white uppercase tracking-wider">RESULT</span>
+                <span className="text-[10px] font-bold text-white uppercase tracking-wider">Console</span>
               </div>
               <button className="text-gray-500 hover:text-white">
                 {consoleOpen ? <ChevronDown className="w-4 h-4" /> : <ChevronUp className="w-4 h-4" />}
@@ -797,56 +994,94 @@ export default function CodingWorkspace() {
 
             {/* Console body content details */}
             {consoleOpen && (
-              <div className="flex-1 p-5 overflow-y-auto font-mono text-xs bg-[#0f1015] flex flex-col min-h-0 space-y-4">
-                {/* Dynamically show Custom Input if required by the question */}
-                {(currentQuestion.inputFormat || (currentQuestion.testCases && currentQuestion.testCases.some((t: any) => t.inputData))) && (
-                  <div className="space-y-1.5 shrink-0 select-none">
-                    <div className="text-[10px] text-gray-500 font-bold uppercase tracking-wider font-sans">Custom Input (stdin)</div>
-                    <textarea
-                      value={customInput}
-                      onChange={(e) => setCustomInput(e.target.value)}
-                      placeholder="Type custom inputs here (e.g. 5\n1 2 3 4 5)..."
-                      className="w-full h-20 p-3 bg-[#11131c] border border-white/5 rounded-xl text-xs text-white focus:outline-none focus:border-[#8b5cf6] font-mono resize-none"
-                    />
-                  </div>
-                )}
+              <div className="flex-1 overflow-hidden bg-[#0f1015] flex flex-col min-h-0 border-b border-white/5">
+                {/* Tab selector */}
+                <div className="flex border-b border-white/5 bg-[#11131c] px-6 select-none shrink-0">
+                  <button
+                    onClick={() => setConsoleTab('TESTCASE')}
+                    className={`py-2 px-4 text-[10px] uppercase tracking-wider font-bold border-b-2 transition-all ${
+                      consoleTab === 'TESTCASE' 
+                        ? 'border-[#8b5cf6] text-white' 
+                        : 'border-transparent text-gray-500 hover:text-gray-300'
+                    }`}
+                  >
+                    Testcase
+                  </button>
+                  <button
+                    onClick={() => setConsoleTab('RESULT')}
+                    className={`py-2 px-4 text-[10px] uppercase tracking-wider font-bold border-b-2 transition-all flex items-center gap-1.5 ${
+                      consoleTab === 'RESULT' 
+                        ? 'border-[#8b5cf6] text-white' 
+                        : 'border-transparent text-gray-500 hover:text-gray-300'
+                    }`}
+                  >
+                    Result
+                    {execResult && (
+                      <span className={`w-1.5 h-1.5 rounded-full ${
+                        execResult.status === 'ACCEPTED' ? 'bg-emerald-500' : 'bg-red-500'
+                      }`} />
+                    )}
+                  </button>
+                </div>
 
-                {/* Render the output result content */}
-                <div className="flex-1 overflow-y-auto min-h-0">
-                  {renderResultContent()}
+                <div className="flex-1 p-5 overflow-y-auto font-mono text-xs flex flex-col min-h-0">
+                  {consoleTab === 'TESTCASE' ? (
+                    <>
+                      {/* Dynamically show Custom Input if required by the question */}
+                      {(currentQuestion.inputFormat || (currentQuestion.testCases && currentQuestion.testCases.some((t: any) => t.inputData))) ? (
+                        <div className="space-y-1.5 shrink-0 select-none">
+                          <div className="text-[10px] text-gray-500 font-bold uppercase tracking-wider font-sans">Custom Input (stdin)</div>
+                          <textarea
+                            value={customInput}
+                            onChange={(e) => setCustomInput(e.target.value)}
+                            placeholder="Type custom inputs here (e.g. 5\n1 2 3 4 5)..."
+                            className="w-full h-24 p-3 bg-[#11131c] border border-white/5 rounded-xl text-xs text-white focus:outline-none focus:border-[#8b5cf6] font-mono resize-none"
+                          />
+                        </div>
+                      ) : (
+                        <div className="text-gray-500 flex items-center justify-center py-8 font-sans">
+                          This question does not require standard input.
+                        </div>
+                      )}
+                    </>
+                  ) : (
+                    <div className="flex-1 overflow-y-auto min-h-0">
+                      {renderResultContent()}
+                    </div>
+                  )}
                 </div>
               </div>
             )}
 
-            {/* Bottom Actions Row matching exact style indicators */}
-            {consoleOpen && (
-              <div className="p-3 px-4 sm:px-6 bg-[#11131c] border-t border-white/5 flex flex-col sm:flex-row justify-between items-center gap-3 select-none">
-                <span className="text-[10px] font-bold text-gray-500 tracking-wider">ONLINE JUDGE ACTIVE</span>
-                
-                {isViewMode ? (
-                  <div className="text-[10px] text-amber-400 font-bold uppercase tracking-wider italic">
-                    Viewing completed exam attempt. Re-submission disabled.
-                  </div>
-                ) : (
-                  <div className="flex items-center gap-3 w-full sm:w-auto justify-end">
-                    <button 
-                      onClick={handleRunCode} 
-                      disabled={executing}
-                      className="flex-1 sm:flex-none px-4 py-2.5 sm:py-2 rounded-xl bg-white/5 hover:bg-white/10 text-gray-300 font-semibold text-xs tracking-wider transition-all disabled:opacity-50"
-                    >
-                      Compile & Run
-                    </button>
-                    <button 
-                      onClick={handleSubmitCode}
-                      disabled={executing}
-                      className="flex-1 sm:flex-none px-5 py-2.5 sm:py-2 rounded-xl bg-[#7c3aed] hover:bg-[#8b5cf6] text-white font-bold text-xs tracking-wider transition-all shadow-md shadow-[#7c3aed]/20 disabled:opacity-50"
-                    >
-                      Submit
-                    </button>
-                  </div>
-                )}
-              </div>
-            )}
+            {/* Bottom Actions Row matching exact style indicators - Always visible */}
+            <div className="p-3 px-4 sm:px-6 bg-[#11131c] flex flex-col sm:flex-row justify-between items-center gap-3 select-none shrink-0">
+              <span className="text-[10px] font-bold text-gray-500 tracking-wider">ONLINE JUDGE ACTIVE</span>
+              
+              {isViewMode ? (
+                <div className="text-[10px] text-amber-400 font-bold uppercase tracking-wider italic">
+                  Viewing completed exam attempt. Re-submission disabled.
+                </div>
+              ) : (
+                <div className="flex items-center gap-3 w-full sm:w-auto justify-end">
+                  <button 
+                    onClick={handleRunCode} 
+                    disabled={executing}
+                    className="flex-1 sm:flex-none px-4 py-2.5 sm:py-2 rounded-xl bg-white/5 hover:bg-white/10 text-gray-300 font-semibold text-xs tracking-wider transition-all disabled:opacity-50 flex items-center justify-center gap-1.5"
+                  >
+                    {executing && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
+                    {executing ? 'Running...' : 'Compile & Run'}
+                  </button>
+                  <button 
+                    onClick={handleSubmitCode}
+                    disabled={executing}
+                    className="flex-1 sm:flex-none px-5 py-2.5 sm:py-2 rounded-xl bg-[#7c3aed] hover:bg-[#8b5cf6] text-white font-bold text-xs tracking-wider transition-all shadow-md shadow-[#7c3aed]/20 disabled:opacity-50 flex items-center justify-center gap-1.5"
+                  >
+                    {executing && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
+                    {executing ? 'Evaluating...' : 'Submit'}
+                  </button>
+                </div>
+              )}
+            </div>
           </div>
         </div>
       </div>

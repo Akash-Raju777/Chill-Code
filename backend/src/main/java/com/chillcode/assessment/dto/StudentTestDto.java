@@ -14,6 +14,9 @@ public class StudentTestDto {
     private String reattemptStatus;
     private String studentRegisterNumber;
     private String studentName;
+    private Long reattemptQuestionId;
+    private String reattemptQuestionTitle;
+    private String displayTitle;
 
     public StudentTestDto() {}
 
@@ -74,6 +77,15 @@ public class StudentTestDto {
     public String getStudentName() { return studentName; }
     public void setStudentName(String studentName) { this.studentName = studentName; }
 
+    public Long getReattemptQuestionId() { return reattemptQuestionId; }
+    public void setReattemptQuestionId(Long reattemptQuestionId) { this.reattemptQuestionId = reattemptQuestionId; }
+
+    public String getReattemptQuestionTitle() { return reattemptQuestionTitle; }
+    public void setReattemptQuestionTitle(String reattemptQuestionTitle) { this.reattemptQuestionTitle = reattemptQuestionTitle; }
+    
+    public String getDisplayTitle() { return displayTitle; }
+    public void setDisplayTitle(String displayTitle) { this.displayTitle = displayTitle; }
+
     public static class TestDetailsDto {
         private Long id;
         private String name;
@@ -82,12 +94,13 @@ public class StudentTestDto {
         private LocalDateTime endTime;
         private Integer maxMarks;
         private String instructions;
+        private Boolean securityShieldEnabled;
         private SubjectDetailsDto subject;
 
         public TestDetailsDto() {}
 
         public TestDetailsDto(Long id, String name, Integer durationMinutes, LocalDateTime startTime, LocalDateTime endTime, 
-                              Integer maxMarks, String instructions, SubjectDetailsDto subject) {
+                              Integer maxMarks, String instructions, Boolean securityShieldEnabled, SubjectDetailsDto subject) {
             this.id = id;
             this.name = name;
             this.durationMinutes = durationMinutes;
@@ -95,6 +108,7 @@ public class StudentTestDto {
             this.endTime = endTime;
             this.maxMarks = maxMarks;
             this.instructions = instructions;
+            this.securityShieldEnabled = securityShieldEnabled;
             this.subject = subject;
         }
 
@@ -118,6 +132,9 @@ public class StudentTestDto {
 
         public String getInstructions() { return instructions; }
         public void setInstructions(String instructions) { this.instructions = instructions; }
+
+        public Boolean getSecurityShieldEnabled() { return securityShieldEnabled; }
+        public void setSecurityShieldEnabled(Boolean securityShieldEnabled) { this.securityShieldEnabled = securityShieldEnabled; }
 
         public SubjectDetailsDto getSubject() { return subject; }
         public void setSubject(SubjectDetailsDto subject) { this.subject = subject; }

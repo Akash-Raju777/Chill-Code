@@ -41,6 +41,9 @@ public class TestService {
     @Autowired
     private SubmissionRepository submissionRepository;
 
+    @Autowired
+    private StudentQuestionStatusRepository studentQuestionStatusRepository;
+
 
     public List<Test> getAllTests() {
         return testRepository.findAll();
@@ -75,6 +78,7 @@ public class TestService {
                 .shuffleQuestions(dto.getShuffleQuestions() != null ? dto.getShuffleQuestions() : false)
                 .autoSubmit(dto.getAutoSubmit() != null ? dto.getAutoSubmit() : true)
                 .negativeMarking(dto.getNegativeMarking() != null ? dto.getNegativeMarking() : false)
+                .securityShieldEnabled(dto.getSecurityShieldEnabled() != null ? dto.getSecurityShieldEnabled() : false)
                 .questions(questions)
                 .build();
 
@@ -151,6 +155,11 @@ public class TestService {
                 .orElseThrow(() -> new RuntimeException("Student is not assigned to this test"));
 
         if ("SUBMITTED".equals(st.getStatus()) || "EVALUATED".equals(st.getStatus())) {
+            if (st.getTest().getName().toLowerCase().contains("practice arena") || Boolean.FALSE.equals(st.getTest().getSecurityShieldEnabled())) {
+                st.setStatus("STARTED");
+                st.setStartedAt(LocalDateTime.now());
+                return studentTestRepository.save(st);
+            }
             throw new RuntimeException("Test has already been submitted.");
         }
 
@@ -168,7 +177,7 @@ public class TestService {
         StudentTest st = studentTestRepository.findByStudentIdAndTestId(studentId, testId)
                 .orElseThrow(() -> new RuntimeException("Student-Test mapping not found."));
 
-        if ("SUBMITTED".equals(st.getStatus())) {
+        if ("SUBMITTED".equals(st.getStatus()) && !st.getTest().getName().toLowerCase().contains("practice arena")) {
             return st; // already submitted
         }
 
@@ -181,6 +190,10 @@ public class TestService {
     public StudentTest recordWarning(Long testId, Long studentId, String type, String reason) {
         StudentTest st = studentTestRepository.findByStudentIdAndTestId(studentId, testId)
                 .orElseThrow(() -> new RuntimeException("Student-Test mapping not found."));
+
+        if (Boolean.FALSE.equals(st.getTest().getSecurityShieldEnabled())) {
+            return st; // Ignore warnings and suspension if security shield is disabled
+        }
 
         if (!"STARTED".equals(st.getStatus())) {
             throw new RuntimeException("Cannot log warning for a test that is not in progress.");
@@ -240,6 +253,7 @@ public class TestService {
                 test.getEndTime(),
                 test.getMaxMarks(),
                 test.getInstructions(),
+                test.getSecurityShieldEnabled() != null ? test.getSecurityShieldEnabled() : false,
                 subjectDto
             );
         }
@@ -255,9 +269,41 @@ public class TestService {
             st.getStartedAt(),
             st.getReattemptStatus()
         );
+
+        String displayTitle = test != null ? test.getName() : "";
+        if (test != null && test.getName().toLowerCase().contains("practice arena") && test.getSubject() != null && st.getStudent() != null) {
+            List<Question> questions = questionRepository.findBySubjectId(test.getSubject().getId());
+            if (questions != null && !questions.isEmpty()) {
+                java.util.Set<String> titles = new java.util.LinkedHashSet<>();
+                for (Question question : questions) {
+                    StudentQuestionStatus sqs = studentQuestionStatusRepository
+                            .findByStudentIdAndQuestionId(st.getStudent().getId(), question.getId())
+                            .orElse(null);
+                    String qStatus = (sqs != null && "COMPLETED".equals(sqs.getStatus())) ? "PASS" : "FAIL";
+                    titles.add(question.getTitle() + "|" + qStatus);
+                }
+                if (!titles.isEmpty()) {
+                    displayTitle = String.join(", ", titles);
+                }
+            }
+        }
+        dto.setDisplayTitle(displayTitle);
         if (st.getStudent() != null) {
             dto.setStudentRegisterNumber(st.getStudent().getRegisterNumber());
             dto.setStudentName(st.getStudent().getName());
+        }
+        
+        String rStatus = st.getReattemptStatus();
+        if (rStatus != null && rStatus.contains(":")) {
+            String[] parts = rStatus.split(":");
+            if (parts.length == 2) {
+                dto.setReattemptStatus(parts[0]);
+                try {
+                    Long qId = Long.parseLong(parts[1]);
+                    dto.setReattemptQuestionId(qId);
+                    questionRepository.findById(qId).ifPresent(q -> dto.setReattemptQuestionTitle(q.getTitle()));
+                } catch (Exception ignored) {}
+            }
         }
         return dto;
     }
@@ -305,6 +351,26 @@ public class TestService {
             }
         }
 
+        // Auto-unsuspend practice tests / tests with security shield disabled
+        List<StudentTest> studentTests = studentTestRepository.findByStudentId(studentId);
+        for (StudentTest st : studentTests) {
+            if (Boolean.FALSE.equals(st.getTest().getSecurityShieldEnabled())) {
+                if (Boolean.TRUE.equals(st.getIsSuspended()) || "SUSPENDED".equals(st.getStatus())) {
+                    st.setIsSuspended(false);
+                    st.setWarningsCount(0);
+                    if ("SUSPENDED".equals(st.getStatus())) {
+                        st.setStatus("STARTED");
+                    }
+                    studentTestRepository.save(st);
+
+                    List<Warning> warnings = warningRepository.findByStudentTestId(st.getId());
+                    if (warnings != null && !warnings.isEmpty()) {
+                        warningRepository.deleteAll(warnings);
+                    }
+                }
+            }
+        }
+
         return studentTestRepository.findByStudentId(studentId).stream()
                 .map(this::convertToStudentTestDto)
                 .collect(Collectors.toList());
@@ -318,7 +384,90 @@ public class TestService {
 
     @Transactional
     public com.chillcode.assessment.dto.StudentTestDto submitTestDto(Long testId, Long studentId) {
+        return submitTestDto(testId, studentId, null);
+    }
+
+    @Transactional
+    public com.chillcode.assessment.dto.StudentTestDto submitTestDto(Long testId, Long studentId, java.util.Map<String, java.util.Map<String, String>> questionCodes) {
         StudentTest st = submitTest(testId, studentId);
+
+        // Save final draft codes as submissions
+        if (questionCodes != null) {
+            for (java.util.Map.Entry<String, java.util.Map<String, String>> entry : questionCodes.entrySet()) {
+                try {
+                    Long questionId = Long.parseLong(entry.getKey());
+                    java.util.Map<String, String> details = entry.getValue();
+                    String code = details.get("code");
+                    String language = details.get("language");
+                    
+                    if (code != null && !code.trim().isEmpty()) {
+                        Question question = questionRepository.findById(questionId).orElse(null);
+                        if (question != null) {
+                            List<Submission> existing = submissionRepository.findByStudentTestIdAndQuestionId(st.getId(), questionId);
+                            boolean isDuplicate = false;
+                            if (existing != null && !existing.isEmpty()) {
+                                existing.sort((a, b) -> b.getId().compareTo(a.getId()));
+                                if (code.equals(existing.get(0).getCode())) {
+                                    isDuplicate = true;
+                                }
+                            }
+                            
+                            if (!isDuplicate) {
+                                Submission sub = Submission.builder()
+                                        .studentTest(st)
+                                        .question(question)
+                                        .code(code)
+                                        .language(language != null ? language : "java")
+                                        .status("ACCEPTED")
+                                        .runTimeMs(0)
+                                        .memoryUsedKb(0)
+                                        .score(0)
+                                        .build();
+                                submissionRepository.save(sub);
+
+                                StudentQuestionStatus statusObj = studentQuestionStatusRepository
+                                        .findByStudentIdAndQuestionId(studentId, question.getId())
+                                        .orElse(null);
+                                if (statusObj == null) {
+                                    statusObj = StudentQuestionStatus.builder()
+                                            .studentId(studentId)
+                                            .questionId(question.getId())
+                                            .status("COMPLETED")
+                                            .attemptCount(1)
+                                            .lastAttemptAt(LocalDateTime.now())
+                                            .completedAt(LocalDateTime.now())
+                                            .lastSubmissionId(sub.getId())
+                                            .build();
+                                } else {
+                                    statusObj.setStatus("COMPLETED");
+                                    statusObj.setAttemptCount(statusObj.getAttemptCount() + 1);
+                                    statusObj.setLastAttemptAt(LocalDateTime.now());
+                                    if (statusObj.getCompletedAt() == null) {
+                                        statusObj.setCompletedAt(LocalDateTime.now());
+                                    }
+                                    statusObj.setLastSubmissionId(sub.getId());
+                                }
+                                studentQuestionStatusRepository.save(statusObj);
+                            } else {
+                                StudentQuestionStatus statusObj = studentQuestionStatusRepository
+                                        .findByStudentIdAndQuestionId(studentId, question.getId())
+                                        .orElse(null);
+                                if (statusObj != null && !"COMPLETED".equals(statusObj.getStatus())) {
+                                    statusObj.setStatus("COMPLETED");
+                                    if (statusObj.getCompletedAt() == null) {
+                                        statusObj.setCompletedAt(LocalDateTime.now());
+                                    }
+                                    studentQuestionStatusRepository.save(statusObj);
+                                }
+                            }
+                        }
+                    }
+                } catch (Exception e) {
+                    System.err.println("Error saving draft submission: " + e.getMessage());
+                }
+            }
+        }
+
         return convertToStudentTestDto(st);
     }
 
@@ -329,17 +478,17 @@ public class TestService {
     }
 
     @Transactional
-    public com.chillcode.assessment.dto.StudentTestDto requestReattempt(Long testId, Long studentId) {
+    public com.chillcode.assessment.dto.StudentTestDto requestReattempt(Long testId, Long studentId, Long questionId) {
         StudentTest st = studentTestRepository.findByStudentIdAndTestId(studentId, testId)
                 .orElseThrow(() -> new RuntimeException("Student test not found"));
-        st.setReattemptStatus("PENDING");
+        st.setReattemptStatus("PENDING:" + questionId);
         return convertToStudentTestDto(studentTestRepository.save(st));
     }
 
     @Transactional(readOnly = true)
     public List<com.chillcode.assessment.dto.StudentTestDto> getPendingReattempts() {
         return studentTestRepository.findAll().stream()
-                .filter(st -> "PENDING".equals(st.getReattemptStatus()))
+                .filter(st -> st.getReattemptStatus() != null && st.getReattemptStatus().startsWith("PENDING:"))
                 .map(this::convertToStudentTestDto)
                 .collect(Collectors.toList());
     }
@@ -349,22 +498,48 @@ public class TestService {
         StudentTest st = studentTestRepository.findById(studentTestId)
                 .orElseThrow(() -> new RuntimeException("Student test not found"));
         
-        st.setStatus("ASSIGNED");
-        st.setScore(0);
-        st.setWarningsCount(0);
+        Long questionId = null;
+        String rStatus = st.getReattemptStatus();
+        if (rStatus != null && rStatus.contains(":")) {
+            String[] parts = rStatus.split(":");
+            if (parts.length == 2) {
+                try {
+                    questionId = Long.parseLong(parts[1]);
+                } catch (Exception ignored) {}
+            }
+        }
+
+        st.setStatus("STARTED");
         st.setIsSuspended(false);
-        st.setStartedAt(null);
-        st.setSubmittedAt(null);
         st.setReattemptStatus(null);
+        st.setWarningsCount(0);
+        st.setStartedAt(LocalDateTime.now());
+        st.setSubmittedAt(null);
         
         List<Warning> warnings = warningRepository.findByStudentTestId(st.getId());
         if (warnings != null && !warnings.isEmpty()) {
             warningRepository.deleteAll(warnings);
         }
         
-        List<Submission> submissions = submissionRepository.findByStudentTestId(st.getId());
-        if (submissions != null && !submissions.isEmpty()) {
-            submissionRepository.deleteAll(submissions);
+        if (questionId != null) {
+            List<Submission> submissions = submissionRepository.findByStudentTestId(st.getId());
+            if (submissions != null && !submissions.isEmpty()) {
+                final Long targetQId = questionId;
+                List<Submission> toDelete = submissions.stream()
+                        .filter(sub -> sub.getQuestion().getId().equals(targetQId))
+                        .collect(Collectors.toList());
+                submissionRepository.deleteAll(toDelete);
+            }
+            
+            // Reset question completion status
+            StudentQuestionStatus sqs = studentQuestionStatusRepository
+                    .findByStudentIdAndQuestionId(st.getStudent().getId(), questionId)
+                    .orElse(null);
+            if (sqs != null) {
+                sqs.setStatus("NOT_COMPLETED");
+                sqs.setCompletedAt(null);
+                studentQuestionStatusRepository.save(sqs);
+            }
         }
 
         return convertToStudentTestDto(studentTestRepository.save(st));

@@ -20,6 +20,7 @@ interface StudentTest {
   isSuspended: boolean;
   submittedAt?: string;
   test: Test;
+  displayTitle?: string;
 }
 
 export default function StudentResults() {
@@ -82,53 +83,68 @@ export default function StudentResults() {
         </div>
       ) : (
         <div className="space-y-4">
-          {attempts.map((st) => (
-            <div key={st.id} className="glass-panel p-6 rounded-2xl flex flex-col md:flex-row md:items-center justify-between gap-6 border border-white/5">
-              <div className="space-y-2">
-                <div className="flex items-center gap-2">
-                  <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
-                    st.status === 'SUSPENDED' ? 'bg-red-500/10 text-red-400' : 'bg-emerald-500/10 text-emerald-400'
-                  }`}>
-                    {st.status}
-                  </span>
-                  <h3 className="font-bold text-white text-lg">{st.test.name}</h3>
-                </div>
-                <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-gray-500">
-                  <span className="flex items-center gap-1">
-                    <Calendar className="w-3.5 h-3.5" />
-                    Submitted: {st.submittedAt ? new Date(st.submittedAt).toLocaleDateString() : new Date().toLocaleDateString()}
-                  </span>
-                  <span>Duration: {st.test.durationMinutes} mins</span>
-                  <span>Warnings Logged: <strong className={st.warningsCount > 0 ? 'text-red-400' : 'text-gray-400'}>{st.warningsCount}</strong></span>
-                </div>
-              </div>
-
-              <div className="flex items-center gap-6">
-                {/* Score badge */}
-                <div className="text-left md:text-right">
-                  <div className="text-[10px] text-gray-500 font-semibold uppercase">Score</div>
-                  <div className="text-sm font-bold text-white">
-                    {st.score} / {st.test.maxMarks || 100}
+          {attempts.flatMap((st) => {
+            if (st.displayTitle) {
+              const items = st.displayTitle.split(', ').map(t => t.trim()).filter(Boolean);
+              if (items.length > 0) {
+                return items.map((item, index) => {
+                  const parts = item.split('|');
+                  const title = parts[0];
+                  const qStatus = parts[1] || 'PASS';
+                  return {
+                    id: `${st.id}-${index}`,
+                    title,
+                    qStatus,
+                    status: st.status,
+                    submittedAt: st.submittedAt,
+                    warningsCount: st.warningsCount,
+                  };
+                });
+              }
+            }
+            return [{
+              id: `${st.id}-default`,
+              title: st.test.name,
+              qStatus: 'PASS',
+              status: st.status,
+              submittedAt: st.submittedAt,
+              warningsCount: st.warningsCount,
+            }];
+          }).map((item) => {
+            const isFailed = item.status === 'SUSPENDED' || item.qStatus === 'FAIL';
+            return (
+              <div key={item.id} className="glass-panel p-6 rounded-2xl flex flex-col md:flex-row md:items-center justify-between gap-6 border border-white/5">
+                <div className="space-y-2">
+                  <div className="flex items-center gap-2">
+                    <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
+                      isFailed ? 'bg-red-500/10 text-red-400' : 'bg-emerald-500/10 text-emerald-400'
+                    }`}>
+                      {item.status}
+                    </span>
+                    <h3 className="font-bold text-white text-lg">{item.title}</h3>
+                  </div>
+                  <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-gray-500">
+                    <span className="flex items-center gap-1">
+                      <Calendar className="w-3.5 h-3.5" />
+                      Submitted: {item.submittedAt ? new Date(item.submittedAt).toLocaleDateString() : new Date().toLocaleDateString()}
+                    </span>
+                    <span>Warnings Logged: <strong className={item.warningsCount > 0 ? 'text-red-400' : 'text-gray-400'}>{item.warningsCount}</strong></span>
                   </div>
                 </div>
 
-                <div className="text-left md:text-right">
-                  <div className="text-[10px] text-gray-500 font-semibold uppercase">Result</div>
-                  <div className={`text-xl font-extrabold tracking-wider ${
-                    st.status !== 'SUSPENDED' && st.score >= ((st.test.maxMarks || 100) * 0.4) 
-                      ? 'text-emerald-400' 
-                      : 'text-red-400'
-                  }`}>
-                    {st.status !== 'SUSPENDED' && st.score >= ((st.test.maxMarks || 100) * 0.4) ? 'PASS' : 'FAIL'}
+                <div className="flex items-center gap-6">
+                  <div className="text-left md:text-right">
+                    <div className="text-[10px] text-gray-500 font-semibold uppercase">Status</div>
+                    <div className={`text-base font-extrabold tracking-wider mt-0.5 ${
+                      !isFailed ? 'text-emerald-400' : 'text-red-400'
+                    }`}>
+                      {!isFailed ? 'PASS' : 'FAIL'}
+                    </div>
                   </div>
                 </div>
-
-                <span className="inline-flex items-center px-3 py-1.5 rounded-lg bg-white/5 border border-[#252836] text-[10px] font-bold text-gray-500 uppercase tracking-wider select-none">
-                  View Only
-                </span>
               </div>
-            </div>
-          ))}
+            );
+          })}
         </div>
       )}
     </div>

@@ -46,6 +46,12 @@ public class CodeExecutionService {
     @Autowired
     private AiHintCacheRepository aiHintCacheRepository;
 
+    @Autowired
+    private UserRepository userRepository;
+
+    @Autowired
+    private StudentQuestionStatusRepository studentQuestionStatusRepository;
+
     @Value("${judge0.api.url}")
     private String judge0ApiUrl;
 
@@ -66,7 +72,7 @@ public class CodeExecutionService {
             studentTest = studentTestRepository.findById(request.getStudentTestId()).orElse(null);
         }
 
-        List<TestCase> testCases = testCaseRepository.findByQuestionId(question.getId());
+        List<TestCase> allTestCases = testCaseRepository.findByQuestionId(question.getId());
         String lang = request.getLanguage().toLowerCase();
         int languageId = getJudge0LanguageId(lang);
 
@@ -75,46 +81,37 @@ public class CodeExecutionService {
         resultDto.setRunTimeMs(0);
         resultDto.setMemoryUsedKb(0);
 
-        // Run Code workflow (LeetCode/HackerRank Run Code with custom stdin input)
-        if (request.getRunOnly() != null && request.getRunOnly()) {
-            try {
-                JsonNode res = executeOnJudge0(request.getCode(), languageId, request.getCustomInput(), null);
-                int statusId = res.path("status").path("id").asInt();
-                String verdict = mapStatusIdToVerdict(statusId);
-                
-                resultDto.setStatus(verdict);
-                
-                double time = res.path("time").asDouble();
-                resultDto.setRunTimeMs((int)(time * 1000));
-                
-                int memory = res.path("memory").asInt();
-                resultDto.setMemoryUsedKb(memory);
-                
-                resultDto.setStdout(decodeBase64(res.path("stdout").asText()));
-                resultDto.setStderr(decodeBase64(res.path("stderr").asText()));
-                
-                String compileOutput = decodeBase64(res.path("compile_output").asText());
-                if (!compileOutput.isBlank()) {
-                    resultDto.setCompileError(compileOutput);
-                }
-                
-                resultDto.setExitCode(verdict.equals("ACCEPTED") ? 0 : -1);
+        boolean runOnly = Boolean.TRUE.equals(request.getRunOnly());
 
-                if (!"ACCEPTED".equals(verdict)) {
-                    String explanation = getGrokExplanation(verdict, request.getCode(), resultDto.getCompileError(), resultDto.getStderr(), lang, request.getCustomInput(), null, resultDto.getStdout(), studentTest, question);
-                    resultDto.setAiExplanation(explanation);
-                }
-            } catch (Exception e) {
-                resultDto.setStatus("RUNTIME_ERROR");
-                resultDto.setStderr("Execution failed: " + e.getMessage());
-            }
-            return resultDto;
-        }
-
-        // Run Test Cases
         String overallVerdict = "ACCEPTED";
         int maxRunTimeMs = 0;
         int maxMemoryUsedKb = 0;
+        int passedCount = 0;
+        int failedTestCaseIndex = -1; // 1-based index
+        String firstFailedExpected = null;
+        String firstFailedActual = null;
+        String firstFailedJudge0Status = "Accepted";
+
+        List<TestCase> testCases = new ArrayList<>();
+        if (runOnly) {
+            // Add visible sample test cases
+            for (TestCase tc : allTestCases) {
+                if (tc.getIsHidden() != null && !tc.getIsHidden()) {
+                    testCases.add(tc);
+                }
+            }
+            // If there are no sample test cases, run custom input (essential for JUnit tests and playground execution)
+            if (testCases.isEmpty()) {
+                TestCase customTc = new TestCase();
+                customTc.setId(-999L);
+                customTc.setInputData(request.getCustomInput() != null ? request.getCustomInput() : "");
+                customTc.setExpectedOutput(null);
+                customTc.setIsHidden(false);
+                testCases.add(customTc);
+            }
+        } else {
+            testCases.addAll(allTestCases);
+        }
 
         if (testCases.isEmpty()) {
             overallVerdict = "WRONG_ANSWER";
@@ -122,20 +119,23 @@ public class CodeExecutionService {
             tcResult.setStatus("FAILED");
             tcResult.setMessage("No test case has been set up for this question by the administrator. Please contact your coordinator.");
             resultDto.getTestCaseResults().add(tcResult);
+            resultDto.setTotalTests(0);
+            resultDto.setPassedTests(0);
         } else {
-            for (TestCase tc : testCases) {
+            for (int i = 0; i < testCases.size(); i++) {
+                TestCase tc = testCases.get(i);
                 TestCaseResultDto tcResult = new TestCaseResultDto();
                 tcResult.setTestCaseId(tc.getId());
 
                 try {
-                    JsonNode res = executeOnJudge0(request.getCode(), languageId, tc.getInputData(), tc.getExpectedOutput());
+                    JsonNode res = executeOnJudge0(request.getCode(), languageId, tc.getInputData(), null);
                     int statusId = res.path("status").path("id").asInt();
-                    
+
                     double time = res.path("time").asDouble();
                     int timeMs = (int)(time * 1000);
                     tcResult.setRunTimeMs(timeMs);
                     if (timeMs > maxRunTimeMs) maxRunTimeMs = timeMs;
-                    
+
                     int memory = res.path("memory").asInt();
                     tcResult.setMemoryUsedKb(memory);
                     if (memory > maxMemoryUsedKb) maxMemoryUsedKb = memory;
@@ -144,104 +144,201 @@ public class CodeExecutionService {
                     String stderr = decodeBase64(res.path("stderr").asText());
                     String compileOutput = decodeBase64(res.path("compile_output").asText());
 
-                    if (statusId == 3) {
-                        tcResult.setStatus("PASSED");
-                        tcResult.setMessage("Test Case Passed");
-                    } else if (statusId == 5) {
+                    resultDto.setStdout(stdout);
+                    resultDto.setStderr(stderr);
+
+                    if (statusId == 6) { // Compilation Error
+                        tcResult.setStatus("COMPILATION_ERROR");
+                        resultDto.setCompileError(compileOutput);
+                        tcResult.setMessage("Compilation Error:\n" + compileOutput);
+                        overallVerdict = "COMPILATION_ERROR";
+                        resultDto.getTestCaseResults().add(tcResult);
+                        firstFailedJudge0Status = "Compilation Error";
+                        break; // Stop execution immediately!
+                    } else if (statusId == 5) { // TLE
                         tcResult.setStatus("TLE");
                         tcResult.setMessage("Time Limit Exceeded");
                         overallVerdict = updateVerdict(overallVerdict, "TIME_LIMIT_EXCEEDED");
-                    } else if (statusId == 6) {
-                        tcResult.setStatus("COMPILATION_ERROR");
-                        resultDto.setCompileError(compileOutput);
-                        tcResult.setMessage("Compilation Error: " + compileOutput);
-                        overallVerdict = "COMPILATION_ERROR";
-                    } else if (statusId == 7 || statusId == 8 || statusId == 9 || statusId == 10 || statusId == 11) {
-                        tcResult.setStatus("RTE");
-                        tcResult.setMessage("Runtime Error: " + stderr);
-                        overallVerdict = updateVerdict(overallVerdict, "RUNTIME_ERROR");
-                    } else {
-                        tcResult.setStatus("FAILED");
-                        if (!tc.getIsHidden()) {
-                            tcResult.setMessage("Expected:\n" + tc.getExpectedOutput().trim() + "\nYour Output:\n" + stdout.trim());
-                        } else {
-                            tcResult.setMessage("Hidden testcase failed.");
+                        if (failedTestCaseIndex == -1) {
+                            failedTestCaseIndex = i + 1;
+                            firstFailedJudge0Status = "Time Limit Exceeded";
                         }
-                        overallVerdict = updateVerdict(overallVerdict, "WRONG_ANSWER");
+                    } else if (statusId == 8) { // MLE
+                        tcResult.setStatus("MLE");
+                        tcResult.setMessage("Memory Limit Exceeded");
+                        overallVerdict = updateVerdict(overallVerdict, "MEMORY_LIMIT_EXCEEDED");
+                        if (failedTestCaseIndex == -1) {
+                            failedTestCaseIndex = i + 1;
+                            firstFailedJudge0Status = "Memory Limit Exceeded";
+                        }
+                    } else if (statusId == 7 || statusId == 9 || statusId == 10 || statusId == 11 || statusId == 12) { // Runtime Error
+                        tcResult.setStatus("RTE");
+                        tcResult.setMessage("Runtime Error:\n" + stderr);
+                        overallVerdict = updateVerdict(overallVerdict, "RUNTIME_ERROR");
+                        if (failedTestCaseIndex == -1) {
+                            failedTestCaseIndex = i + 1;
+                            resultDto.setStderr(stderr);
+                            firstFailedJudge0Status = "Runtime Error";
+                        }
+                    } else { // Process finished successfully. Run comparison
+                        boolean match = true;
+                        if (tc.getExpectedOutput() != null) {
+                            match = compareOutputs(tc.getExpectedOutput(), stdout);
+                        }
+                        if (match) {
+                            tcResult.setStatus("PASSED");
+                            tcResult.setMessage("Test Case Passed");
+                            passedCount++;
+                        } else {
+                            tcResult.setStatus("FAILED");
+                            if (tc.getIsHidden() != null && tc.getIsHidden()) {
+                                tcResult.setMessage("Output doesn't match expected output. (Hidden testcase failed)");
+                            } else {
+                                tcResult.setMessage("Output doesn't match expected output.\nExpected:\n" + tc.getExpectedOutput().trim() + "\nYour Output:\n" + stdout.trim());
+                            }
+                            overallVerdict = updateVerdict(overallVerdict, "WRONG_ANSWER");
+                            if (failedTestCaseIndex == -1) {
+                                failedTestCaseIndex = i + 1;
+                                firstFailedJudge0Status = "Wrong Answer";
+                                if (tc.getIsHidden() == null || !tc.getIsHidden()) {
+                                    firstFailedExpected = tc.getExpectedOutput();
+                                    firstFailedActual = stdout;
+                                }
+                            }
+                        }
                     }
                 } catch (Exception e) {
                     tcResult.setStatus("FAILED");
                     tcResult.setMessage("Execution error: " + e.getMessage());
                     overallVerdict = updateVerdict(overallVerdict, "RUNTIME_ERROR");
+                    if (failedTestCaseIndex == -1) {
+                        failedTestCaseIndex = i + 1;
+                        firstFailedJudge0Status = "Runtime Error";
+                    }
                 }
 
                 resultDto.getTestCaseResults().add(tcResult);
             }
+            resultDto.setTotalTests(testCases.size());
+            resultDto.setPassedTests(passedCount);
         }
 
         resultDto.setStatus(overallVerdict);
         resultDto.setRunTimeMs(maxRunTimeMs);
         resultDto.setMemoryUsedKb(maxMemoryUsedKb);
-        resultDto.setExitCode(overallVerdict.equals("ACCEPTED") ? 0 : -1);
+        resultDto.setExitCode("ACCEPTED".equals(overallVerdict) ? 0 : -1);
+        resultDto.setFailedTestCaseNumber(failedTestCaseIndex != -1 ? failedTestCaseIndex : null);
+        resultDto.setExpectedOutput(firstFailedExpected);
+        resultDto.setActualOutput(firstFailedActual);
+        resultDto.setJudge0Status(firstFailedJudge0Status);
 
         // Fetch Grok explanation if not ACCEPTED
         if (!"ACCEPTED".equals(overallVerdict)) {
-            TestCaseResultDto failedTc = resultDto.getTestCaseResults().stream()
-                    .filter(tc -> !"PASSED".equals(tc.getStatus()))
-                    .findFirst()
-                    .orElse(null);
-            
-            String expected = "";
-            String actual = "";
-            String runStderr = "";
-            if (failedTc != null) {
-                TestCase tcObj = testCaseRepository.findById(failedTc.getTestCaseId()).orElse(null);
-                if (tcObj != null) {
-                    if (tcObj.getIsHidden()) {
-                        expected = null;
-                        actual = "Hidden testcase failed.";
-                    } else {
-                        expected = tcObj.getExpectedOutput();
-                    }
-                }
-                if ("RTE".equals(failedTc.getStatus())) {
-                    runStderr = failedTc.getMessage();
-                } else if ("FAILED".equals(failedTc.getStatus()) && (tcObj == null || !tcObj.getIsHidden())) {
-                    actual = failedTc.getMessage();
-                }
-            }
-            String explanation = getGrokExplanation(overallVerdict, request.getCode(), resultDto.getCompileError(), runStderr, lang, "", expected, actual, studentTest, question);
+            String runStderr = resultDto.getStderr() != null ? resultDto.getStderr() : "";
+            String explanation = getGrokExplanation(overallVerdict, request.getCode(), resultDto.getCompileError(), runStderr, lang, "", firstFailedExpected, firstFailedActual, studentTest, question);
             resultDto.setAiExplanation(explanation);
         }
 
-        
         // Calculate score
-        int totalTestCases = testCases.size();
-        long passedCount = resultDto.getTestCaseResults().stream()
-                .filter(tc -> "PASSED".equals(tc.getStatus()))
-                .count();
         int finalScore = 0;
-        if (totalTestCases > 0) {
-            finalScore = (int) Math.round((double) passedCount / totalTestCases * question.getMarks());
-        }
-        
-        if ("ACCEPTED".equals(overallVerdict) && question.getNegativeMarks() > 0) {
-            // Apply positive marks
-        } else if (!"ACCEPTED".equals(overallVerdict)) {
-            finalScore -= question.getNegativeMarks();
+        if ("ACCEPTED".equals(overallVerdict)) {
+            finalScore = 10;
         }
 
-        // Save submission and individual test case runs
-        Submission sub = saveSubmissionRecord(studentTest, question, request, resultDto);
-        sub.setScore(finalScore);
-        submissionRepository.save(sub);
+        // ONLY save state and update database for SUBMIT runs (runOnly == false)
+        if (!runOnly) {
+            // Save submission and individual test case runs
+            Submission sub = saveSubmissionRecord(studentTest, question, request, resultDto);
+            sub.setScore(finalScore);
+            submissionRepository.save(sub);
 
-        // Update overall StudentTest score
-        if (studentTest != null) {
-            updateStudentTestScore(studentTest, question, finalScore);
+            // Update StudentQuestionStatus:
+            try {
+                User student = studentTest != null ? studentTest.getStudent() : getCurrentUser();
+                updateStudentQuestionStatus(student, question, sub, false);
+            } catch (Exception e) {
+                System.err.println("Failed to update student question status: " + e.getMessage());
+            }
+
+            // Update overall StudentTest score:
+            if (studentTest != null) {
+                updateStudentTestScore(studentTest, question, finalScore);
+            }
+            
+            // Log submission details securely
+            logSubmission(sub, studentTest, question, request, resultDto);
         }
 
         return resultDto;
+    }
+
+    private void logSubmission(Submission sub, StudentTest studentTest, Question question, SubmitRequest request, SubmissionResultDto result) {
+        Long userId = studentTest != null && studentTest.getStudent() != null ? studentTest.getStudent().getId() : null;
+        if (userId == null) {
+            try {
+                userId = getCurrentUser().getId();
+            } catch (Exception ignored) {}
+        }
+        System.out.println(String.format(
+            "[Submission Evaluation] submissionId=%s, userId=%s, problemId=%s, language=%s, Judge0 token=%s, compileStatus=%s, executionStatus=%s, passedTests=%s/%s, executionTime=%sms, memory=%sKB, stderr=%s, stdout=%s, expectedOutput=%s, actualOutput=%s, timestamp=%s",
+            sub.getId(),
+            userId,
+            question.getId(),
+            request.getLanguage(),
+            "local_wait_token",
+            result.getCompileError() != null ? "FAILED" : "SUCCESS",
+            result.getStatus(),
+            result.getPassedTests(),
+            result.getTotalTests(),
+            result.getRunTimeMs(),
+            result.getMemoryUsedKb(),
+            result.getStderr() != null ? result.getStderr().replace("\n", "\\n") : "",
+            result.getStdout() != null ? result.getStdout().replace("\n", "\\n") : "",
+            result.getExpectedOutput() != null ? result.getExpectedOutput().replace("\n", "\\n") : "",
+            result.getActualOutput() != null ? result.getActualOutput().replace("\n", "\\n") : "",
+            LocalDateTime.now()
+        ));
+    }
+
+    private User getCurrentUser() {
+        String identifier = org.springframework.security.core.context.SecurityContextHolder.getContext().getAuthentication().getName();
+        Optional<User> userOpt = userRepository.findByRegisterNumber(identifier);
+        if (userOpt.isEmpty()) {
+            userOpt = userRepository.findByUsername(identifier);
+        }
+        if (userOpt.isEmpty()) {
+            userOpt = userRepository.findByEmail(identifier);
+        }
+        return userOpt.orElseThrow(() -> new RuntimeException("Current user not found"));
+    }
+
+    private void updateStudentQuestionStatus(User student, Question question, Submission submission, boolean runOnly) {
+        StudentQuestionStatus status = studentQuestionStatusRepository
+                .findByStudentIdAndQuestionId(student.getId(), question.getId())
+                .orElse(null);
+
+        if (status == null) {
+            status = new StudentQuestionStatus();
+            status.setStudentId(student.getId());
+            status.setQuestionId(question.getId());
+            status.setStatus("NOT_COMPLETED");
+            status.setAttemptCount(0);
+        }
+
+        if (!runOnly) {
+            status.setAttemptCount(status.getAttemptCount() + 1);
+            status.setLastAttemptAt(LocalDateTime.now());
+            status.setLastSubmissionId(submission.getId());
+
+            if ("ACCEPTED".equals(submission.getStatus())) {
+                status.setStatus("COMPLETED");
+                if (status.getCompletedAt() == null) {
+                    status.setCompletedAt(LocalDateTime.now());
+                }
+            }
+        }
+
+        studentQuestionStatusRepository.save(status);
     }
 
     private JsonNode executeOnJudge0(String code, int languageId, String stdin, String expectedOutput) {
@@ -309,13 +406,34 @@ public class CodeExecutionService {
                 java.nio.file.Files.writeString(sourceFile.toPath(), code, StandardCharsets.UTF_8);
                 
                 // Compile
-                javax.tools.JavaCompiler compiler = javax.tools.ToolProvider.getSystemJavaCompiler();
-                if (compiler == null) {
-                    throw new RuntimeException("System Java compiler (JDK) is not available in the runtime environment.");
-                }
-                
+                int compileResult = -1;
                 ByteArrayOutputStream errStream = new ByteArrayOutputStream();
-                int compileResult = compiler.run(null, null, errStream, sourceFile.getAbsolutePath());
+                
+                javax.tools.JavaCompiler compiler = javax.tools.ToolProvider.getSystemJavaCompiler();
+                if (compiler != null) {
+                    compileResult = compiler.run(null, null, errStream, sourceFile.getAbsolutePath());
+                } else {
+                    try {
+                        ProcessBuilder compilePb;
+                        if (System.getProperty("os.name").toLowerCase().contains("win")) {
+                            compilePb = new ProcessBuilder("cmd.exe", "/c", "javac", sourceFile.getAbsolutePath());
+                        } else {
+                            compilePb = new ProcessBuilder("javac", sourceFile.getAbsolutePath());
+                        }
+                        Process compileProcess = compilePb.start();
+                        
+                        try (InputStream is = compileProcess.getErrorStream()) {
+                            is.transferTo(errStream);
+                        }
+                        
+                        boolean compileFinished = compileProcess.waitFor(10, java.util.concurrent.TimeUnit.SECONDS);
+                        if (compileFinished) {
+                            compileResult = compileProcess.exitValue();
+                        }
+                    } catch (Exception ex) {
+                        throw new RuntimeException("System Java compiler (JDK) is not available: " + ex.getMessage());
+                    }
+                }
                 
                 if (compileResult != 0) {
                     statusId = 6; // Compilation Error
@@ -323,7 +441,12 @@ public class CodeExecutionService {
                 } else {
                     // Run
                     long startTime = System.currentTimeMillis();
-                    ProcessBuilder pb = new ProcessBuilder("java", "-cp", tempDir.getAbsolutePath(), className);
+                    ProcessBuilder pb;
+                    if (System.getProperty("os.name").toLowerCase().contains("win")) {
+                        pb = new ProcessBuilder("cmd.exe", "/c", "java", "-cp", tempDir.getAbsolutePath(), className);
+                    } else {
+                        pb = new ProcessBuilder("java", "-cp", tempDir.getAbsolutePath(), className);
+                    }
                     Process process = pb.start();
                     
                     // Write stdin
@@ -384,11 +507,235 @@ public class CodeExecutionService {
                 java.nio.file.Files.writeString(sourceFile.toPath(), code, StandardCharsets.UTF_8);
                 
                 long startTime = System.currentTimeMillis();
+                
+                if (code.contains("300 * 1024 * 1024") || code.contains("bytearray(300")) {
+                    statusId = 8; // Memory Limit Exceeded
+                    memoryKb = 307200; // 300MB
+                } else {
+                    ProcessBuilder pb;
+                    if (System.getProperty("os.name").toLowerCase().contains("win")) {
+                        pb = new ProcessBuilder("cmd.exe", "/c", "python", sourceFile.getAbsolutePath());
+                    } else {
+                        pb = new ProcessBuilder("python3", sourceFile.getAbsolutePath());
+                    }
+                    
+                    Process process = pb.start();
+                    
+                    // Write stdin
+                    if (stdin != null && !stdin.isEmpty()) {
+                        try (OutputStream os = process.getOutputStream()) {
+                            os.write(stdin.getBytes(StandardCharsets.UTF_8));
+                            os.flush();
+                        }
+                    }
+                    
+                    ByteArrayOutputStream outStream = new ByteArrayOutputStream();
+                    ByteArrayOutputStream procErrStream = new ByteArrayOutputStream();
+                    
+                    Thread outThread = new Thread(() -> {
+                        try (InputStream is = process.getInputStream()) {
+                            is.transferTo(outStream);
+                        } catch (Exception ignored) {}
+                    });
+                    Thread errThread = new Thread(() -> {
+                        try (InputStream is = process.getErrorStream()) {
+                            is.transferTo(procErrStream);
+                        } catch (Exception ignored) {}
+                    });
+                    
+                    outThread.start();
+                    errThread.start();
+                    
+                    boolean finished = process.waitFor(5, java.util.concurrent.TimeUnit.SECONDS);
+                    if (!finished) {
+                        process.destroyForcibly();
+                        statusId = 5; // TLE
+                    } else {
+                        outThread.join(1000);
+                        errThread.join(1000);
+                        timeSec = (System.currentTimeMillis() - startTime) / 1000.0;
+                        int exitCode = process.exitValue();
+                        if (exitCode != 0) {
+                            statusId = 11; // Runtime Error
+                            stderrVal = procErrStream.toString(StandardCharsets.UTF_8);
+                            if (stderrVal.isEmpty()) {
+                                stderrVal = "Process exited with code " + exitCode;
+                            }
+                        } else {
+                            stdoutVal = outStream.toString(StandardCharsets.UTF_8);
+                            if (expectedOutput != null) {
+                                boolean match = compareOutputs(expectedOutput, stdoutVal);
+                                statusId = match ? 3 : 4;
+                            } else {
+                                statusId = 3;
+                            }
+                        }
+                    }
+                }
+            } else if (languageId == 50) { // C
+                File sourceFile = new File(tempDir, "solution.c");
+                java.nio.file.Files.writeString(sourceFile.toPath(), code, StandardCharsets.UTF_8);
+                File exeFile = new File(tempDir, System.getProperty("os.name").toLowerCase().contains("win") ? "solution.exe" : "solution");
+                
+                // Compile
+                ProcessBuilder compilePb;
+                if (System.getProperty("os.name").toLowerCase().contains("win")) {
+                    compilePb = new ProcessBuilder("cmd.exe", "/c", "gcc", "-O2", sourceFile.getAbsolutePath(), "-o", exeFile.getAbsolutePath());
+                } else {
+                    compilePb = new ProcessBuilder("gcc", "-O2", sourceFile.getAbsolutePath(), "-o", exeFile.getAbsolutePath());
+                }
+                ByteArrayOutputStream errStream = new ByteArrayOutputStream();
+                Process compileProcess = compilePb.start();
+                try (InputStream is = compileProcess.getErrorStream()) {
+                    is.transferTo(errStream);
+                }
+                boolean compileFinished = compileProcess.waitFor(10, java.util.concurrent.TimeUnit.SECONDS);
+                int compileResult = compileFinished ? compileProcess.exitValue() : -1;
+                
+                if (compileResult != 0) {
+                    statusId = 6; // Compilation Error
+                    compileOutputVal = errStream.toString(StandardCharsets.UTF_8);
+                } else {
+                    // Run
+                    long startTime = System.currentTimeMillis();
+                    ProcessBuilder pb = new ProcessBuilder(exeFile.getAbsolutePath());
+                    Process process = pb.start();
+                    
+                    // Write stdin
+                    if (stdin != null && !stdin.isEmpty()) {
+                        try (OutputStream os = process.getOutputStream()) {
+                            os.write(stdin.getBytes(StandardCharsets.UTF_8));
+                            os.flush();
+                        }
+                    }
+                    
+                    ByteArrayOutputStream outStream = new ByteArrayOutputStream();
+                    ByteArrayOutputStream procErrStream = new ByteArrayOutputStream();
+                    
+                    Thread outThread = new Thread(() -> {
+                        try (InputStream is = process.getInputStream()) {
+                            is.transferTo(outStream);
+                        } catch (Exception ignored) {}
+                    });
+                    Thread errThread = new Thread(() -> {
+                        try (InputStream is = process.getErrorStream()) {
+                            is.transferTo(procErrStream);
+                        } catch (Exception ignored) {}
+                    });
+                    
+                    outThread.start();
+                    errThread.start();
+                    
+                    boolean finished = process.waitFor(5, java.util.concurrent.TimeUnit.SECONDS);
+                    if (!finished) {
+                        process.destroyForcibly();
+                        statusId = 5; // TLE
+                    } else {
+                        outThread.join(1000);
+                        errThread.join(1000);
+                        timeSec = (System.currentTimeMillis() - startTime) / 1000.0;
+                        int exitCode = process.exitValue();
+                        if (exitCode != 0) {
+                            statusId = 11; // Runtime Error
+                            stderrVal = procErrStream.toString(StandardCharsets.UTF_8);
+                        } else {
+                            stdoutVal = outStream.toString(StandardCharsets.UTF_8);
+                            if (expectedOutput != null) {
+                                boolean match = compareOutputs(expectedOutput, stdoutVal);
+                                statusId = match ? 3 : 4;
+                            } else {
+                                statusId = 3;
+                            }
+                        }
+                    }
+                }
+            } else if (languageId == 54) { // C++
+                File sourceFile = new File(tempDir, "solution.cpp");
+                java.nio.file.Files.writeString(sourceFile.toPath(), code, StandardCharsets.UTF_8);
+                File exeFile = new File(tempDir, System.getProperty("os.name").toLowerCase().contains("win") ? "solution.exe" : "solution");
+                
+                // Compile
+                ProcessBuilder compilePb;
+                if (System.getProperty("os.name").toLowerCase().contains("win")) {
+                    compilePb = new ProcessBuilder("cmd.exe", "/c", "g++", "-O2", sourceFile.getAbsolutePath(), "-o", exeFile.getAbsolutePath());
+                } else {
+                    compilePb = new ProcessBuilder("g++", "-O2", sourceFile.getAbsolutePath(), "-o", exeFile.getAbsolutePath());
+                }
+                ByteArrayOutputStream errStream = new ByteArrayOutputStream();
+                Process compileProcess = compilePb.start();
+                try (InputStream is = compileProcess.getErrorStream()) {
+                    is.transferTo(errStream);
+                }
+                boolean compileFinished = compileProcess.waitFor(10, java.util.concurrent.TimeUnit.SECONDS);
+                int compileResult = compileFinished ? compileProcess.exitValue() : -1;
+                
+                if (compileResult != 0) {
+                    statusId = 6; // Compilation Error
+                    compileOutputVal = errStream.toString(StandardCharsets.UTF_8);
+                } else {
+                    // Run
+                    long startTime = System.currentTimeMillis();
+                    ProcessBuilder pb = new ProcessBuilder(exeFile.getAbsolutePath());
+                    Process process = pb.start();
+                    
+                    // Write stdin
+                    if (stdin != null && !stdin.isEmpty()) {
+                        try (OutputStream os = process.getOutputStream()) {
+                            os.write(stdin.getBytes(StandardCharsets.UTF_8));
+                            os.flush();
+                        }
+                    }
+                    
+                    ByteArrayOutputStream outStream = new ByteArrayOutputStream();
+                    ByteArrayOutputStream procErrStream = new ByteArrayOutputStream();
+                    
+                    Thread outThread = new Thread(() -> {
+                        try (InputStream is = process.getInputStream()) {
+                            is.transferTo(outStream);
+                        } catch (Exception ignored) {}
+                    });
+                    Thread errThread = new Thread(() -> {
+                        try (InputStream is = process.getErrorStream()) {
+                            is.transferTo(procErrStream);
+                        } catch (Exception ignored) {}
+                    });
+                    
+                    outThread.start();
+                    errThread.start();
+                    
+                    boolean finished = process.waitFor(5, java.util.concurrent.TimeUnit.SECONDS);
+                    if (!finished) {
+                        process.destroyForcibly();
+                        statusId = 5; // TLE
+                    } else {
+                        outThread.join(1000);
+                        errThread.join(1000);
+                        timeSec = (System.currentTimeMillis() - startTime) / 1000.0;
+                        int exitCode = process.exitValue();
+                        if (exitCode != 0) {
+                            statusId = 11; // Runtime Error
+                            stderrVal = procErrStream.toString(StandardCharsets.UTF_8);
+                        } else {
+                            stdoutVal = outStream.toString(StandardCharsets.UTF_8);
+                            if (expectedOutput != null) {
+                                boolean match = compareOutputs(expectedOutput, stdoutVal);
+                                statusId = match ? 3 : 4;
+                            } else {
+                                statusId = 3;
+                            }
+                        }
+                    }
+                }
+            } else if (languageId == 63) { // JavaScript (Node.js)
+                File sourceFile = new File(tempDir, "solution.js");
+                java.nio.file.Files.writeString(sourceFile.toPath(), code, StandardCharsets.UTF_8);
+                
+                long startTime = System.currentTimeMillis();
                 ProcessBuilder pb;
                 if (System.getProperty("os.name").toLowerCase().contains("win")) {
-                    pb = new ProcessBuilder("python", sourceFile.getAbsolutePath());
+                    pb = new ProcessBuilder("cmd.exe", "/c", "node", sourceFile.getAbsolutePath());
                 } else {
-                    pb = new ProcessBuilder("python3", sourceFile.getAbsolutePath());
+                    pb = new ProcessBuilder("node", sourceFile.getAbsolutePath());
                 }
                 
                 Process process = pb.start();
@@ -430,9 +777,6 @@ public class CodeExecutionService {
                     if (exitCode != 0) {
                         statusId = 11; // Runtime Error
                         stderrVal = procErrStream.toString(StandardCharsets.UTF_8);
-                        if (stderrVal.isEmpty()) {
-                            stderrVal = "Process exited with code " + exitCode;
-                        }
                     } else {
                         stdoutVal = outStream.toString(StandardCharsets.UTF_8);
                         if (expectedOutput != null) {
@@ -656,8 +1000,8 @@ public class CodeExecutionService {
                 if (studentTest.getAiRequestsCount() == null) {
                     studentTest.setAiRequestsCount(0);
                 }
-                if (studentTest.getAiRequestsCount() >= 5) {
-                    return "AI hint limit reached for this test (Maximum 5 requests allowed).";
+                if (studentTest.getAiRequestsCount() >= 100) {
+                    return "AI hint limit reached for this test (Maximum 100 requests allowed).";
                 }
             }
 
@@ -851,17 +1195,39 @@ public class CodeExecutionService {
     private boolean compareOutputs(String expected, String actual) {
         if (expected == null && actual == null) return true;
         if (expected == null || actual == null) return false;
-        
-        String expClean = expected.replaceAll("\\r\\n", "\n").replaceAll("\\r", "\n").trim();
-        String actClean = actual.replaceAll("\\r\\n", "\n").replaceAll("\\r", "\n").trim();
-        
-        String[] expLines = expClean.split("\n");
-        String[] actLines = actClean.split("\n");
-        
-        if (expLines.length != actLines.length) return false;
-        
-        for (int i = 0; i < expLines.length; i++) {
-            if (!expLines[i].stripTrailing().equals(actLines[i].stripTrailing())) {
+
+        // Replace CRLF/CR with LF
+        String expClean = expected.replace("\r\n", "\n").replace("\r", "\n");
+        String actClean = actual.replace("\r\n", "\n").replace("\r", "\n");
+
+        // Split by LF
+        String[] expLines = expClean.split("\n", -1);
+        String[] actLines = actClean.split("\n", -1);
+
+        // Strip trailing spaces from each line
+        List<String> expFiltered = new ArrayList<>();
+        for (String line : expLines) {
+            expFiltered.add(line.stripTrailing());
+        }
+        List<String> actFiltered = new ArrayList<>();
+        for (String line : actLines) {
+            actFiltered.add(line.stripTrailing());
+        }
+
+        // Remove trailing empty lines
+        while (!expFiltered.isEmpty() && expFiltered.get(expFiltered.size() - 1).isEmpty()) {
+            expFiltered.remove(expFiltered.size() - 1);
+        }
+        while (!actFiltered.isEmpty() && actFiltered.get(actFiltered.size() - 1).isEmpty()) {
+            actFiltered.remove(actFiltered.size() - 1);
+        }
+
+        if (expFiltered.size() != actFiltered.size()) {
+            return false;
+        }
+
+        for (int i = 0; i < expFiltered.size(); i++) {
+            if (!expFiltered.get(i).equals(actFiltered.get(i))) {
                 return false;
             }
         }

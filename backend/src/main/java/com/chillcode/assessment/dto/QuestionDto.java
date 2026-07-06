@@ -19,9 +19,12 @@ public class QuestionDto {
     private String constraints;
     private String inputFormat;
     private String outputFormat;
-    private Integer marks;
-    private Integer negativeMarks;
     private String allowedLanguages;
     private String tags;
     private List<TestCaseDto> testCases;
+    
+    // Status tracking fields
+    private String status; // 'COMPLETED', 'NOT_COMPLETED'
+    private Integer attemptCount;
+    private String lastAttemptAt;
 }

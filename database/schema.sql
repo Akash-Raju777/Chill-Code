@@ -36,8 +36,6 @@ CREATE TABLE IF NOT EXISTS questions (
     constraints TEXT NULL,
     input_format TEXT NULL,
     output_format TEXT NULL,
-    marks INT DEFAULT 10,
-    negative_marks INT DEFAULT 0,
     allowed_languages TEXT NULL, -- Comma separated: 'java,python,cpp,c,javascript'
     tags VARCHAR(255) NULL,       -- Comma separated tags
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
@@ -127,6 +125,21 @@ CREATE TABLE IF NOT EXISTS submission_test_cases (
     message VARCHAR(255) NULL,
     FOREIGN KEY (submission_id) REFERENCES submissions(id) ON DELETE CASCADE,
     FOREIGN KEY (test_case_id) REFERENCES test_cases(id) ON DELETE CASCADE
+);
+
+-- Student Question Status Table
+CREATE TABLE IF NOT EXISTS student_question_status (
+    id BIGSERIAL PRIMARY KEY,
+    student_id BIGINT NOT NULL,
+    question_id BIGINT NOT NULL,
+    status VARCHAR(30) DEFAULT 'NOT_COMPLETED',
+    attempt_count INT DEFAULT 0,
+    last_submission_id BIGINT NULL,
+    completed_at TIMESTAMP NULL,
+    last_attempt_at TIMESTAMP NULL,
+    FOREIGN KEY (student_id) REFERENCES app_users(id) ON DELETE CASCADE,
+    FOREIGN KEY (question_id) REFERENCES questions(id) ON DELETE CASCADE,
+    CONSTRAINT unique_student_question UNIQUE (student_id, question_id)
 );
 
 -- Warnings Table
