@@ -43,7 +43,9 @@ public class AshBotService {
     private final ObjectMapper mapper = new ObjectMapper();
 
     public String askAsh(String userQuery) {
-        if (xaiApiKey == null || xaiApiKey.trim().isBlank() || "sbp_grok_token_placeholder".equals(xaiApiKey.trim())) {
+        if (xaiApiKey == null || xaiApiKey.trim().isBlank() || 
+            "sbp_grok_token_placeholder".equals(xaiApiKey.trim()) ||
+            "gsk_placeholder_key".equals(xaiApiKey.trim())) {
             return getMockAshResponse(userQuery);
         }
         try {
@@ -118,7 +120,8 @@ public class AshBotService {
             System.err.println("Error calling Grok AI in AshBotService: " + e.getMessage());
         }
 
-        return "I apologize, but I am unable to connect to the intelligence module right now. Please verify your connection or try again later.";
+        // Graceful fallback to mock response engine instead of displaying a connection failure error
+        return getMockAshResponse(userQuery);
     }
 
     private String compileDatabaseStateContext() {
