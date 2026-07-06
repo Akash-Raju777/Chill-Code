@@ -37,15 +37,22 @@ public class AshBotService {
     private String xaiApiKey;
 
     private final HttpClient httpClient = HttpClient.newBuilder()
-            .connectTimeout(Duration.ofSeconds(15))
+            .connectTimeout(Duration.ofSeconds(3))
             .build();
 
     private final ObjectMapper mapper = new ObjectMapper();
 
+    private boolean isRealApiKey(String key) {
+        if (key == null) return false;
+        String clean = key.trim().replace("\"", "").replace("'", "");
+        if (clean.isBlank()) return false;
+        if (clean.contains("placeholder") || clean.contains("token") || clean.contains("your-") || clean.contains("value") || clean.contains("key")) return false;
+        if (!clean.startsWith("gsk_")) return false;
+        return clean.length() >= 40;
+    }
+
     public String askAsh(String userQuery) {
-        if (xaiApiKey == null || xaiApiKey.trim().isBlank() || 
-            "sbp_grok_token_placeholder".equals(xaiApiKey.trim()) ||
-            "gsk_placeholder_key".equals(xaiApiKey.trim())) {
+        if (!isRealApiKey(xaiApiKey)) {
             return getMockAshResponse(userQuery);
         }
         try {
@@ -82,11 +89,13 @@ public class AshBotService {
             requestMap.put("temperature", 0.3);
 
             String requestBody = mapper.writeValueAsString(requestMap);
+            String bearerToken = xaiApiKey.trim().replace("\"", "").replace("'", "");
 
             HttpRequest httpRequest = HttpRequest.newBuilder()
                     .uri(URI.create("https://api.groq.com/openai/v1/chat/completions"))
                     .header("Content-Type", "application/json")
-                    .header("Authorization", "Bearer " + xaiApiKey)
+                    .header("Authorization", "Bearer " + bearerToken)
+                    .timeout(Duration.ofSeconds(5))
                     .POST(HttpRequest.BodyPublishers.ofString(requestBody, StandardCharsets.UTF_8))
                     .build();
 
@@ -100,7 +109,8 @@ public class AshBotService {
                 httpRequest = HttpRequest.newBuilder()
                         .uri(URI.create("https://api.groq.com/openai/v1/chat/completions"))
                         .header("Content-Type", "application/json")
-                        .header("Authorization", "Bearer " + xaiApiKey)
+                        .header("Authorization", "Bearer " + bearerToken)
+                        .timeout(Duration.ofSeconds(5))
                         .POST(HttpRequest.BodyPublishers.ofString(requestBody, StandardCharsets.UTF_8))
                         .build();
                 response = httpClient.send(httpRequest, HttpResponse.BodyHandlers.ofString());
