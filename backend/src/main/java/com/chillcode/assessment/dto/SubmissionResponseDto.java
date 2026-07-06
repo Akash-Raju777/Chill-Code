@@ -14,6 +14,7 @@ public class SubmissionResponseDto {
     private String runtimeOutput;
     private String aiHint;
     private List<TestCaseResultDto> testCaseResults;
+    private Long submissionId;
     
     // New fields for judging metrics
     private Integer executionTimeMs;

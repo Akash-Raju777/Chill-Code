@@ -35,6 +35,18 @@ public class StudentService {
     @Autowired
     private com.chillcode.assessment.repository.TestRepository testRepository;
 
+    @Autowired
+    private com.chillcode.assessment.repository.QuestionRepository questionRepository;
+
+    @Autowired
+    private com.chillcode.assessment.repository.StudentQuestionStatusRepository studentQuestionStatusRepository;
+
+    @Autowired
+    private com.chillcode.assessment.repository.SubmissionRepository submissionRepository;
+
+    @Autowired
+    private com.chillcode.assessment.repository.SubjectRepository subjectRepository;
+
     @Transactional
     public Map<String, Object> getStudentDashboardStats(Long studentId) {
         com.chillcode.assessment.entity.User student = userRepository.findById(studentId)
@@ -55,16 +67,21 @@ public class StudentService {
             }
         }
 
-        List<StudentTest> myTests = studentTestRepository.findByStudentId(studentId);
+        // Calculate statistics based on questions and question statuses
+        List<com.chillcode.assessment.entity.Question> allQuestions = questionRepository.findAll();
+        List<com.chillcode.assessment.entity.StudentQuestionStatus> allStatuses = studentQuestionStatusRepository.findByStudentId(studentId);
         
-        long unattendedCount = myTests.stream()
-                .filter(st -> "ASSIGNED".equals(st.getStatus()) || "STARTED".equals(st.getStatus()))
+        java.util.Map<Long, com.chillcode.assessment.entity.StudentQuestionStatus> statusMap = allStatuses.stream()
+                .collect(Collectors.toMap(com.chillcode.assessment.entity.StudentQuestionStatus::getQuestionId, s -> s, (a, b) -> a));
+
+        long completedQuestionsCount = allStatuses.stream()
+                .filter(s -> "COMPLETED".equals(s.getStatus()))
                 .count();
 
-        long completedCount = myTests.stream()
-                .filter(st -> "SUBMITTED".equals(st.getStatus()) || "EVALUATED".equals(st.getStatus()))
-                .count();
+        long incompleteQuestionsCount = allQuestions.size() - completedQuestionsCount;
 
+        // Calculate average score of all student tests
+        List<StudentTest> myTests = studentTestRepository.findByStudentId(studentId);
         double totalScore = myTests.stream()
                 .filter(st -> "SUBMITTED".equals(st.getStatus()) || "EVALUATED".equals(st.getStatus()))
                 .mapToInt(st -> st.getScore() != null ? st.getScore() : 0)
@@ -72,27 +89,29 @@ public class StudentService {
                 .orElse(0.0);
 
         Map<String, Object> stats = new HashMap<>();
-        stats.put("unattendedTests", unattendedCount);
-        stats.put("completedTests", completedCount);
+        stats.put("unattendedTests", incompleteQuestionsCount); // Display incomplete challenges count
+        stats.put("completedTests", completedQuestionsCount);  // Display completed challenges count
         stats.put("averageScore", Math.round(totalScore * 100.0) / 100.0);
-        
-        // Group myTests by Subject
-        Map<com.chillcode.assessment.entity.Subject, List<StudentTest>> testsBySubject = myTests.stream()
-                .filter(st -> st.getTest() != null && st.getTest().getSubject() != null)
-                .collect(Collectors.groupingBy(st -> st.getTest().getSubject()));
 
+        // Group questions by Subject
+        List<com.chillcode.assessment.entity.Subject> subjects = subjectRepository.findAll();
         List<Map<String, Object>> subjectStatsList = new java.util.ArrayList<>();
-        for (Map.Entry<com.chillcode.assessment.entity.Subject, List<StudentTest>> entry : testsBySubject.entrySet()) {
-            com.chillcode.assessment.entity.Subject subject = entry.getKey();
-            List<StudentTest> subjectTests = entry.getValue();
+        
+        for (com.chillcode.assessment.entity.Subject subject : subjects) {
+            List<com.chillcode.assessment.entity.Question> subjectQuestions = allQuestions.stream()
+                    .filter(q -> q.getSubject() != null && q.getSubject().getId().equals(subject.getId()))
+                    .collect(Collectors.toList());
 
-            long completed = subjectTests.stream()
-                    .filter(st -> "SUBMITTED".equals(st.getStatus()) || "EVALUATED".equals(st.getStatus()))
+            if (subjectQuestions.isEmpty()) continue;
+
+            long completed = subjectQuestions.stream()
+                    .filter(q -> {
+                        com.chillcode.assessment.entity.StudentQuestionStatus sqs = statusMap.get(q.getId());
+                        return sqs != null && "COMPLETED".equals(sqs.getStatus());
+                    })
                     .count();
 
-            long incomplete = subjectTests.stream()
-                    .filter(st -> "ASSIGNED".equals(st.getStatus()) || "STARTED".equals(st.getStatus()))
-                    .count();
+            long incomplete = subjectQuestions.size() - completed;
 
             Map<String, Object> subMap = new HashMap<>();
             subMap.put("subjectId", subject.getId());
@@ -100,17 +119,27 @@ public class StudentService {
             subMap.put("subjectColor", subject.getColor());
             subMap.put("completedCount", completed);
             subMap.put("incompleteCount", incomplete);
-            subMap.put("totalCount", subjectTests.size());
-            subMap.put("status", incomplete == 0 && subjectTests.size() > 0 ? "COMPLETED" : "INCOMPLETE");
+            subMap.put("totalCount", subjectQuestions.size());
+            subMap.put("status", incomplete == 0 ? "COMPLETED" : "INCOMPLETE");
 
             subjectStatsList.add(subMap);
         }
         stats.put("subjectStats", subjectStatsList);
 
-        stats.put("recentActivities", myTests.stream()
-                .map(st -> "Test '" + st.getTest().getName() + "' status: " + st.getStatus())
+        // Recent activity logs: fetch latest 5 submissions made by the student
+        List<com.chillcode.assessment.entity.Submission> latestSubmissions = submissionRepository.findAllByStudentIdOrderByCreatedAtDesc(studentId);
+        List<String> activities = latestSubmissions.stream()
+                .map(sub -> String.format("Submitted solution for '%s' - Verdict: %s",
+                        sub.getQuestion() != null ? sub.getQuestion().getTitle() : "Unknown",
+                        sub.getStatus()))
                 .limit(5)
-                .collect(Collectors.toList()));
+                .collect(Collectors.toList());
+        
+        if (activities.isEmpty()) {
+            activities.add("No recent submission activity recorded yet.");
+        }
+        stats.put("recentActivities", activities);
+
         return stats;
     }
 

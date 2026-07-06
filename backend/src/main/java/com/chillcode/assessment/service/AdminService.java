@@ -91,14 +91,25 @@ public class AdminService {
                     studentParticipation.add(data);
                 });
 
-        // Language wise performance chart
+        // Language wise performance chart calculated dynamically from all student submissions
         List<Map<String, Object>> languagePerformance = new ArrayList<>();
+        List<com.chillcode.assessment.entity.Submission> allSubmissions = submissionRepository.findAll();
+        Map<String, List<com.chillcode.assessment.entity.Submission>> subsByLang = allSubmissions.stream()
+                .collect(java.util.stream.Collectors.groupingBy(s -> s.getLanguage().toLowerCase()));
+
         String[] langs = {"java", "python", "cpp", "c", "javascript"};
-        int[] scores = {85, 90, 75, 70, 80};
-        for (int i = 0; i < langs.length; i++) {
+        for (String lang : langs) {
+            List<com.chillcode.assessment.entity.Submission> langSubs = subsByLang.getOrDefault(lang, java.util.Collections.emptyList());
+            double avg = 0.0;
+            if (!langSubs.isEmpty()) {
+                avg = langSubs.stream()
+                        .mapToInt(s -> "ACCEPTED".equals(s.getStatus()) ? 100 : 0)
+                        .average()
+                        .orElse(0.0);
+            }
             Map<String, Object> data = new HashMap<>();
-            data.put("language", langs[i].toUpperCase());
-            data.put("avgScore", scores[i]);
+            data.put("language", lang.toUpperCase());
+            data.put("avgScore", Math.round(avg * 10.0) / 10.0);
             languagePerformance.add(data);
         }
 
@@ -138,5 +149,60 @@ public class AdminService {
                 .languagePerformance(languagePerformance)
                 .recentActivities(recentActivities)
                 .build();
+    }
+
+    @Autowired
+    private StudentQuestionStatusRepository studentQuestionStatusRepository;
+
+    @Autowired
+    private NotificationRepository notificationRepository;
+
+    @Autowired
+    private AchievementRepository achievementRepository;
+
+    @jakarta.persistence.PersistenceContext
+    private jakarta.persistence.EntityManager entityManager;
+
+    @org.springframework.transaction.annotation.Transactional
+    public void deleteStudent(Long id) {
+        // 1. Delete all notifications for this student
+        entityManager.createQuery("DELETE FROM Notification n WHERE n.user.id = :stuId")
+                .setParameter("stuId", id)
+                .executeUpdate();
+
+        // 2. Delete all achievements for this student
+        entityManager.createQuery("DELETE FROM Achievement a WHERE a.student.id = :stuId")
+                .setParameter("stuId", id)
+                .executeUpdate();
+
+        // 3. Delete all student question statuses
+        entityManager.createQuery("DELETE FROM StudentQuestionStatus sqs WHERE sqs.studentId = :stuId")
+                .setParameter("stuId", id)
+                .executeUpdate();
+
+        // 4. Delete warning logs for student tests of this student
+        entityManager.createQuery("DELETE FROM Warning w WHERE w.studentTest.id IN (SELECT st.id FROM StudentTest st WHERE st.student.id = :stuId)")
+                .setParameter("stuId", id)
+                .executeUpdate();
+
+        // 5. Delete submission test cases for submissions of student tests of this student
+        entityManager.createQuery("DELETE FROM SubmissionTestCase stc WHERE stc.submission.id IN (SELECT s.id FROM Submission s WHERE s.studentTest.id IN (SELECT st.id FROM StudentTest st WHERE st.student.id = :stuId))")
+                .setParameter("stuId", id)
+                .executeUpdate();
+
+        // 6. Delete submissions of student tests of this student
+        entityManager.createQuery("DELETE FROM Submission s WHERE s.studentTest.id IN (SELECT st.id FROM StudentTest st WHERE st.student.id = :stuId)")
+                .setParameter("stuId", id)
+                .executeUpdate();
+
+        // 7. Delete student tests of this student
+        entityManager.createQuery("DELETE FROM StudentTest st WHERE st.student.id = :stuId")
+                .setParameter("stuId", id)
+                .executeUpdate();
+
+        // 8. Delete student itself
+        entityManager.createQuery("DELETE FROM User u WHERE u.id = :stuId")
+                .setParameter("stuId", id)
+                .executeUpdate();
     }
 }

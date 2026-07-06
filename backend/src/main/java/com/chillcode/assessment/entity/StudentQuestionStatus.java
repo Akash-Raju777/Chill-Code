@@ -27,7 +27,7 @@ public class StudentQuestionStatus {
     private Long questionId;
 
     @Column(nullable = false, length = 30)
-    private String status = "NOT_COMPLETED"; // 'COMPLETED', 'NOT_COMPLETED'
+    private String status = "NOT_STARTED"; // 'NOT_STARTED', 'IN_PROGRESS', 'COMPLETED'
 
     @Column(name = "attempt_count", nullable = false)
     private Integer attemptCount = 0;

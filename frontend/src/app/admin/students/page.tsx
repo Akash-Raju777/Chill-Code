@@ -112,6 +112,20 @@ export default function StudentManagement() {
     }
   };
 
+  const handleDeleteStudent = async (student: Student) => {
+    if (!window.confirm(`Are you sure you want to delete student ${student.name} (${student.registerNumber})? This will permanently wipe all their scores, test sessions, and logs.`)) {
+      return;
+    }
+    try {
+      await apiCall(`/api/admin/students/${student.id}`, {
+        method: 'DELETE',
+      });
+      fetchStudents();
+    } catch (err: any) {
+      alert(err.message || 'Failed to delete student account');
+    }
+  };
+
   return (
     <div className="space-y-6 font-sans">
       <div className="flex justify-between items-center">
@@ -179,13 +193,20 @@ export default function StudentManagement() {
                         {student.status}
                       </span>
                     </td>
-                    <td className="p-4 pr-6 text-right">
+                    <td className="p-4 pr-6 text-right flex items-center justify-end gap-2">
                       <button
                         onClick={() => handleOpenEdit(student)}
-                        className="inline-flex items-center gap-1 px-3 py-1.5 bg-white/5 hover:bg-white/10 text-gray-300 hover:text-white rounded-lg transition-all"
+                        className="inline-flex items-center gap-1 px-3 py-1.5 bg-white/5 hover:bg-white/10 text-gray-300 hover:text-white rounded-lg transition-all select-none"
                       >
                         <Edit2 className="w-3 h-3" />
-                        Edit details
+                        Edit
+                      </button>
+                      <button
+                        onClick={() => handleDeleteStudent(student)}
+                        className="inline-flex items-center gap-1 px-3 py-1.5 bg-red-500/10 hover:bg-red-500/20 text-red-400 hover:text-red-300 rounded-lg transition-all select-none"
+                      >
+                        <UserX className="w-3.5 h-3.5" />
+                        Delete
                       </button>
                     </td>
                   </tr>

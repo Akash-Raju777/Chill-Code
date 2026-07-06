@@ -68,8 +68,56 @@ public class SubmissionController {
         }
         
         response.setAiHint(result.getAiExplanation());
+        response.setExecutionTimeMs(result.getRunTimeMs());
+        response.setMemoryUsedKb(result.getMemoryUsedKb());
+        response.setPassedTests(result.getPassedTests());
+        response.setTotalTests(result.getTotalTests());
+        response.setExpectedOutput(result.getExpectedOutput());
+        response.setActualOutput(result.getActualOutput());
+        response.setFailedTestCaseNumber(result.getFailedTestCaseNumber());
+        response.setJudge0Status(result.getJudge0Status());
         response.setTestCaseResults(result.getTestCaseResults());
+        response.setSubmissionId(result.getSubmissionId());
         return ResponseEntity.ok(response);
+    }
+
+    @GetMapping("/submissions")
+    public ResponseEntity<List<java.util.Map<String, Object>>> getMySubmissions() {
+        com.chillcode.assessment.entity.User student = getCurrentUser();
+        List<Submission> submissions = submissionRepository.findAllByStudentIdOrderByCreatedAtDesc(student.getId());
+        
+        List<java.util.Map<String, Object>> result = new java.util.ArrayList<>();
+        for (Submission sub : submissions) {
+            java.util.Map<String, Object> map = new java.util.HashMap<>();
+            map.put("id", sub.getId());
+            map.put("language", sub.getLanguage());
+            map.put("code", sub.getCode());
+            map.put("status", sub.getStatus());
+            map.put("runTimeMs", sub.getRunTimeMs());
+            map.put("memoryUsedKb", sub.getMemoryUsedKb());
+            map.put("compileError", sub.getCompileError());
+            map.put("stdout", sub.getStdout());
+            map.put("stderr", sub.getStderr());
+            map.put("expectedOutput", sub.getExpectedOutput());
+            map.put("actualOutput", sub.getActualOutput());
+            map.put("failedTestCaseNumber", sub.getFailedTestCaseNumber());
+            map.put("passedTests", sub.getPassedTests());
+            map.put("totalTests", sub.getTotalTests());
+            map.put("createdAt", sub.getCreatedAt());
+            
+            if (sub.getQuestion() != null) {
+                map.put("questionId", sub.getQuestion().getId());
+                map.put("questionName", sub.getQuestion().getTitle());
+                if (sub.getQuestion().getSubject() != null) {
+                    map.put("subjectName", sub.getQuestion().getSubject().getName());
+                }
+            }
+            if (sub.getStudentTest() != null && sub.getStudentTest().getTest() != null) {
+                map.put("testId", sub.getStudentTest().getTest().getId());
+            }
+            result.add(map);
+        }
+        return ResponseEntity.ok(result);
     }
 
     @GetMapping("/submissions/solved")
@@ -85,5 +133,43 @@ public class SubmissionController {
             @PathVariable Long questionId) {
         List<Submission> history = submissionRepository.findByStudentTestIdAndQuestionId(studentTestId, questionId);
         return ResponseEntity.ok(history);
+    }
+
+    @GetMapping("/submissions/{id}")
+    public ResponseEntity<java.util.Map<String, Object>> getSubmissionById(@PathVariable Long id) {
+        Submission sub = submissionRepository.findById(id)
+                .orElseThrow(() -> new RuntimeException("Submission not found"));
+        
+        java.util.Map<String, Object> res = new java.util.HashMap<>();
+        res.put("id", sub.getId());
+        res.put("language", sub.getLanguage());
+        res.put("code", sub.getCode());
+        res.put("status", sub.getStatus());
+        res.put("runTimeMs", sub.getRunTimeMs());
+        res.put("memoryUsedKb", sub.getMemoryUsedKb());
+        res.put("compileError", sub.getCompileError());
+        res.put("stdout", sub.getStdout());
+        res.put("stderr", sub.getStderr());
+        res.put("expectedOutput", sub.getExpectedOutput());
+        res.put("actualOutput", sub.getActualOutput());
+        res.put("failedTestCaseNumber", sub.getFailedTestCaseNumber());
+        res.put("passedTests", sub.getPassedTests());
+        res.put("totalTests", sub.getTotalTests());
+        res.put("judge0Token", sub.getJudge0Token());
+        res.put("createdAt", sub.getCreatedAt());
+        
+        if (sub.getQuestion() != null) {
+            res.put("questionId", sub.getQuestion().getId());
+            res.put("questionName", sub.getQuestion().getTitle());
+            if (sub.getQuestion().getSubject() != null) {
+                res.put("subjectName", sub.getQuestion().getSubject().getName());
+            }
+        }
+        
+        if (sub.getStudentTest() != null && sub.getStudentTest().getTest() != null) {
+            res.put("testId", sub.getStudentTest().getTest().getId());
+        }
+        
+        return ResponseEntity.ok(res);
     }
 }

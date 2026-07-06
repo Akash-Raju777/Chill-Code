@@ -48,6 +48,30 @@ public class Submission {
     @Column(name = "compile_error", columnDefinition = "TEXT")
     private String compileError;
 
+    @Column(columnDefinition = "TEXT")
+    private String stdout;
+
+    @Column(columnDefinition = "TEXT")
+    private String stderr;
+
+    @Column(name = "expected_output", columnDefinition = "TEXT")
+    private String expectedOutput;
+
+    @Column(name = "actual_output", columnDefinition = "TEXT")
+    private String actualOutput;
+
+    @Column(name = "failed_test_case_number")
+    private Integer failedTestCaseNumber;
+
+    @Column(name = "passed_tests")
+    private Integer passedTests = 0;
+
+    @Column(name = "total_tests")
+    private Integer totalTests = 0;
+
+    @Column(name = "judge0_token", length = 100)
+    private String judge0Token;
+
     @OneToMany(mappedBy = "submission", cascade = CascadeType.ALL, orphanRemoval = true)
     private java.util.List<SubmissionTestCase> submissionTestCases;
 

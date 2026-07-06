@@ -84,10 +84,85 @@ public class SubjectService {
         return subjectRepository.save(subject);
     }
 
+    @Autowired
+    private com.chillcode.assessment.repository.TestCaseRepository testCaseRepository;
+
+    @Autowired
+    private com.chillcode.assessment.repository.WarningRepository warningRepository;
+
+    @Autowired
+    private com.chillcode.assessment.repository.SubmissionRepository submissionRepository;
+
+    @Autowired
+    private com.chillcode.assessment.repository.StudentQuestionStatusRepository studentQuestionStatusRepository;
+
+    @jakarta.persistence.PersistenceContext
+    private jakarta.persistence.EntityManager entityManager;
+
+    @org.springframework.transaction.annotation.Transactional
     public void deleteSubject(Long id) {
         Subject subject = subjectRepository.findById(id)
                 .orElseThrow(() -> new RuntimeException("Subject not found with id: " + id));
-        subjectRepository.delete(subject);
+
+        // 1. Delete submission test cases for submissions of student tests belonging to tests in this subject
+        entityManager.createQuery("DELETE FROM SubmissionTestCase stc WHERE stc.submission.id IN (SELECT s.id FROM Submission s WHERE s.studentTest.id IN (SELECT st.id FROM StudentTest st WHERE st.test.subject.id = :subId))")
+                .setParameter("subId", id)
+                .executeUpdate();
+
+        // 2. Delete submission test cases for submissions associated directly with questions of this subject
+        entityManager.createQuery("DELETE FROM SubmissionTestCase stc WHERE stc.submission.id IN (SELECT s.id FROM Submission s WHERE s.question.id IN (SELECT q.id FROM Question q WHERE q.subject.id = :subId))")
+                .setParameter("subId", id)
+                .executeUpdate();
+
+        // 3. Delete warning logs for student tests belonging to tests in this subject
+        entityManager.createQuery("DELETE FROM Warning w WHERE w.studentTest.id IN (SELECT st.id FROM StudentTest st WHERE st.test.subject.id = :subId)")
+                .setParameter("subId", id)
+                .executeUpdate();
+
+        // 4. Delete submissions for student tests belonging to tests in this subject
+        entityManager.createQuery("DELETE FROM Submission s WHERE s.studentTest.id IN (SELECT st.id FROM StudentTest st WHERE st.test.subject.id = :subId)")
+                .setParameter("subId", id)
+                .executeUpdate();
+
+        // 5. Delete submissions associated directly with questions of this subject
+        entityManager.createQuery("DELETE FROM Submission s WHERE s.question.id IN (SELECT q.id FROM Question q WHERE q.subject.id = :subId)")
+                .setParameter("subId", id)
+                .executeUpdate();
+
+        // 6. Delete all student tests associated with tests of this subject
+        entityManager.createQuery("DELETE FROM StudentTest st WHERE st.test.subject.id = :subId")
+                .setParameter("subId", id)
+                .executeUpdate();
+
+        // 7. Delete all test cases for questions of this subject
+        entityManager.createQuery("DELETE FROM TestCase tc WHERE tc.question.id IN (SELECT q.id FROM Question q WHERE q.subject.id = :subId)")
+                .setParameter("subId", id)
+                .executeUpdate();
+
+        // 8. Delete all student question status entries for questions of this subject
+        entityManager.createQuery("DELETE FROM StudentQuestionStatus sqs WHERE sqs.questionId IN (SELECT q.id FROM Question q WHERE q.subject.id = :subId)")
+                .setParameter("subId", id)
+                .executeUpdate();
+
+        // 9. Clear test_questions join table natively
+        entityManager.createNativeQuery("DELETE FROM test_questions WHERE test_id IN (SELECT id FROM tests WHERE subject_id = ?)")
+                .setParameter(1, id)
+                .executeUpdate();
+
+        // 10. Delete tests belonging to this subject
+        entityManager.createQuery("DELETE FROM Test t WHERE t.subject.id = :subId")
+                .setParameter("subId", id)
+                .executeUpdate();
+
+        // 11. Delete questions belonging to this subject
+        entityManager.createQuery("DELETE FROM Question q WHERE q.subject.id = :subId")
+                .setParameter("subId", id)
+                .executeUpdate();
+
+        // 12. Delete subject itself
+        entityManager.createQuery("DELETE FROM Subject s WHERE s.id = :subId")
+                .setParameter("subId", id)
+                .executeUpdate();
     }
 
     public com.chillcode.assessment.dto.SubjectStatsDto getSubjectStats(Long subjectId) {

@@ -173,7 +173,7 @@ export default function TestsWorkspace() {
       setQuestionsList((prev) =>
         prev.map((q) =>
           q.id === questionId
-            ? { ...q, status: 'NOT_COMPLETED' }
+            ? { ...q, status: 'NOT_STARTED' }
             : q
         )
       );
@@ -260,9 +260,12 @@ export default function TestsWorkspace() {
     return matchesSearch && matchesDifficulty && matchesSubject && isSolved;
   });
 
-  const notCompletedQuestions = filteredQuestions.filter((q) => {
-    const isSolved = q.status === 'COMPLETED';
-    return !isSolved;
+  const notStartedQuestions = filteredQuestions.filter((q) => {
+    return q.status === 'NOT_STARTED' || q.status === 'NOT_COMPLETED' || !q.status;
+  });
+
+  const inProgressQuestions = filteredQuestions.filter((q) => {
+    return q.status === 'IN_PROGRESS';
   });
 
   const renderQuestionsTable = (list: any[], isCompletedTable: boolean) => {
@@ -294,7 +297,7 @@ export default function TestsWorkspace() {
                 const associatedTest = getAssociatedTest(q.subjectId);
                 const isSolved = q.status === 'COMPLETED';
                 const isSuspended = (associatedTest ? (associatedTest.isSuspended || associatedTest.status === 'SUSPENDED') : false) && user?.status === 'ACTIVE';
-                const isStarted = associatedTest ? associatedTest.status === 'STARTED' : false;
+                const isStarted = q.status === 'IN_PROGRESS';
                 const subject = subjects.find((s) => s.id === q.subjectId);
                 const subjectName = subject ? subject.name : 'Unknown';
 
@@ -320,9 +323,7 @@ export default function TestsWorkspace() {
                     key={q.id} 
                     className="hover:bg-white/5 transition-all group cursor-pointer"
                     onClick={() => {
-                      if (isSolved) {
-                        handleViewQuestionAttempt(q);
-                      } else if (!isSuspended) {
+                      if (!isSolved && !isSuspended) {
                         handleStartQuestionAttempt(q);
                       }
                     }}
@@ -387,28 +388,24 @@ export default function TestsWorkspace() {
                     )}
 
                     <td className="p-4 pr-6 text-right flex items-center justify-end gap-2">
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          if (isSolved) {
-                            handleViewQuestionAttempt(q);
-                          } else if (!isSuspended) {
-                            handleStartQuestionAttempt(q);
-                          }
-                        }}
-                        disabled={isSuspended}
-                        className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all select-none ${
-                          isSolved
-                            ? 'bg-emerald-500/10 hover:bg-emerald-500/25 border border-emerald-500/20 text-emerald-400'
-                            : isSuspended
-                            ? 'bg-red-500/10 text-red-400 border border-red-500/10 cursor-not-allowed opacity-50'
-                            : 'bg-[#7c3aed] hover:bg-[#8b5cf6] text-white shadow-md'
-                        }`}
-                      >
-                        {isSolved ? 'View Attempt' : isSuspended ? 'Suspended' : 'Write Test'}
-                      </button>
-
-                      {isSolved && (
+                      {!isSolved ? (
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            if (!isSuspended) {
+                              handleStartQuestionAttempt(q);
+                            }
+                          }}
+                          disabled={isSuspended}
+                          className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all select-none ${
+                            isSuspended
+                              ? 'bg-red-500/10 text-red-400 border border-red-500/10 cursor-not-allowed opacity-50'
+                              : 'bg-[#7c3aed] hover:bg-[#8b5cf6] text-white shadow-md'
+                          }`}
+                        >
+                          {isSuspended ? 'Suspended' : 'Write Test'}
+                        </button>
+                      ) : (
                         <button
                           onClick={(e) => {
                             e.stopPropagation();
@@ -546,16 +543,25 @@ export default function TestsWorkspace() {
         </div>
       ) : (
         <div className="space-y-8">
-          {/* Category 1: Not Completed */}
+          {/* Category 1: Not Started */}
           <div className="space-y-4">
-            <h2 className="text-sm font-bold text-[#8b5cf6] uppercase tracking-wider flex items-center gap-2 font-sans select-none">
-              <span className="w-2.5 h-2.5 rounded-full bg-[#8b5cf6] animate-pulse"></span>
-              Not Completed ({notCompletedQuestions.length})
+            <h2 className="text-sm font-bold text-gray-400 uppercase tracking-wider flex items-center gap-2 font-sans select-none">
+              <span className="w-2.5 h-2.5 rounded-full bg-gray-500"></span>
+              Not Started ({notStartedQuestions.length})
             </h2>
-            {renderQuestionsTable(notCompletedQuestions, false)}
+            {renderQuestionsTable(notStartedQuestions, false)}
           </div>
 
-          {/* Category 2: Completed */}
+          {/* Category 2: In Progress */}
+          <div className="space-y-4 pt-4">
+            <h2 className="text-sm font-bold text-amber-400 uppercase tracking-wider flex items-center gap-2 font-sans select-none">
+              <span className="w-2.5 h-2.5 rounded-full bg-amber-400 animate-pulse"></span>
+              In Progress ({inProgressQuestions.length})
+            </h2>
+            {renderQuestionsTable(inProgressQuestions, false)}
+          </div>
+
+          {/* Category 3: Completed */}
           {!hideSolved && (
             <div className="space-y-4 pt-4">
               <h2 className="text-sm font-bold text-emerald-400 uppercase tracking-wider flex items-center gap-2 font-sans select-none">

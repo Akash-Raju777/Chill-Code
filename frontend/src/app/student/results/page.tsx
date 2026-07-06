@@ -1,72 +1,88 @@
 'use client';
 
 import React, { useEffect, useState } from 'react';
+import { useRouter } from 'next/navigation';
 import { apiCall } from '../../../utils/api';
-import { Award, ClipboardCheck, Loader2, Calendar, FileText, Download } from 'lucide-react';
+import { 
+  ClipboardCheck, 
+  Loader2, 
+  Calendar, 
+  ExternalLink,
+  RotateCcw,
+  CheckCircle2,
+  XCircle,
+  Clock,
+  Database
+} from 'lucide-react';
 
-interface Test {
+interface SubmissionResult {
   id: number;
-  name: string;
-  maxMarks: number;
-  durationMinutes: number;
-  startTime: string;
-}
-
-interface StudentTest {
-  id: number;
-  status: string;
-  score: number;
-  warningsCount: number;
-  isSuspended: boolean;
-  submittedAt?: string;
-  test: Test;
-  displayTitle?: string;
+  questionId: number;
+  testId?: number;
+  questionName: string;
+  subjectName: string;
+  language: string;
+  status: string; // 'ACCEPTED', 'WRONG_ANSWER', etc.
+  runTimeMs: number;
+  memoryUsedKb: number;
+  createdAt: string;
+  passedTests: number;
+  totalTests: number;
 }
 
 export default function StudentResults() {
-  const [attempts, setAttempts] = useState<StudentTest[]>([]);
+  const router = useRouter();
+  const [submissions, setSubmissions] = useState<SubmissionResult[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
 
-  const fetchAttempts = async () => {
+  const fetchSubmissions = async () => {
     setLoading(true);
     try {
-      const data = await apiCall('/api/student/tests');
-      // Show only completed or evaluated test runs
-      setAttempts(data.filter((st: StudentTest) => ['SUBMITTED', 'EVALUATED', 'SUSPENDED'].includes(st.status)));
+      const data = await apiCall('/api/student/submissions');
+      setSubmissions(data || []);
     } catch (err: any) {
-      setError('Failed to load assessment results');
+      setError(err.message || 'Failed to load submission results');
     } finally {
       setLoading(false);
     }
   };
 
   useEffect(() => {
-    fetchAttempts();
+    fetchSubmissions();
   }, []);
 
-  const handleDownloadReport = (testName: string) => {
-    alert(`Downloading score report for: ${testName}`);
+  const handleAnotherAttempt = async (item: SubmissionResult) => {
+    try {
+      await apiCall(`/api/student/question/${item.questionId}/another-attempt`, {
+        method: 'POST',
+      });
+      if (item.testId) {
+        router.push(`/student/tests/${item.testId}?question=${item.questionId}`);
+      } else {
+        router.push('/student/tests');
+      }
+    } catch (err: any) {
+      alert(err.message || 'Failed to request another attempt.');
+    }
   };
 
   if (loading) {
     return (
-      <div className="space-y-6">
-        <div className="h-8 w-48 bg-white/5 rounded-lg animate-pulse" />
-        <div className="space-y-4">
-          {[...Array(3)].map((_, i) => (
-            <div key={i} className="h-28 bg-white/5 rounded-xl animate-pulse" />
-          ))}
+      <div className="min-h-[60vh] flex items-center justify-center">
+        <div className="text-center space-y-4">
+          <Loader2 className="w-8 h-8 animate-spin text-[#7c3aed] mx-auto" />
+          <p className="text-gray-400 font-sans text-xs">Loading academic results...</p>
         </div>
       </div>
     );
   }
 
   return (
-    <div className="space-y-6 min-h-screen bg-[#0b0c10] text-[#c5c6c7] p-2">
+    <div className="space-y-6 min-h-screen bg-[#0b0c10] text-[#c5c6c7] p-2 font-sans">
       <div>
         <h1 className="text-2xl font-bold text-white tracking-tight">Academic Results</h1>
-        <p className="text-sm text-gray-500">View scoring outputs and assessment results</p>
+        <p className="text-sm text-gray-500">View detailed scoring outputs and submission history</p>
       </div>
 
       {error && (
@@ -75,72 +91,84 @@ export default function StudentResults() {
         </div>
       )}
 
-      {attempts.length === 0 ? (
-        <div className="glass-panel p-12 rounded-2xl text-center space-y-3">
+      {submissions.length === 0 ? (
+        <div className="glass-panel p-12 rounded-2xl text-center space-y-3 border border-white/5 bg-[#11131c]/50">
           <ClipboardCheck className="w-12 h-12 text-gray-600 mx-auto" />
-          <h3 className="font-bold text-white text-lg">No completed tests</h3>
-          <p className="text-sm text-gray-500 max-w-sm mx-auto">Results will be published here once you submit assigned coding exams.</p>
+          <h3 className="font-bold text-white text-lg">No submissions yet</h3>
+          <p className="text-sm text-gray-500 max-w-sm mx-auto">Results will be published here once you run or submit code in the practice arena.</p>
         </div>
       ) : (
         <div className="space-y-4">
-          {attempts.flatMap((st) => {
-            if (st.displayTitle) {
-              const items = st.displayTitle.split(', ').map(t => t.trim()).filter(Boolean);
-              if (items.length > 0) {
-                return items.map((item, index) => {
-                  const parts = item.split('|');
-                  const title = parts[0];
-                  const qStatus = parts[1] || 'PASS';
-                  return {
-                    id: `${st.id}-${index}`,
-                    title,
-                    qStatus,
-                    status: st.status,
-                    submittedAt: st.submittedAt,
-                    warningsCount: st.warningsCount,
-                  };
-                });
-              }
+          {submissions.map((item) => {
+            const isAccepted = item.status === 'ACCEPTED';
+            let verdictText = item.status;
+            let badgeStyle = "bg-red-500/10 text-red-400 border border-red-500/20";
+            
+            if (isAccepted) {
+              verdictText = "Accepted";
+              badgeStyle = "bg-emerald-500/10 text-emerald-400 border border-emerald-500/20";
+            } else if (item.status === 'COMPILATION_ERROR') {
+              verdictText = "Compilation Error";
+              badgeStyle = "bg-amber-500/10 text-amber-400 border border-amber-500/20";
+            } else if (item.status === 'RUNTIME_ERROR') {
+              verdictText = "Runtime Error";
+              badgeStyle = "bg-red-500/10 text-red-400 border border-red-500/20";
+            } else if (item.status === 'TIME_LIMIT_EXCEEDED') {
+              verdictText = "Time Limit Exceeded";
+              badgeStyle = "bg-orange-500/10 text-orange-400 border border-orange-500/20";
+            } else if (item.status === 'MEMORY_LIMIT_EXCEEDED') {
+              verdictText = "Memory Limit Exceeded";
+              badgeStyle = "bg-purple-500/10 text-purple-400 border border-purple-500/20";
+            } else if (item.status === 'WRONG_ANSWER') {
+              verdictText = "Output Not Matched";
             }
-            return [{
-              id: `${st.id}-default`,
-              title: st.test.name,
-              qStatus: 'PASS',
-              status: st.status,
-              submittedAt: st.submittedAt,
-              warningsCount: st.warningsCount,
-            }];
-          }).map((item) => {
-            const isFailed = item.status === 'SUSPENDED' || item.qStatus === 'FAIL';
+
             return (
-              <div key={item.id} className="glass-panel p-6 rounded-2xl flex flex-col md:flex-row md:items-center justify-between gap-6 border border-white/5">
-                <div className="space-y-2">
-                  <div className="flex items-center gap-2">
-                    <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
-                      isFailed ? 'bg-red-500/10 text-red-400' : 'bg-emerald-500/10 text-emerald-400'
-                    }`}>
-                      {item.status}
+              <div key={item.id} className="glass-panel p-6 rounded-2xl flex flex-col md:flex-row md:items-center justify-between gap-6 border border-white/5 bg-[#11131c] hover:border-white/10 transition-all">
+                <div className="space-y-2 flex-1">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${badgeStyle}`}>
+                      {verdictText}
                     </span>
-                    <h3 className="font-bold text-white text-lg">{item.title}</h3>
+                    <h3 className="font-bold text-white text-lg">{item.questionName || 'Unknown Question'}</h3>
                   </div>
-                  <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-gray-500">
+                  <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-gray-500 font-medium">
+                    <span className="text-gray-400 uppercase font-bold text-[10px] tracking-wider bg-white/5 px-2 py-0.5 rounded">
+                      {item.subjectName || 'Unknown Subject'}
+                    </span>
+                    <span className="flex items-center gap-1">
+                      <Clock className="w-3.5 h-3.5" />
+                      {item.runTimeMs !== null ? `${item.runTimeMs} ms` : 'N/A'}
+                    </span>
+                    <span className="flex items-center gap-1">
+                      <Database className="w-3.5 h-3.5" />
+                      {item.memoryUsedKb !== null ? `${item.memoryUsedKb} KB` : 'N/A'}
+                    </span>
                     <span className="flex items-center gap-1">
                       <Calendar className="w-3.5 h-3.5" />
-                      Submitted: {item.submittedAt ? new Date(item.submittedAt).toLocaleDateString() : new Date().toLocaleDateString()}
+                      {new Date(item.createdAt).toLocaleString()}
                     </span>
-                    <span>Warnings Logged: <strong className={item.warningsCount > 0 ? 'text-red-400' : 'text-gray-400'}>{item.warningsCount}</strong></span>
                   </div>
                 </div>
 
-                <div className="flex items-center gap-6">
-                  <div className="text-left md:text-right">
-                    <div className="text-[10px] text-gray-500 font-semibold uppercase">Status</div>
-                    <div className={`text-base font-extrabold tracking-wider mt-0.5 ${
-                      !isFailed ? 'text-emerald-400' : 'text-red-400'
-                    }`}>
-                      {!isFailed ? 'PASS' : 'FAIL'}
-                    </div>
-                  </div>
+                <div className="flex items-center gap-3">
+                  <button
+                    onClick={() => router.push(`/student/results/submission/${item.id}`)}
+                    className="flex items-center gap-1.5 px-3 py-1.5 bg-white/5 hover:bg-white/10 border border-white/5 text-gray-300 font-bold rounded-lg text-xs transition-all"
+                  >
+                    <ExternalLink className="w-3.5 h-3.5" />
+                    Details
+                  </button>
+
+                  {!isAccepted && (
+                    <button
+                      onClick={() => handleAnotherAttempt(item)}
+                      className="flex items-center gap-1.5 px-3 py-1.5 bg-indigo-500/10 hover:bg-indigo-500/20 border border-indigo-500/20 text-indigo-400 font-bold rounded-lg text-xs transition-all"
+                    >
+                      <RotateCcw className="w-3.5 h-3.5" />
+                      Try Again
+                    </button>
+                  )}
                 </div>
               </div>
             );

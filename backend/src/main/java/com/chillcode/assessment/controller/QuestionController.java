@@ -88,14 +88,18 @@ public class QuestionController {
         com.chillcode.assessment.entity.User student = getCurrentUser();
         com.chillcode.assessment.entity.StudentQuestionStatus status = studentQuestionStatusRepository
                 .findByStudentIdAndQuestionId(student.getId(), questionId)
-                .orElseGet(() -> {
-                    com.chillcode.assessment.entity.StudentQuestionStatus s = new com.chillcode.assessment.entity.StudentQuestionStatus();
-                    s.setStudentId(student.getId());
-                    s.setQuestionId(questionId);
-                    s.setStatus("NOT_COMPLETED");
-                    s.setAttemptCount(0);
-                    return studentQuestionStatusRepository.save(s);
-                });
+                .orElse(null);
+        if (status == null) {
+            status = new com.chillcode.assessment.entity.StudentQuestionStatus();
+            status.setStudentId(student.getId());
+            status.setQuestionId(questionId);
+            status.setStatus("IN_PROGRESS");
+            status.setAttemptCount(0);
+            status = studentQuestionStatusRepository.save(status);
+        } else if ("NOT_STARTED".equals(status.getStatus()) || "NOT_COMPLETED".equals(status.getStatus())) {
+            status.setStatus("IN_PROGRESS");
+            status = studentQuestionStatusRepository.save(status);
+        }
         return ResponseEntity.ok(status);
     }
 
@@ -143,6 +147,7 @@ public class QuestionController {
         response.setFailedTestCaseNumber(result.getFailedTestCaseNumber());
         response.setJudge0Status(result.getJudge0Status());
         response.setTestCaseResults(result.getTestCaseResults());
+        response.setSubmissionId(result.getSubmissionId());
         return ResponseEntity.ok(response);
     }
 
@@ -153,7 +158,7 @@ public class QuestionController {
                 .findByStudentIdAndQuestionId(student.getId(), questionId)
                 .orElse(null);
         if (status != null) {
-            status.setStatus("NOT_COMPLETED");
+            status.setStatus("NOT_STARTED");
             status.setCompletedAt(null);
             studentQuestionStatusRepository.save(status);
         }

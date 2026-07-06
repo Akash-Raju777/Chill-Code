@@ -26,6 +26,7 @@ public class SubmissionResultDto {
     private String actualOutput;
     private Integer failedTestCaseNumber;
     private String judge0Status;
+    private Long submissionId;
 }
 
 

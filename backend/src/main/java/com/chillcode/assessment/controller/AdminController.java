@@ -161,4 +161,10 @@ public class AdminController {
 
         return ResponseEntity.ok("Student suspension has been lifted.");
     }
+
+    @DeleteMapping("/students/{id}")
+    public ResponseEntity<Void> deleteStudent(@PathVariable Long id) {
+        adminService.deleteStudent(id);
+        return ResponseEntity.ok().build();
+    }
 }

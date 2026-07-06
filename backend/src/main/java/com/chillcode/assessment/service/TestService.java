@@ -418,7 +418,7 @@ public class TestService {
                                         .question(question)
                                         .code(code)
                                         .language(language != null ? language : "java")
-                                        .status("ACCEPTED")
+                                        .status("PENDING")
                                         .runTimeMs(0)
                                         .memoryUsedKb(0)
                                         .score(0)
@@ -432,33 +432,17 @@ public class TestService {
                                     statusObj = StudentQuestionStatus.builder()
                                             .studentId(studentId)
                                             .questionId(question.getId())
-                                            .status("COMPLETED")
+                                            .status("IN_PROGRESS")
                                             .attemptCount(1)
                                             .lastAttemptAt(LocalDateTime.now())
-                                            .completedAt(LocalDateTime.now())
                                             .lastSubmissionId(sub.getId())
                                             .build();
                                 } else {
-                                    statusObj.setStatus("COMPLETED");
                                     statusObj.setAttemptCount(statusObj.getAttemptCount() + 1);
                                     statusObj.setLastAttemptAt(LocalDateTime.now());
-                                    if (statusObj.getCompletedAt() == null) {
-                                        statusObj.setCompletedAt(LocalDateTime.now());
-                                    }
                                     statusObj.setLastSubmissionId(sub.getId());
                                 }
                                 studentQuestionStatusRepository.save(statusObj);
-                            } else {
-                                StudentQuestionStatus statusObj = studentQuestionStatusRepository
-                                        .findByStudentIdAndQuestionId(studentId, question.getId())
-                                        .orElse(null);
-                                if (statusObj != null && !"COMPLETED".equals(statusObj.getStatus())) {
-                                    statusObj.setStatus("COMPLETED");
-                                    if (statusObj.getCompletedAt() == null) {
-                                        statusObj.setCompletedAt(LocalDateTime.now());
-                                    }
-                                    studentQuestionStatusRepository.save(statusObj);
-                                }
                             }
                         }
                     }
@@ -536,7 +520,7 @@ public class TestService {
                     .findByStudentIdAndQuestionId(st.getStudent().getId(), questionId)
                     .orElse(null);
             if (sqs != null) {
-                sqs.setStatus("NOT_COMPLETED");
+                sqs.setStatus("NOT_STARTED");
                 sqs.setCompletedAt(null);
                 studentQuestionStatusRepository.save(sqs);
             }

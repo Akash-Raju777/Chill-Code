@@ -258,7 +258,7 @@ public class QuestionService {
             dto.setAttemptCount(status.getAttemptCount());
             dto.setLastAttemptAt(status.getLastAttemptAt() != null ? status.getLastAttemptAt().toString() : null);
         } else {
-            dto.setStatus("NOT_COMPLETED");
+            dto.setStatus("NOT_STARTED");
             dto.setAttemptCount(0);
         }
         return dto;

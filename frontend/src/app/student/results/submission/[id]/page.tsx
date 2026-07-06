@@ -1,0 +1,296 @@
+'use client';
+
+import React, { useEffect, useState } from 'react';
+import { useParams, useRouter } from 'next/navigation';
+import { apiCall } from '../../../../../utils/api';
+import { 
+  CheckCircle2, 
+  XCircle, 
+  Clock, 
+  Database, 
+  Terminal, 
+  ArrowLeft, 
+  Play, 
+  RotateCcw,
+  Loader2,
+  Calendar
+} from 'lucide-react';
+
+export default function SubmissionResultPage() {
+  const params = useParams();
+  const router = useRouter();
+  const submissionId = params?.id;
+
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
+  const [submission, setSubmission] = useState<any>(null);
+  const [actionLoading, setActionLoading] = useState(false);
+
+  useEffect(() => {
+    if (!submissionId) return;
+
+    const fetchSubmissionDetails = async () => {
+      setLoading(true);
+      try {
+        const data = await apiCall(`/api/student/submissions/${submissionId}`);
+        setSubmission(data);
+      } catch (err: any) {
+        setError(err.message || 'Failed to fetch submission details.');
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchSubmissionDetails();
+  }, [submissionId]);
+
+  const handleAnotherAttempt = async () => {
+    if (!submission) return;
+    setActionLoading(true);
+    try {
+      // 1. Reset question status on the backend to NOT_STARTED
+      await apiCall(`/api/student/question/${submission.questionId}/another-attempt`, {
+        method: 'POST',
+      });
+      // 2. Redirect back to the editor page of the practice test
+      router.push(`/student/tests/${submission.testId}?question=${submission.questionId}`);
+    } catch (err: any) {
+      alert(err.message || 'Failed to reset question attempt.');
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
+  if (loading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-[#0b0c10]">
+        <div className="text-center space-y-4">
+          <Loader2 className="w-8 h-8 animate-spin text-[#7c3aed] mx-auto" />
+          <p className="text-gray-400 font-sans text-xs">Loading submission results...</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (error || !submission) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-[#0b0c10] p-4 text-center">
+        <div className="max-w-md bg-[#11131c] p-8 rounded-2xl border border-red-500/20 space-y-6">
+          <XCircle className="w-16 h-16 text-red-500 mx-auto" />
+          <h1 className="text-xl font-bold text-white">Error Loading Verdict</h1>
+          <p className="text-xs text-gray-400 leading-relaxed">
+            {error || 'The requested submission record was not found or has expired.'}
+          </p>
+          <button 
+            onClick={() => router.push('/student/dashboard')}
+            className="px-6 py-2 bg-white/5 hover:bg-white/10 rounded-xl text-xs font-semibold text-white border border-white/10 transition-all w-full flex items-center justify-center gap-2"
+          >
+            <ArrowLeft className="w-4 h-4" />
+            Back to Dashboard
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  const isAccepted = submission.status === 'ACCEPTED';
+  let verdictText = submission.status;
+  let verdictColor = "text-red-400 border-red-500/20 bg-red-500/10";
+  let VerdictIcon = XCircle;
+
+  if (isAccepted) {
+    verdictText = "Accepted";
+    verdictColor = "text-emerald-400 border-emerald-500/20 bg-emerald-500/10";
+    VerdictIcon = CheckCircle2;
+  } else if (submission.status === 'COMPILATION_ERROR') {
+    verdictText = "Compilation Error";
+    verdictColor = "text-amber-400 border-amber-500/20 bg-amber-500/10";
+  } else if (submission.status === 'RUNTIME_ERROR') {
+    verdictText = "Runtime Error";
+    verdictColor = "text-red-400 border-red-500/20 bg-red-500/10";
+  } else if (submission.status === 'TIME_LIMIT_EXCEEDED') {
+    verdictText = "Time Limit Exceeded";
+    verdictColor = "text-orange-400 border-orange-500/20 bg-orange-500/10";
+  } else if (submission.status === 'MEMORY_LIMIT_EXCEEDED') {
+    verdictText = "Memory Limit Exceeded";
+    verdictColor = "text-purple-400 border-purple-500/20 bg-purple-500/10";
+  } else if (submission.status === 'WRONG_ANSWER') {
+    verdictText = "Output Not Matched";
+  }
+
+  return (
+    <div className="max-w-4xl mx-auto px-4 py-8 space-y-6 font-sans">
+      {/* Header and Back Button */}
+      <div className="flex items-center justify-between">
+        <button
+          onClick={() => router.push('/student/dashboard')}
+          className="flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-bold bg-white/5 hover:bg-white/10 border border-white/5 text-gray-300 transition-all select-none"
+        >
+          <ArrowLeft className="w-3.5 h-3.5" />
+          Dashboard
+        </button>
+        <span className="text-[10px] text-gray-500 font-bold uppercase tracking-wider">
+          Submission ID: #{submission.id}
+        </span>
+      </div>
+
+      {/* Verdict Panel Card */}
+      <div className={`p-6 rounded-2xl border ${verdictColor} backdrop-blur-md flex flex-col md:flex-row md:items-center justify-between gap-6`}>
+        <div className="flex items-center gap-4">
+          <VerdictIcon className="w-12 h-12" />
+          <div>
+            <div className="text-[10px] text-gray-400 font-bold uppercase tracking-wider">Submission Verdict</div>
+            <h1 className="text-2xl font-black tracking-tight">{verdictText}</h1>
+          </div>
+        </div>
+        <div className="flex flex-col gap-1 text-left md:text-right">
+          <span className="text-xs text-white font-bold">{submission.questionName}</span>
+          <span className="text-[10px] text-gray-400 uppercase font-bold tracking-wider">{submission.subjectName}</span>
+        </div>
+      </div>
+
+      {/* Grid Stats Block */}
+      <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
+        {/* Overall Status (PASS/FAIL) */}
+        <div className="bg-[#11131c] border border-white/5 p-4 rounded-xl space-y-1.5">
+          <span className="text-[10px] text-gray-500 uppercase font-bold tracking-wider">Overall Result</span>
+          <div className={`text-lg font-black tracking-wider uppercase ${isAccepted ? 'text-emerald-400' : 'text-red-400'}`}>
+            {isAccepted ? 'PASS' : 'FAIL'}
+          </div>
+        </div>
+
+        {/* Test Cases Count */}
+        <div className="bg-[#11131c] border border-white/5 p-4 rounded-xl space-y-1.5">
+          <span className="text-[10px] text-gray-500 uppercase font-bold tracking-wider">Test Cases Passed</span>
+          <div className="text-lg font-extrabold text-white font-mono">
+            {submission.passedTests} / {submission.totalTests}
+          </div>
+        </div>
+
+        {/* Runtime */}
+        <div className="bg-[#11131c] border border-white/5 p-4 rounded-xl space-y-1.5">
+          <span className="text-[10px] text-gray-500 uppercase font-bold tracking-wider flex items-center gap-1">
+            <Clock className="w-3.5 h-3.5 text-gray-400" />
+            Execution Time
+          </span>
+          <div className="text-lg font-extrabold text-white font-mono">
+            {submission.runTimeMs !== null ? `${submission.runTimeMs} ms` : 'N/A'}
+          </div>
+        </div>
+
+        {/* Memory */}
+        <div className="bg-[#11131c] border border-white/5 p-4 rounded-xl space-y-1.5">
+          <span className="text-[10px] text-gray-500 uppercase font-bold tracking-wider flex items-center gap-1">
+            <Database className="w-3.5 h-3.5 text-gray-400" />
+            Memory Used
+          </span>
+          <div className="text-lg font-extrabold text-white font-mono">
+            {submission.memoryUsedKb !== null ? `${submission.memoryUsedKb} KB` : 'N/A'}
+          </div>
+        </div>
+
+        {/* Time Submitted */}
+        <div className="bg-[#11131c] border border-white/5 p-4 rounded-xl space-y-1.5">
+          <span className="text-[10px] text-gray-500 uppercase font-bold tracking-wider flex items-center gap-1">
+            <Calendar className="w-3.5 h-3.5 text-gray-400" />
+            Submitted At
+          </span>
+          <div className="text-xs font-semibold text-gray-300 leading-normal">
+            {submission.createdAt ? new Date(submission.createdAt).toLocaleString() : 'N/A'}
+          </div>
+        </div>
+      </div>
+
+      {/* Compiler logs */}
+      {submission.compileError && (
+        <div className="space-y-2">
+          <div className="text-[10px] text-amber-400 font-bold uppercase tracking-wider flex items-center gap-1">
+            <Terminal className="w-3.5 h-3.5" />
+            Compiler Output logs
+          </div>
+          <pre className="p-4 bg-[#08090f]/90 border border-amber-500/10 text-amber-300 rounded-xl whitespace-pre-wrap font-mono text-xs leading-relaxed max-h-[300px] overflow-y-auto">
+            {submission.compileError}
+          </pre>
+        </div>
+      )}
+
+      {/* Runtime errors logs */}
+      {submission.stderr && (
+        <div className="space-y-2">
+          <div className="text-[10px] text-red-400 font-bold uppercase tracking-wider flex items-center gap-1">
+            <Terminal className="w-3.5 h-3.5" />
+            Runtime Stderr Trace
+          </div>
+          <pre className="p-4 bg-[#08090f]/90 border border-red-500/10 text-red-400 rounded-xl whitespace-pre-wrap font-mono text-xs leading-relaxed max-h-[300px] overflow-y-auto">
+            {submission.stderr}
+          </pre>
+        </div>
+      )}
+
+      {/* Expected vs Actual comparison block */}
+      {submission.status === 'WRONG_ANSWER' && submission.expectedOutput && (
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div className="space-y-2">
+            <div className="text-[10px] text-emerald-400 font-bold uppercase tracking-wider">Expected Output</div>
+            <pre className="p-4 bg-[#08090f]/80 border border-white/5 text-emerald-300 rounded-xl whitespace-pre-wrap font-mono text-xs leading-relaxed max-h-[250px] overflow-y-auto">
+              {submission.expectedOutput}
+            </pre>
+          </div>
+          <div className="space-y-2">
+            <div className="text-[10px] text-red-400 font-bold uppercase tracking-wider">Your Output</div>
+            <pre className="p-4 bg-[#08090f]/80 border border-white/5 text-red-300 rounded-xl whitespace-pre-wrap font-mono text-xs leading-relaxed max-h-[250px] overflow-y-auto">
+              {submission.actualOutput || submission.stdout}
+            </pre>
+          </div>
+        </div>
+      )}
+
+      {/* Display stdout for accepted/other runs if compile output doesn't exist */}
+      {!submission.compileError && submission.stdout && (
+        <div className="space-y-2">
+          <div className="text-[10px] text-emerald-400 font-bold uppercase tracking-wider flex items-center gap-1">
+            <Terminal className="w-3.5 h-3.5" />
+            Stdout Output Logs
+          </div>
+          <pre className="p-4 bg-[#08090f]/90 border border-white/5 text-emerald-300 rounded-xl whitespace-pre-wrap font-mono text-xs leading-relaxed max-h-[250px] overflow-y-auto">
+            {submission.stdout}
+          </pre>
+        </div>
+      )}
+
+      {/* Code Editor Preview */}
+      <div className="space-y-2">
+        <div className="text-[10px] text-gray-500 font-bold uppercase tracking-wider">Submitted Code ({submission.language})</div>
+        <pre className="p-5 bg-[#11131c] border border-white/5 rounded-xl text-xs text-gray-300 font-mono overflow-x-auto leading-relaxed select-text">
+          <code>{submission.code}</code>
+        </pre>
+      </div>
+
+      {/* Action Buttons */}
+      <div className="flex items-center gap-4 pt-4 border-t border-white/5">
+        {!isAccepted ? (
+          <button
+            onClick={handleAnotherAttempt}
+            disabled={actionLoading}
+            className="flex-1 py-3 px-6 bg-[#7c3aed] hover:bg-[#8b5cf6] disabled:opacity-50 text-white font-bold rounded-xl transition-all text-xs flex items-center justify-center gap-2 shadow-lg"
+          >
+            {actionLoading ? (
+              <Loader2 className="w-4 h-4 animate-spin" />
+            ) : (
+              <RotateCcw className="w-4 h-4" />
+            )}
+            Another Attempt
+          </button>
+        ) : (
+          <button
+            onClick={() => router.push('/student/dashboard')}
+            className="flex-1 py-3 px-6 bg-[#10b981] hover:bg-[#34d399] text-white font-bold rounded-xl transition-all text-xs flex items-center justify-center gap-2 shadow-lg"
+          >
+            <Play className="w-4 h-4" />
+            Back to Challenges
+          </button>
+        )}
+      </div>
+    </div>
+  );
+}

@@ -87,7 +87,7 @@ export default function CodingWorkspace() {
   const [fontSize, setFontSize] = useState(14);
   const [customInput, setCustomInput] = useState('');
   const [consoleTab, setConsoleTab] = useState<'TESTCASE' | 'RESULT'>('TESTCASE');
-  const [securityShieldEnabled, setSecurityShieldEnabled] = useState(true);
+  const [securityShieldEnabled, setSecurityShieldEnabled] = useState(false);
   const [submittingExam, setSubmittingExam] = useState(false);
   const isSecurityStatusActive = user?.status === 'ACTIVE' && securityShieldEnabled;
 
@@ -106,30 +106,7 @@ export default function CodingWorkspace() {
       });
   }, [setUser]);
 
-  useEffect(() => {
-    if (!mounted) return;
-    apiCall('/api/student/tests')
-      .then((tests) => {
-        const activeTest = tests.find((st: any) => st.test.id === testId);
-        if (activeTest) {
-          const isEnabled = activeTest.test.securityShieldEnabled ?? false;
-          setSecurityShieldEnabled(isEnabled);
-          
-          // Auto enter fullscreen only if security shield is enabled
-          if (isEnabled && typeof window !== 'undefined' && !useTestStore.getState().isViewMode && user?.status === 'ACTIVE') {
-            const timer = setTimeout(() => {
-              if (!document.fullscreenElement) {
-                setFullscreenRequired(true);
-              }
-            }, 1000);
-            return () => clearTimeout(timer);
-          }
-        }
-      })
-      .catch((err) => console.error('Failed to sync security shield status', err));
-  }, [mounted, testId, user]);
-
-  // Auto-restore test session state on direct URL loads/reloads
+  // Auto-restore test session state and configure security immediately before interactions
   useEffect(() => {
     if (!mounted) return;
     if (isSessionActive && questions && questions.length > 0) return;
@@ -143,10 +120,22 @@ export default function CodingWorkspace() {
           return;
         }
 
-        if ((activeTest.isSuspended || activeTest.status === 'SUSPENDED') && isSecurityStatusActive) {
+        const isEnabled = activeTest.test.securityShieldEnabled ?? false;
+        setSecurityShieldEnabled(isEnabled);
+
+        const isSecActive = user?.status === 'ACTIVE' && isEnabled;
+
+        if ((activeTest.isSuspended || activeTest.status === 'SUSPENDED') && isSecActive) {
           suspendTest();
           clearTestSession();
           return;
+        }
+
+        // Auto enter fullscreen immediately only if security shield is enabled
+        if (isEnabled && typeof window !== 'undefined' && !useTestStore.getState().isViewMode && user?.status === 'ACTIVE') {
+          if (!document.fullscreenElement) {
+            setFullscreenRequired(true);
+          }
         }
 
         setWarnings(activeTest.warningsCount || 0);
@@ -180,7 +169,7 @@ export default function CodingWorkspace() {
             targetQuestions,
             remainingSeconds / 60,
             activeTest.status === 'SUBMITTED' || activeTest.status === 'EVALUATED',
-            activeTest.test.securityShieldEnabled ?? false
+            isEnabled
           );
         } else {
           router.push('/student/tests');
@@ -192,7 +181,7 @@ export default function CodingWorkspace() {
     };
 
     recoverSession();
-  }, [mounted, isSessionActive, testId, startTestSession, router]);
+  }, [mounted, isSessionActive, testId, startTestSession, router, user]);
 
   // Set up Timer interval (without subscribing to time changes here to avoid re-renders)
   useEffect(() => {
@@ -242,7 +231,12 @@ export default function CodingWorkspace() {
 
   useEffect(() => {
     fetchSubmissionsHistory();
-  }, [activeQuestionIndex, activeStudentTestId, questions]);
+    if (mounted && currentQuestion && !isViewMode) {
+      apiCall(`/api/student/question/${currentQuestion.id}/status`).catch((err) =>
+        console.error('Failed to update question status to IN_PROGRESS', err)
+      );
+    }
+  }, [activeQuestionIndex, activeStudentTestId, questions, mounted, currentQuestion, isViewMode]);
 
   useEffect(() => {
     if (mounted && currentQuestion && !isViewMode && !codes[currentQuestion.id]) {
@@ -440,6 +434,17 @@ export default function CodingWorkspace() {
       });
       setExecResult(response);
       fetchSubmissionsHistory();
+      
+      if (response && response.submissionId) {
+        clearTestSession();
+        resetWarnings();
+        if (document.fullscreenElement) {
+          try {
+            document.exitFullscreen();
+          } catch (e) {}
+        }
+        router.push(`/student/results/submission/${response.submissionId}`);
+      }
     } catch (err: any) {
       setExecResult({
         status: 'RUNTIME_ERROR',
@@ -557,7 +562,7 @@ export default function CodingWorkspace() {
       statusText = 'Memory Limit Exceeded';
       statusColor = "text-purple-400 bg-purple-500/10 border-purple-500/20";
     } else if (status === 'WRONG_ANSWER') {
-      statusText = 'Wrong Answer';
+      statusText = 'Output Not Matched';
       statusColor = "text-red-400 bg-red-500/10 border-red-500/20";
     }
 

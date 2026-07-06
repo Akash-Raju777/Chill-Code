@@ -94,20 +94,27 @@ public class CodeExecutionService {
 
         List<TestCase> testCases = new ArrayList<>();
         if (runOnly) {
-            // Add visible sample test cases
-            for (TestCase tc : allTestCases) {
-                if (tc.getIsHidden() != null && !tc.getIsHidden()) {
-                    testCases.add(tc);
-                }
-            }
-            // If there are no sample test cases, run custom input (essential for JUnit tests and playground execution)
-            if (testCases.isEmpty()) {
+            if (request.getCustomInput() != null && !request.getCustomInput().trim().isEmpty()) {
                 TestCase customTc = new TestCase();
                 customTc.setId(-999L);
-                customTc.setInputData(request.getCustomInput() != null ? request.getCustomInput() : "");
+                customTc.setInputData(request.getCustomInput());
                 customTc.setExpectedOutput(null);
                 customTc.setIsHidden(false);
                 testCases.add(customTc);
+            } else {
+                for (TestCase tc : allTestCases) {
+                    if (tc.getIsHidden() != null && !tc.getIsHidden()) {
+                        testCases.add(tc);
+                    }
+                }
+                if (testCases.isEmpty()) {
+                    TestCase customTc = new TestCase();
+                    customTc.setId(-999L);
+                    customTc.setInputData("");
+                    customTc.setExpectedOutput(null);
+                    customTc.setIsHidden(false);
+                    testCases.add(customTc);
+                }
             }
         } else {
             testCases.addAll(allTestCases);
@@ -251,6 +258,7 @@ public class CodeExecutionService {
             Submission sub = saveSubmissionRecord(studentTest, question, request, resultDto);
             sub.setScore(finalScore);
             submissionRepository.save(sub);
+            resultDto.setSubmissionId(sub.getId());
 
             // Update StudentQuestionStatus:
             try {
@@ -321,7 +329,7 @@ public class CodeExecutionService {
             status = new StudentQuestionStatus();
             status.setStudentId(student.getId());
             status.setQuestionId(question.getId());
-            status.setStatus("NOT_COMPLETED");
+            status.setStatus("IN_PROGRESS");
             status.setAttemptCount(0);
         }
 
@@ -919,6 +927,14 @@ public class CodeExecutionService {
                 .runTimeMs(result.getRunTimeMs())
                 .memoryUsedKb(result.getMemoryUsedKb())
                 .compileError(result.getCompileError())
+                .stdout(result.getStdout())
+                .stderr(result.getStderr())
+                .expectedOutput(result.getExpectedOutput())
+                .actualOutput(result.getActualOutput())
+                .failedTestCaseNumber(result.getFailedTestCaseNumber())
+                .passedTests(result.getPassedTests() != null ? result.getPassedTests() : 0)
+                .totalTests(result.getTotalTests() != null ? result.getTotalTests() : 0)
+                .judge0Token(result.getJudge0Status() != null ? result.getJudge0Status() : "local_run")
                 .build();
 
         Submission savedSub = submissionRepository.save(sub);
@@ -1193,33 +1209,33 @@ public class CodeExecutionService {
     }
 
     private boolean compareOutputs(String expected, String actual) {
-        if (expected == null && actual == null) return true;
-        if (expected == null || actual == null) return false;
+        if (expected == null || expected.trim().isEmpty()) {
+            return true; // Admin did not specify expected output: treat as success if execution finished without runtime error
+        }
+        if (actual == null) return false;
 
-        // Replace CRLF/CR with LF
-        String expClean = expected.replace("\r\n", "\n").replace("\r", "\n");
-        String actClean = actual.replace("\r\n", "\n").replace("\r", "\n");
+        // Replace CRLF/CR with LF and trim overall margins
+        String expClean = expected.trim().replace("\r\n", "\n").replace("\r", "\n");
+        String actClean = actual.trim().replace("\r\n", "\n").replace("\r", "\n");
 
         // Split by LF
         String[] expLines = expClean.split("\n", -1);
         String[] actLines = actClean.split("\n", -1);
 
-        // Strip trailing spaces from each line
+        // Strip each line and skip blank lines to make evaluation robust
         List<String> expFiltered = new ArrayList<>();
         for (String line : expLines) {
-            expFiltered.add(line.stripTrailing());
+            String trimmed = line.trim();
+            if (!trimmed.isEmpty()) {
+                expFiltered.add(trimmed);
+            }
         }
         List<String> actFiltered = new ArrayList<>();
         for (String line : actLines) {
-            actFiltered.add(line.stripTrailing());
-        }
-
-        // Remove trailing empty lines
-        while (!expFiltered.isEmpty() && expFiltered.get(expFiltered.size() - 1).isEmpty()) {
-            expFiltered.remove(expFiltered.size() - 1);
-        }
-        while (!actFiltered.isEmpty() && actFiltered.get(actFiltered.size() - 1).isEmpty()) {
-            actFiltered.remove(actFiltered.size() - 1);
+            String trimmed = line.trim();
+            if (!trimmed.isEmpty()) {
+                actFiltered.add(trimmed);
+            }
         }
 
         if (expFiltered.size() != actFiltered.size()) {
@@ -1227,7 +1243,7 @@ public class CodeExecutionService {
         }
 
         for (int i = 0; i < expFiltered.size(); i++) {
-            if (!expFiltered.get(i).equals(actFiltered.get(i))) {
+            if (!expFiltered.get(i).equalsIgnoreCase(actFiltered.get(i))) {
                 return false;
             }
         }
