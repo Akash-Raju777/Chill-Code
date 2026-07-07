@@ -83,14 +83,22 @@ public class StudentService {
         // Calculate average score of all student tests
         List<StudentTest> myTests = studentTestRepository.findByStudentId(studentId);
         double totalScore = myTests.stream()
-                .filter(st -> "SUBMITTED".equals(st.getStatus()) || "EVALUATED".equals(st.getStatus()))
+                .filter(st -> "SUBMITTED".equals(st.getStatus()) || "EVALUATED".equals(st.getStatus()) || "COMPLETED".equals(st.getStatus()) || "PENDING".equals(st.getStatus()))
                 .mapToInt(st -> st.getScore() != null ? st.getScore() : 0)
                 .average()
                 .orElse(0.0);
 
+        long completedTestsCount = myTests.stream()
+                .filter(st -> "COMPLETED".equals(st.getStatus()))
+                .count();
+
+        long unattendedTestsCount = myTests.stream()
+                .filter(st -> "ASSIGNED".equals(st.getStatus()))
+                .count();
+
         Map<String, Object> stats = new HashMap<>();
-        stats.put("unattendedTests", incompleteQuestionsCount); // Display incomplete challenges count
-        stats.put("completedTests", completedQuestionsCount);  // Display completed challenges count
+        stats.put("unattendedTests", unattendedTestsCount);
+        stats.put("completedTests", completedTestsCount);
         stats.put("averageScore", Math.round(totalScore * 100.0) / 100.0);
 
         // Group questions by Subject

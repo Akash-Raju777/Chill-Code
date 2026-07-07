@@ -154,6 +154,10 @@ public class TestService {
         StudentTest st = studentTestRepository.findByStudentIdAndTestId(studentId, testId)
                 .orElseThrow(() -> new RuntimeException("Student is not assigned to this test"));
 
+        if ("COMPLETED".equals(st.getStatus())) {
+            throw new RuntimeException("Test has already been completed and passed.");
+        }
+
         if ("SUBMITTED".equals(st.getStatus()) || "EVALUATED".equals(st.getStatus())) {
             if (st.getTest().getName().toLowerCase().contains("practice arena") || Boolean.FALSE.equals(st.getTest().getSecurityShieldEnabled())) {
                 st.setStatus("STARTED");
@@ -167,6 +171,15 @@ public class TestService {
             throw new RuntimeException("Your attempt on this test has been suspended due to security violations.");
         }
 
+        // If re-attempting a failed test (PENDING), clear previous attempt's submissions and score
+        if ("PENDING".equals(st.getStatus())) {
+            List<Submission> submissions = submissionRepository.findByStudentTestId(st.getId());
+            if (submissions != null && !submissions.isEmpty()) {
+                submissionRepository.deleteAll(submissions);
+            }
+            st.setScore(0);
+        }
+
         st.setStatus("STARTED");
         st.setStartedAt(LocalDateTime.now());
         return studentTestRepository.save(st);
@@ -177,11 +190,21 @@ public class TestService {
         StudentTest st = studentTestRepository.findByStudentIdAndTestId(studentId, testId)
                 .orElseThrow(() -> new RuntimeException("Student-Test mapping not found."));
 
-        if ("SUBMITTED".equals(st.getStatus()) && !st.getTest().getName().toLowerCase().contains("practice arena")) {
-            return st; // already submitted
+        if ("COMPLETED".equals(st.getStatus())) {
+            return st; // already completed & passed
         }
 
-        st.setStatus("SUBMITTED");
+        int score = st.getScore() != null ? st.getScore() : 0;
+        int maxMarks = st.getTest().getMaxMarks() != null ? st.getTest().getMaxMarks() : 100;
+
+        if (score >= (maxMarks / 2)) {
+            st.setStatus("COMPLETED");
+        } else {
+            st.setStatus("PENDING");
+            st.setWarningsCount(0);
+            st.setIsSuspended(false);
+        }
+
         st.setSubmittedAt(LocalDateTime.now());
         return studentTestRepository.save(st);
     }

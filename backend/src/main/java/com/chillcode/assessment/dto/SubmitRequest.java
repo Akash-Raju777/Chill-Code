@@ -11,5 +11,6 @@ public class SubmitRequest {
     private Long questionId;
     private Long studentTestId;
     private String customInput;
+    private String customInput2;
     private Boolean runOnly;
 }

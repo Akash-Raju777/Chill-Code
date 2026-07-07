@@ -94,27 +94,28 @@ public class CodeExecutionService {
 
         List<TestCase> testCases = new ArrayList<>();
         if (runOnly) {
+            boolean hasCustom = false;
             if (request.getCustomInput() != null && !request.getCustomInput().trim().isEmpty()) {
-                TestCase customTc = new TestCase();
-                customTc.setId(-999L);
-                customTc.setInputData(request.getCustomInput());
-                customTc.setExpectedOutput(null);
-                customTc.setIsHidden(false);
-                testCases.add(customTc);
-            } else {
-                for (TestCase tc : allTestCases) {
-                    if (tc.getIsHidden() != null && !tc.getIsHidden()) {
-                        testCases.add(tc);
-                    }
-                }
-                if (testCases.isEmpty()) {
-                    TestCase customTc = new TestCase();
-                    customTc.setId(-999L);
-                    customTc.setInputData("");
-                    customTc.setExpectedOutput(null);
-                    customTc.setIsHidden(false);
-                    testCases.add(customTc);
-                }
+                TestCase customTc1 = new TestCase();
+                customTc1.setId(-999L);
+                customTc1.setInputData(request.getCustomInput());
+                customTc1.setExpectedOutput(null);
+                customTc1.setIsHidden(false);
+                testCases.add(customTc1);
+                hasCustom = true;
+            }
+            if (request.getCustomInput2() != null && !request.getCustomInput2().trim().isEmpty()) {
+                TestCase customTc2 = new TestCase();
+                customTc2.setId(-998L);
+                customTc2.setInputData(request.getCustomInput2());
+                customTc2.setExpectedOutput(null);
+                customTc2.setIsHidden(false);
+                testCases.add(customTc2);
+                hasCustom = true;
+            }
+
+            if (!hasCustom) {
+                testCases.addAll(allTestCases);
             }
         } else {
             testCases.addAll(allTestCases);

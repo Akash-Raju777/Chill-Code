@@ -86,6 +86,7 @@ export default function CodingWorkspace() {
   const [editorTheme, setEditorTheme] = useState<'vs-dark' | 'light'>('vs-dark');
   const [fontSize, setFontSize] = useState(14);
   const [customInput, setCustomInput] = useState('');
+  const [customInput2, setCustomInput2] = useState('');
   const [consoleTab, setConsoleTab] = useState<'TESTCASE' | 'RESULT'>('TESTCASE');
   const [securityShieldEnabled, setSecurityShieldEnabled] = useState(false);
   const [submittingExam, setSubmittingExam] = useState(false);
@@ -256,7 +257,13 @@ export default function CodingWorkspace() {
     return `${h.toString().padStart(2, '0')}:${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`;
   };
 
+  const autoSubmittedRef = useRef<boolean>(false);
+
   const handleAutoSubmit = async () => {
+    if (autoSubmittedRef.current) return;
+    autoSubmittedRef.current = true;
+    useTestStore.setState({ isSessionActive: false });
+    
     setSubmittingExam(true);
     try {
       const questionCodes: Record<string, { code: string; language: string }> = {};
@@ -371,12 +378,13 @@ export default function CodingWorkspace() {
     if (!currentQuestion) return;
 
     // Check if question has input and user has not populated customInput
-    const firstTestcase = currentQuestion.testCases?.find((tc: any) => !tc.isHidden);
-    if (firstTestcase && firstTestcase.inputData && !customInput.trim()) {
-      setCustomInput(firstTestcase.inputData);
+    const sampleTestcases = currentQuestion.testCases?.filter((tc: any) => !tc.isHidden) || [];
+    if (sampleTestcases.length > 0 && !customInput.trim() && !customInput2.trim()) {
+      if (sampleTestcases[0]) setCustomInput(sampleTestcases[0].inputData || '');
+      if (sampleTestcases[1]) setCustomInput2(sampleTestcases[1].inputData || '');
       setConsoleOpen(true);
       setConsoleTab('TESTCASE');
-      alert('This question requires input. We have pre-populated the input method with the sample input. Review it, then click "Compile & Run" again.');
+      alert('This question requires input. We have pre-populated the input methods with the sample inputs. Review them, then click "Compile & Run" again.');
       return;
     }
 
@@ -391,6 +399,7 @@ export default function CodingWorkspace() {
       questionId: currentQuestion.id,
       studentTestId: useTestStore.getState().activeStudentTestId,
       customInput: customInput,
+      customInput2: customInput2,
       runOnly: true,
     };
 
@@ -544,27 +553,10 @@ export default function CodingWorkspace() {
     const isAccepted = status === 'ACCEPTED' || status === 'FINISHED';
     
     // Status colors and text
-    let statusText = status;
-    let statusColor = "text-red-400 bg-red-500/10 border-red-500/20";
-    if (isAccepted) {
-      statusText = status === 'ACCEPTED' ? 'Accepted' : 'Finished';
-      statusColor = "text-emerald-400 bg-[#10b981]/10 border-[#10b981]/20";
-    } else if (status === 'COMPILATION_ERROR') {
-      statusText = 'Compilation Error';
-      statusColor = "text-amber-400 bg-amber-500/10 border-amber-500/20";
-    } else if (status === 'RUNTIME_ERROR') {
-      statusText = 'Runtime Error';
-      statusColor = "text-red-400 bg-red-500/10 border-red-500/20";
-    } else if (status === 'TIME_LIMIT_EXCEEDED') {
-      statusText = 'Time Limit Exceeded';
-      statusColor = "text-orange-400 bg-orange-500/10 border-orange-500/20";
-    } else if (status === 'MEMORY_LIMIT_EXCEEDED') {
-      statusText = 'Memory Limit Exceeded';
-      statusColor = "text-purple-400 bg-purple-500/10 border-purple-500/20";
-    } else if (status === 'WRONG_ANSWER') {
-      statusText = 'Output Not Matched';
-      statusColor = "text-red-400 bg-red-500/10 border-red-500/20";
-    }
+    let statusText = isAccepted ? 'Pass' : 'test case not matched';
+    let statusColor = isAccepted 
+      ? "text-emerald-400 bg-[#10b981]/10 border-[#10b981]/20" 
+      : "text-red-400 bg-red-500/10 border-red-500/20";
 
     // Extraction helper for statistics
     const executionTime = execResult.executionTimeMs !== undefined ? execResult.executionTimeMs : execResult.runTimeMs;
@@ -1034,14 +1026,27 @@ export default function CodingWorkspace() {
                     <>
                       {/* Dynamically show Custom Input if required by the question */}
                       {(currentQuestion.inputFormat || (currentQuestion.testCases && currentQuestion.testCases.some((t: any) => t.inputData))) ? (
-                        <div className="space-y-1.5 shrink-0 select-none">
-                          <div className="text-[10px] text-gray-500 font-bold uppercase tracking-wider font-sans">Custom Input (stdin)</div>
-                          <textarea
-                            value={customInput}
-                            onChange={(e) => setCustomInput(e.target.value)}
-                            placeholder="Type custom inputs here (e.g. 5\n1 2 3 4 5)..."
-                            className="w-full h-24 p-3 bg-[#11131c] border border-white/5 rounded-xl text-xs text-white focus:outline-none focus:border-[#8b5cf6] font-mono resize-none"
-                          />
+                        <div className="space-y-4 shrink-0 select-none">
+                          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            <div className="space-y-1.5">
+                              <div className="text-[10px] text-gray-500 font-bold uppercase tracking-wider font-sans">Custom Input 1 (stdin)</div>
+                              <textarea
+                                value={customInput}
+                                onChange={(e) => setCustomInput(e.target.value)}
+                                placeholder="Type custom input 1 here..."
+                                className="w-full h-24 p-3 bg-[#11131c] border border-white/5 rounded-xl text-xs text-white focus:outline-none focus:border-[#8b5cf6] font-mono resize-none"
+                              />
+                            </div>
+                            <div className="space-y-1.5">
+                              <div className="text-[10px] text-gray-500 font-bold uppercase tracking-wider font-sans">Custom Input 2 (stdin)</div>
+                              <textarea
+                                value={customInput2}
+                                onChange={(e) => setCustomInput2(e.target.value)}
+                                placeholder="Type custom input 2 here..."
+                                className="w-full h-24 p-3 bg-[#11131c] border border-white/5 rounded-xl text-xs text-white focus:outline-none focus:border-[#8b5cf6] font-mono resize-none"
+                              />
+                            </div>
+                          </div>
                         </div>
                       ) : (
                         <div className="text-gray-500 flex items-center justify-center py-8 font-sans">
