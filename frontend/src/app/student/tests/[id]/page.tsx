@@ -754,7 +754,7 @@ export default function CodingWorkspace() {
           <div className="space-y-1.5 p-4 rounded-xl bg-indigo-950/20 border border-indigo-500/20 text-indigo-200">
             <div className="flex items-center gap-1.5 text-xs font-bold text-indigo-400 uppercase tracking-wider">
               <Sparkles className="w-3.5 h-3.5 fill-indigo-400 animate-pulse text-indigo-400" />
-              AI Hint
+              Ash's Hint 😉
             </div>
             <p className="text-xs leading-relaxed select-text whitespace-pre-wrap font-mono">
               {execResult.aiHint}

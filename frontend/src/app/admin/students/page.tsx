@@ -116,12 +116,14 @@ export default function StudentManagement() {
     if (!window.confirm(`Are you sure you want to delete student ${student.name} (${student.registerNumber})? This will permanently wipe all their scores, test sessions, and logs.`)) {
       return;
     }
+    const previousStudents = students;
+    setStudents(students.filter(s => s.id !== student.id));
     try {
       await apiCall(`/api/admin/students/${student.id}`, {
         method: 'DELETE',
       });
-      fetchStudents();
     } catch (err: any) {
+      setStudents(previousStudents);
       alert(err.message || 'Failed to delete student account');
     }
   };

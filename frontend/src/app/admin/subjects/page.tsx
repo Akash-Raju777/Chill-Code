@@ -75,10 +75,12 @@ export default function SubjectManagement() {
 
   const handleDelete = async (id: number) => {
     if (!confirm('Are you sure you want to delete this subject? All related questions will be permanently deleted.')) return;
+    const previousSubjects = subjects;
+    setSubjects(subjects.filter(sub => sub.id !== id));
     try {
       await apiCall(`/api/admin/subjects/${id}`, { method: 'DELETE' });
-      fetchSubjects();
     } catch (err: any) {
+      setSubjects(previousSubjects);
       setError(err.message || 'Failed to delete subject');
     }
   };
