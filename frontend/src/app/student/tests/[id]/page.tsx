@@ -1024,35 +1024,53 @@ export default function CodingWorkspace() {
                 <div className="flex-1 p-5 overflow-y-auto font-mono text-xs flex flex-col min-h-0">
                   {consoleTab === 'TESTCASE' ? (
                     <>
-                      {/* Dynamically show Custom Input if required by the question */}
-                      {(currentQuestion.inputFormat || (currentQuestion.testCases && currentQuestion.testCases.some((t: any) => t.inputData))) ? (
-                        <div className="space-y-4 shrink-0 select-none">
-                          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                            <div className="space-y-1.5">
-                              <div className="text-[10px] text-gray-500 font-bold uppercase tracking-wider font-sans">Custom Input 1 (stdin)</div>
-                              <textarea
-                                value={customInput}
-                                onChange={(e) => setCustomInput(e.target.value)}
-                                placeholder="Type custom input 1 here..."
-                                className="w-full h-24 p-3 bg-[#11131c] border border-white/5 rounded-xl text-xs text-white focus:outline-none focus:border-[#8b5cf6] font-mono resize-none"
-                              />
+                      {(() => {
+                        const sampleTestcases = currentQuestion.testCases?.filter((tc: any) => !tc.isHidden) || [];
+                        const hasInput = currentQuestion.inputFormat || sampleTestcases.length > 0;
+                        if (!hasInput) {
+                          return (
+                            <div className="text-gray-500 flex items-center justify-center py-8 font-sans">
+                              This question does not require standard input.
                             </div>
-                            <div className="space-y-1.5">
-                              <div className="text-[10px] text-gray-500 font-bold uppercase tracking-wider font-sans">Custom Input 2 (stdin)</div>
-                              <textarea
-                                value={customInput2}
-                                onChange={(e) => setCustomInput2(e.target.value)}
-                                placeholder="Type custom input 2 here..."
-                                className="w-full h-24 p-3 bg-[#11131c] border border-white/5 rounded-xl text-xs text-white focus:outline-none focus:border-[#8b5cf6] font-mono resize-none"
-                              />
-                            </div>
+                          );
+                        }
+                        return (
+                          <div className="space-y-4 shrink-0 select-none">
+                            {sampleTestcases.length >= 2 ? (
+                              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                <div className="space-y-1.5">
+                                  <div className="text-[10px] text-gray-500 font-bold uppercase tracking-wider font-sans">Custom Input 1 (stdin)</div>
+                                  <textarea
+                                    value={customInput}
+                                    onChange={(e) => setCustomInput(e.target.value)}
+                                    placeholder="Type custom input 1 here..."
+                                    className="w-full h-24 p-3 bg-[#11131c] border border-white/5 rounded-xl text-xs text-white focus:outline-none focus:border-[#8b5cf6] font-mono resize-none"
+                                  />
+                                </div>
+                                <div className="space-y-1.5">
+                                  <div className="text-[10px] text-gray-500 font-bold uppercase tracking-wider font-sans">Custom Input 2 (stdin)</div>
+                                  <textarea
+                                    value={customInput2}
+                                    onChange={(e) => setCustomInput2(e.target.value)}
+                                    placeholder="Type custom input 2 here..."
+                                    className="w-full h-24 p-3 bg-[#11131c] border border-white/5 rounded-xl text-xs text-white focus:outline-none focus:border-[#8b5cf6] font-mono resize-none"
+                                  />
+                                </div>
+                              </div>
+                            ) : (
+                              <div className="space-y-1.5">
+                                <div className="text-[10px] text-gray-500 font-bold uppercase tracking-wider font-sans">Custom Input (stdin)</div>
+                                <textarea
+                                  value={customInput}
+                                  onChange={(e) => setCustomInput(e.target.value)}
+                                  placeholder="Type custom input here..."
+                                  className="w-full h-24 p-3 bg-[#11131c] border border-white/5 rounded-xl text-xs text-white focus:outline-none focus:border-[#8b5cf6] font-mono resize-none"
+                                />
+                              </div>
+                            )}
                           </div>
-                        </div>
-                      ) : (
-                        <div className="text-gray-500 flex items-center justify-center py-8 font-sans">
-                          This question does not require standard input.
-                        </div>
-                      )}
+                        );
+                      })()}
                     </>
                   ) : (
                     <div className="flex-1 overflow-y-auto min-h-0">

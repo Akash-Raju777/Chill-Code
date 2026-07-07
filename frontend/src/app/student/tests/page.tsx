@@ -301,10 +301,10 @@ export default function TestsWorkspace() {
                 const subject = subjects.find((s) => s.id === q.subjectId);
                 const subjectName = subject ? subject.name : 'Unknown';
 
-                let statusStr = "Not Solved";
-                if (isSolved) statusStr = "Solved";
+                let statusStr = "Un Attend";
+                if (isSolved) statusStr = "Completed";
                 else if (isSuspended) statusStr = "Suspended";
-                else if (isStarted) statusStr = "In Progress";
+                else if (isStarted) statusStr = "Pending";
 
                 let lastAttemptStr = "No attempt yet";
                 if (q.lastAttemptAt) {
@@ -543,20 +543,20 @@ export default function TestsWorkspace() {
         </div>
       ) : (
         <div className="space-y-8">
-          {/* Category 1: Not Started */}
+          {/* Category 1: Un Attend */}
           <div className="space-y-4">
             <h2 className="text-sm font-bold text-gray-400 uppercase tracking-wider flex items-center gap-2 font-sans select-none">
               <span className="w-2.5 h-2.5 rounded-full bg-gray-500"></span>
-              Not Started ({notStartedQuestions.length})
+              Un Attend ({notStartedQuestions.length})
             </h2>
             {renderQuestionsTable(notStartedQuestions, false)}
           </div>
 
-          {/* Category 2: In Progress */}
+          {/* Category 2: Pending */}
           <div className="space-y-4 pt-4">
             <h2 className="text-sm font-bold text-amber-400 uppercase tracking-wider flex items-center gap-2 font-sans select-none">
               <span className="w-2.5 h-2.5 rounded-full bg-amber-400 animate-pulse"></span>
-              In Progress ({inProgressQuestions.length})
+              Pending ({inProgressQuestions.length})
             </h2>
             {renderQuestionsTable(inProgressQuestions, false)}
           </div>

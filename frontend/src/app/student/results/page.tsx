@@ -165,7 +165,6 @@ export default function StudentResults() {
                       onClick={() => handleAnotherAttempt(item)}
                       className="flex items-center gap-1.5 px-3 py-1.5 bg-indigo-500/10 hover:bg-indigo-500/20 border border-indigo-500/20 text-indigo-400 font-bold rounded-lg text-xs transition-all"
                     >
-                      <RotateCcw className="w-3.5 h-3.5" />
                       View Attempt
                     </button>
                   )}
