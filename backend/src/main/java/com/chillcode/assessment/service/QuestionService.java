@@ -47,16 +47,22 @@ public class QuestionService {
     public List<QuestionDto> getAllQuestions() {
         log.info("Repository Call: Load all questions from database");
         java.util.Map<Long, StudentQuestionStatus> statusMap = getStatusMapForCurrentStudent();
+        List<TestCase> allTestCases = testCaseRepository.findAll();
+        java.util.Map<Long, List<TestCase>> testCasesMap = allTestCases.stream()
+                .collect(Collectors.groupingBy(tc -> tc.getQuestion().getId()));
         return questionRepository.findAll().stream()
-                .map(q -> convertToDto(q, statusMap))
+                .map(q -> convertToDto(q, statusMap, testCasesMap.getOrDefault(q.getId(), java.util.Collections.emptyList())))
                 .collect(Collectors.toList());
     }
 
     public List<QuestionDto> getQuestionsBySubject(Long subjectId) {
         log.info("Repository Call: Load questions for subject ID: {} from database", subjectId);
         java.util.Map<Long, StudentQuestionStatus> statusMap = getStatusMapForCurrentStudent();
+        List<TestCase> allTestCases = testCaseRepository.findAll();
+        java.util.Map<Long, List<TestCase>> testCasesMap = allTestCases.stream()
+                .collect(Collectors.groupingBy(tc -> tc.getQuestion().getId()));
         return questionRepository.findBySubjectId(subjectId).stream()
-                .map(q -> convertToDto(q, statusMap))
+                .map(q -> convertToDto(q, statusMap, testCasesMap.getOrDefault(q.getId(), java.util.Collections.emptyList())))
                 .collect(Collectors.toList());
     }
 
@@ -229,14 +235,18 @@ public class QuestionService {
 
     private QuestionDto convertToDto(Question question, java.util.Map<Long, StudentQuestionStatus> statusMap) {
         List<TestCase> testCases = testCaseRepository.findByQuestionId(question.getId());
-        List<TestCaseDto> tcDtos = testCases.stream()
+        return convertToDto(question, statusMap, testCases);
+    }
+
+    private QuestionDto convertToDto(Question question, java.util.Map<Long, StudentQuestionStatus> statusMap, List<TestCase> testCases) {
+        List<TestCaseDto> tcDtos = testCases != null ? testCases.stream()
                 .map(tc -> TestCaseDto.builder()
                         .id(tc.getId())
                         .inputData(tc.getInputData())
                         .expectedOutput(tc.getExpectedOutput())
                         .isHidden(tc.getIsHidden())
                         .build())
-                .collect(Collectors.toList());
+                .collect(Collectors.toList()) : java.util.Collections.emptyList();
 
         QuestionDto dto = QuestionDto.builder()
                 .id(question.getId())

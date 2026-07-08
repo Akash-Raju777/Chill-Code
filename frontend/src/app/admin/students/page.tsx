@@ -365,7 +365,7 @@ export default function StudentManagement() {
                   <Lock className="absolute left-3 top-3 w-4 h-4 text-gray-500" />
                   <input
                     type="password"
-                    required
+                    placeholder="Leave blank to keep unchanged"
                     className="w-full bg-[#0b0c10] border border-white/5 py-2.5 pl-10 pr-4 rounded-xl text-xs text-white focus:outline-none focus:border-indigo-500 transition-colors font-mono"
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}

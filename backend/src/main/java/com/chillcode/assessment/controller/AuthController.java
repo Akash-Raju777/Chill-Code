@@ -103,6 +103,9 @@ public class AuthController {
         if (user.getStatus() == UserStatus.SUSPENDED) {
             return ResponseEntity.status(403).body("Your account is suspended.");
         }
+        if (user.getStatus() == UserStatus.INACTIVE) {
+            return ResponseEntity.status(403).body("Your account is inactive.");
+        }
 
         String token = jwtUtils.generateToken(userDetails, user.getRole().name());
 

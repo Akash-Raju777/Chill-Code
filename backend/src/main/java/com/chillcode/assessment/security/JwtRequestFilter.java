@@ -12,6 +12,9 @@ import org.springframework.security.web.authentication.WebAuthenticationDetailsS
 import org.springframework.stereotype.Component;
 import org.springframework.web.filter.OncePerRequestFilter;
 
+import com.chillcode.assessment.repository.UserRepository;
+import com.chillcode.assessment.entity.User;
+import com.chillcode.assessment.entity.UserStatus;
 import java.io.IOException;
 
 @Component
@@ -22,6 +25,9 @@ public class JwtRequestFilter extends OncePerRequestFilter {
 
     @Autowired
     private JwtUtils jwtUtils;
+
+    @Autowired
+    private UserRepository userRepository;
 
     @Override
     protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response, FilterChain filterChain)
@@ -45,6 +51,21 @@ public class JwtRequestFilter extends OncePerRequestFilter {
             UserDetails userDetails = this.userDetailsService.loadUserByUsername(username);
 
             if (jwtUtils.validateToken(jwt, userDetails)) {
+                java.util.Optional<User> userOpt = userRepository.findByRegisterNumber(username);
+                if (userOpt.isEmpty()) {
+                    userOpt = userRepository.findByUsername(username);
+                }
+                if (userOpt.isEmpty()) {
+                    userOpt = userRepository.findByEmail(username);
+                }
+                if (userOpt.isPresent()) {
+                    User user = userOpt.get();
+                    if (user.getStatus() == UserStatus.INACTIVE || user.getStatus() == UserStatus.SUSPENDED) {
+                        response.sendError(HttpServletResponse.SC_FORBIDDEN, "Your account is " + user.getStatus().name().toLowerCase() + ".");
+                        return;
+                    }
+                }
+
                 UsernamePasswordAuthenticationToken usernamePasswordAuthenticationToken =
                         new UsernamePasswordAuthenticationToken(userDetails, null, userDetails.getAuthorities());
                 usernamePasswordAuthenticationToken

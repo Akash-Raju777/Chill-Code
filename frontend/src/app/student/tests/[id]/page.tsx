@@ -87,6 +87,7 @@ export default function CodingWorkspace() {
   const [fontSize, setFontSize] = useState(14);
   const [customInput, setCustomInput] = useState('');
   const [customInput2, setCustomInput2] = useState('');
+  const [customInput3, setCustomInput3] = useState('');
   const [consoleTab, setConsoleTab] = useState<'TESTCASE' | 'RESULT'>('TESTCASE');
   const [securityShieldEnabled, setSecurityShieldEnabled] = useState(false);
   const [submittingExam, setSubmittingExam] = useState(false);
@@ -132,17 +133,17 @@ export default function CodingWorkspace() {
           return;
         }
 
-        // Auto enter fullscreen immediately only if security shield is enabled
-        if (isEnabled && typeof window !== 'undefined' && !useTestStore.getState().isViewMode && user?.status === 'ACTIVE') {
-          if (!document.fullscreenElement) {
-            setFullscreenRequired(true);
-          }
-        }
-
         setWarnings(activeTest.warningsCount || 0);
 
         const subjectId = activeTest.test.subject.id;
         const allQuestions = await apiCall(`/api/student/subjects/${subjectId}/questions`);
+
+        // If this is a brand new start, clear any leftover local storage backups
+        if (activeTest.status === 'ASSIGNED' && user?.id) {
+          allQuestions.forEach((q: any) => {
+            localStorage.removeItem(`chillcode_code_backup_${user.id}_${q.id}`);
+          });
+        }
 
         if (allQuestions && allQuestions.length > 0) {
           let targetQuestions = allQuestions;
@@ -183,6 +184,16 @@ export default function CodingWorkspace() {
 
     recoverSession();
   }, [mounted, isSessionActive, testId, startTestSession, router, user]);
+
+  // Trigger fullscreen whenever security status becomes active
+  useEffect(() => {
+    if (!mounted || isViewMode) return;
+    if (isSecurityStatusActive && typeof window !== 'undefined') {
+      if (!document.fullscreenElement) {
+        setFullscreenRequired(true);
+      }
+    }
+  }, [mounted, isSecurityStatusActive, isViewMode]);
 
   // Set up Timer interval (without subscribing to time changes here to avoid re-renders)
   useEffect(() => {
@@ -240,13 +251,13 @@ export default function CodingWorkspace() {
   }, [activeQuestionIndex, activeStudentTestId, questions, mounted, currentQuestion, isViewMode]);
 
   useEffect(() => {
-    if (mounted && currentQuestion && !isViewMode && !codes[currentQuestion.id]) {
-      const backup = localStorage.getItem(`chillcode_code_backup_${currentQuestion.id}`);
+    if (mounted && currentQuestion && !isViewMode && !codes[currentQuestion.id] && user?.id) {
+      const backup = localStorage.getItem(`chillcode_code_backup_${user.id}_${currentQuestion.id}`);
       if (backup) {
         updateCode(currentQuestion.id, backup);
       }
     }
-  }, [mounted, activeQuestionIndex, currentQuestion]);
+  }, [mounted, activeQuestionIndex, currentQuestion, user]);
 
 
   // Format Time
@@ -278,6 +289,11 @@ export default function CodingWorkspace() {
         method: 'POST',
         body: JSON.stringify(questionCodes),
       });
+      if (user?.id) {
+        Object.keys(codes).forEach((qId) => {
+          localStorage.removeItem(`chillcode_code_backup_${user.id}_${qId}`);
+        });
+      }
       clearTestSession();
       resetWarnings();
       if (document.fullscreenElement) {
@@ -308,6 +324,11 @@ export default function CodingWorkspace() {
         method: 'POST',
         body: JSON.stringify(questionCodes),
       });
+      if (user?.id) {
+        Object.keys(codes).forEach((qId) => {
+          localStorage.removeItem(`chillcode_code_backup_${user.id}_${qId}`);
+        });
+      }
       clearTestSession();
       resetWarnings();
       if (document.fullscreenElement) {
@@ -379,9 +400,10 @@ export default function CodingWorkspace() {
 
     // Check if question has input and user has not populated customInput
     const sampleTestcases = currentQuestion.testCases?.filter((tc: any) => !tc.isHidden) || [];
-    if (sampleTestcases.length > 0 && !customInput.trim() && !customInput2.trim()) {
+    if (sampleTestcases.length > 0 && !customInput.trim() && !customInput2.trim() && !customInput3.trim()) {
       if (sampleTestcases[0]) setCustomInput(sampleTestcases[0].inputData || '');
       if (sampleTestcases[1]) setCustomInput2(sampleTestcases[1].inputData || '');
+      if (sampleTestcases[2]) setCustomInput3(sampleTestcases[2].inputData || '');
       setConsoleOpen(true);
       setConsoleTab('TESTCASE');
       alert('This question requires input. We have pre-populated the input methods with the sample inputs. Review them, then click "Compile & Run" again.');
@@ -400,6 +422,7 @@ export default function CodingWorkspace() {
       studentTestId: useTestStore.getState().activeStudentTestId,
       customInput: customInput,
       customInput2: customInput2,
+      customInput3: customInput3,
       runOnly: true,
     };
 
@@ -702,13 +725,13 @@ export default function CodingWorkspace() {
         {execResult.testCaseResults && execResult.testCaseResults.length > 0 && (
           <div className="space-y-3 pt-2">
             <div className="text-[10px] text-gray-500 font-bold uppercase tracking-wider">Verification Test Cases</div>
-            <div className="space-y-2">
+            <div className="space-y-3">
               {execResult.testCaseResults.map((tc: any, index: number) => {
                 const isPassed = tc.status === 'PASSED';
                 // If it is hidden, we obscure message details
                 const isHidden = tc.message && tc.message.includes("(Hidden testcase failed)");
                 return (
-                  <div key={tc.testCaseId || index} className="p-3 rounded-xl border border-white/5 bg-[#11131c] flex flex-col gap-2">
+                  <div key={tc.testCaseId || index} className="p-4 rounded-xl border border-white/5 bg-[#11131c] flex flex-col gap-3">
                     <div className="flex items-center justify-between">
                       <div className="flex items-center gap-2">
                         {isPassed ? (
@@ -722,16 +745,46 @@ export default function CodingWorkspace() {
                         {tc.runTimeMs !== null && tc.runTimeMs !== undefined && (
                           <span className="text-gray-500 font-mono text-[10px]">{tc.runTimeMs} ms</span>
                         )}
+                        {tc.memoryUsedKb !== null && tc.memoryUsedKb !== undefined && (
+                          <span className="text-gray-500 font-mono text-[10px]">{tc.memoryUsedKb} KB</span>
+                        )}
                         <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full uppercase ${
                           isPassed ? 'bg-[#10b981]/10 text-[#10b981]' : 'bg-[#ef4444]/10 text-[#ef4444]'
                         }`}>
-                          {tc.status}
+                          {tc.status === 'PASSED' ? 'Passed' : tc.status === 'FAILED' ? 'Failed' : tc.status}
                         </span>
                       </div>
                     </div>
-                    {tc.message && !isPassed && (
+
+                    {!isHidden && tc.inputData && (
+                      <div className="space-y-1">
+                        <div className="text-[10px] text-gray-500 font-bold uppercase font-sans">Input (stdin)</div>
+                        <pre className="p-2 bg-[#08090f]/80 border border-white/5 text-gray-300 rounded-lg whitespace-pre-wrap font-mono text-[11px] max-h-[80px] overflow-y-auto">
+                          {tc.inputData}
+                        </pre>
+                      </div>
+                    )}
+
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                      {/* Expected Output */}
+                      <div className="space-y-1">
+                        <div className="text-[10px] text-emerald-400 font-bold uppercase font-sans">Expected Output</div>
+                        <pre className="p-2.5 bg-[#08090f]/80 border border-white/5 text-emerald-300 rounded-lg whitespace-pre-wrap font-mono text-[11px] leading-normal max-h-[120px] overflow-y-auto">
+                          {isHidden ? "🔒 Hidden" : tc.expectedOutput || "N/A"}
+                        </pre>
+                      </div>
+                      {/* Actual Output */}
+                      <div className="space-y-1">
+                        <div className={`text-[10px] font-bold uppercase font-sans ${isPassed ? 'text-emerald-400' : 'text-red-400'}`}>Your Output</div>
+                        <pre className={`p-2.5 bg-[#08090f]/80 border border-white/5 rounded-lg whitespace-pre-wrap font-mono text-[11px] leading-normal max-h-[120px] overflow-y-auto ${isPassed ? 'text-emerald-300' : 'text-red-300'}`}>
+                          {isHidden ? "🔒 Hidden" : tc.actualOutput || "No output"}
+                        </pre>
+                      </div>
+                    </div>
+
+                    {tc.message && !isPassed && !isHidden && !tc.message.includes("Output doesn't match") && (
                       <pre className="p-2.5 bg-[#0b0c10] border border-white/5 text-red-300 rounded-lg whitespace-pre-wrap font-mono text-[10px] leading-relaxed">
-                        {isHidden ? "Hidden Test Case Failed" : tc.message}
+                        {tc.message}
                       </pre>
                     )}
                   </div>
@@ -782,8 +835,8 @@ export default function CodingWorkspace() {
           {/* Security Shield Indicator */}
           <div className="flex items-center gap-2 px-3 py-1.5 bg-[#0b0c10] border border-white/5 rounded-xl">
             <span className="text-[10px] text-gray-500 uppercase font-bold tracking-wider">Security Shield</span>
-            <span className={`text-xs font-bold ${securityShieldEnabled ? 'text-emerald-400 animate-pulse' : 'text-gray-500'}`}>
-              {securityShieldEnabled ? 'Active' : 'Inactive'}
+            <span className={`text-xs font-bold ${isSecurityStatusActive ? 'text-emerald-400 animate-pulse' : 'text-red-400'}`}>
+              {isSecurityStatusActive ? 'Active' : 'Inactive'}
             </span>
           </div>
 
@@ -823,9 +876,12 @@ export default function CodingWorkspace() {
           <div className="flex-1 overflow-y-auto p-6 space-y-6">
             {/* Title and stats bar */}
             <div className="space-y-3">
-              <div className="flex items-center gap-3">
+              <div className="flex items-center gap-3 flex-wrap">
                 <span className="text-xs font-bold px-2 py-0.5 rounded-md bg-amber-500/10 text-amber-400">
                   {currentQuestion.difficulty}
+                </span>
+                <span className="text-[10px] font-bold px-2 py-0.5 rounded-md bg-white/5 text-gray-400">
+                  Attempts: {currentQuestion.attemptCount ?? 0}
                 </span>
                 <h2 className="text-2xl font-bold text-white leading-tight font-sans">
                   {currentQuestion.title}
@@ -947,7 +1003,9 @@ export default function CodingWorkspace() {
               onChange={(val) => {
                 if (!isViewMode) {
                   updateCode(currentQuestion.id, val || '');
-                  localStorage.setItem(`chillcode_code_backup_${currentQuestion.id}`, val || '');
+                  if (user?.id) {
+                    localStorage.setItem(`chillcode_code_backup_${user.id}_${currentQuestion.id}`, val || '');
+                  }
                 }
               }}
               options={{
@@ -1034,40 +1092,31 @@ export default function CodingWorkspace() {
                             </div>
                           );
                         }
+                        
+                        const count = Math.max(1, Math.min(3, sampleTestcases.length));
+                        const inputs = [
+                          { val: customInput, setVal: setCustomInput, label: "Custom Input 1 (stdin)" },
+                          { val: customInput2, setVal: setCustomInput2, label: "Custom Input 2 (stdin)" },
+                          { val: customInput3, setVal: setCustomInput3, label: "Custom Input 3 (stdin)" }
+                        ];
+
                         return (
                           <div className="space-y-4 shrink-0 select-none">
-                            {sampleTestcases.length >= 2 ? (
-                              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                <div className="space-y-1.5">
-                                  <div className="text-[10px] text-gray-500 font-bold uppercase tracking-wider font-sans">Custom Input 1 (stdin)</div>
+                            <div className={`grid grid-cols-1 ${
+                              count === 2 ? 'md:grid-cols-2' : count === 3 ? 'md:grid-cols-3' : 'md:grid-cols-1'
+                            } gap-4`}>
+                              {inputs.slice(0, count).map((inp, idx) => (
+                                <div key={idx} className="space-y-1.5">
+                                  <div className="text-[10px] text-gray-500 font-bold uppercase tracking-wider font-sans">{inp.label}</div>
                                   <textarea
-                                    value={customInput}
-                                    onChange={(e) => setCustomInput(e.target.value)}
-                                    placeholder="Type custom input 1 here..."
+                                    value={inp.val}
+                                    onChange={(e) => inp.setVal(e.target.value)}
+                                    placeholder={`Type custom input ${idx + 1} here...`}
                                     className="w-full h-24 p-3 bg-[#11131c] border border-white/5 rounded-xl text-xs text-white focus:outline-none focus:border-[#8b5cf6] font-mono resize-none"
                                   />
                                 </div>
-                                <div className="space-y-1.5">
-                                  <div className="text-[10px] text-gray-500 font-bold uppercase tracking-wider font-sans">Custom Input 2 (stdin)</div>
-                                  <textarea
-                                    value={customInput2}
-                                    onChange={(e) => setCustomInput2(e.target.value)}
-                                    placeholder="Type custom input 2 here..."
-                                    className="w-full h-24 p-3 bg-[#11131c] border border-white/5 rounded-xl text-xs text-white focus:outline-none focus:border-[#8b5cf6] font-mono resize-none"
-                                  />
-                                </div>
-                              </div>
-                            ) : (
-                              <div className="space-y-1.5">
-                                <div className="text-[10px] text-gray-500 font-bold uppercase tracking-wider font-sans">Custom Input (stdin)</div>
-                                <textarea
-                                  value={customInput}
-                                  onChange={(e) => setCustomInput(e.target.value)}
-                                  placeholder="Type custom input here..."
-                                  className="w-full h-24 p-3 bg-[#11131c] border border-white/5 rounded-xl text-xs text-white focus:outline-none focus:border-[#8b5cf6] font-mono resize-none"
-                                />
-                              </div>
-                            )}
+                              ))}
+                            </div>
                           </div>
                         );
                       })()}

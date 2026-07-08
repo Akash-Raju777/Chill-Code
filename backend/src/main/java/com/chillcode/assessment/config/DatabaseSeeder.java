@@ -105,6 +105,13 @@ public class DatabaseSeeder implements CommandLineRunner {
                     .findFirst()
                     .orElse(null);
 
+            if (test != null) {
+                if (test.getSecurityShieldEnabled() == null || !test.getSecurityShieldEnabled()) {
+                    test.setSecurityShieldEnabled(true);
+                    testRepository.save(test);
+                }
+            }
+
             if (test == null) {
                 test = com.chillcode.assessment.entity.Test.builder()
                         .subject(subject)
@@ -117,6 +124,7 @@ public class DatabaseSeeder implements CommandLineRunner {
                         .shuffleQuestions(false)
                         .autoSubmit(true)
                         .negativeMarking(false)
+                        .securityShieldEnabled(true)
                         .questions(new java.util.HashSet<>())
                         .build();
                 test = testRepository.save(test);

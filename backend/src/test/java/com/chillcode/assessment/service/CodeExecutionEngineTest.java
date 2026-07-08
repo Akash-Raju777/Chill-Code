@@ -24,6 +24,9 @@ public class CodeExecutionEngineTest {
     @MockBean
     private QuestionRepository questionRepository;
 
+    @MockBean
+    private com.chillcode.assessment.repository.TestCaseRepository testCaseRepository;
+
     private Question question;
 
     @BeforeEach
@@ -33,6 +36,14 @@ public class CodeExecutionEngineTest {
         question.setAllowedLanguages("java,python,cpp,c,javascript");
 
         Mockito.when(questionRepository.findById(9999L)).thenReturn(Optional.of(question));
+
+        com.chillcode.assessment.entity.TestCase testCase = new com.chillcode.assessment.entity.TestCase();
+        testCase.setId(101L);
+        testCase.setInputData("5");
+        testCase.setExpectedOutput("25");
+        testCase.setIsHidden(false);
+
+        Mockito.when(testCaseRepository.findByQuestionId(9999L)).thenReturn(java.util.List.of(testCase));
     }
 
     private SubmitRequest createRequest(String lang, String code, String input, boolean runOnly) {
@@ -125,11 +136,23 @@ public class CodeExecutionEngineTest {
         assertThat(res.getExitCode()).isNotEqualTo(0);
     }
 
+    private boolean isCommandAvailable(String cmd) {
+        try {
+            Process p = System.getProperty("os.name").toLowerCase().contains("win")
+                ? new ProcessBuilder("cmd.exe", "/c", cmd, "--version").start()
+                : new ProcessBuilder(cmd, "--version").start();
+            return p.waitFor(2, java.util.concurrent.TimeUnit.SECONDS) && p.exitValue() == 0;
+        } catch (Exception e) {
+            return false;
+        }
+    }
+
     // ==========================================
     // C TESTS
     // ==========================================
     @Test
     public void testCSuccess() {
+        org.junit.jupiter.api.Assumptions.assumeTrue(isCommandAvailable("gcc"), "GCC compiler is not available on this system");
         String code = "#include <stdio.h>\n" +
                       "int main() {\n" +
                       "    int n;\n" +
@@ -155,6 +178,7 @@ public class CodeExecutionEngineTest {
     // ==========================================
     @Test
     public void testCppSuccess() {
+        org.junit.jupiter.api.Assumptions.assumeTrue(isCommandAvailable("g++"), "G++ compiler is not available on this system");
         String code = "#include <iostream>\n" +
                       "#include <vector>\n" +
                       "using namespace std;\n" +
@@ -224,5 +248,34 @@ public class CodeExecutionEngineTest {
         SubmitRequest req = createRequest("python", code, "", true);
         SubmissionResultDto res = codeExecutionService.submitCode(req);
         assertThat(res.getStatus()).isEqualTo("MEMORY_LIMIT_EXCEEDED");
+    }
+    @Test
+    public void testCustomInputMatchingExpectedOutputFails() {
+        String code = "public class Solution {\n" +
+                      "    public static void main(String[] args) {\n" +
+                      "        java.util.Scanner sc = new java.util.Scanner(System.in);\n" +
+                      "        int n = sc.nextInt();\n" +
+                      "        System.out.println(n * 2);\n" +
+                      "    }\n" +
+                      "}";
+        SubmitRequest req = createRequest("java", code, "5", true);
+        SubmissionResultDto res = codeExecutionService.submitCode(req);
+        assertThat(res.getStatus()).isEqualTo("WRONG_ANSWER");
+        assertThat(res.getExpectedOutput()).isEqualTo("25");
+        assertThat(res.getActualOutput().trim()).isEqualTo("10");
+    }
+
+    @Test
+    public void testCustomInputMatchingExpectedOutputPasses() {
+        String code = "public class Solution {\n" +
+                      "    public static void main(String[] args) {\n" +
+                      "        java.util.Scanner sc = new java.util.Scanner(System.in);\n" +
+                      "        int n = sc.nextInt();\n" +
+                      "        System.out.println(n * n);\n" +
+                      "    }\n" +
+                      "}";
+        SubmitRequest req = createRequest("java", code, "5", true);
+        SubmissionResultDto res = codeExecutionService.submitCode(req);
+        assertThat(res.getStatus()).isEqualTo("ACCEPTED");
     }
 }

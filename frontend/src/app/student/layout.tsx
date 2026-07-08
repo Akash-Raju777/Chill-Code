@@ -36,15 +36,24 @@ export default function StudentLayout({ children }: { children: React.ReactNode 
 
   useEffect(() => {
     setMounted(true);
-    apiCall('/api/student/profile')
-      .then((data) => {
-        if (data) {
-          setUser(data);
-        }
-      })
-      .catch((err) => {
-        console.error('Failed to sync student status on layout mount', err);
-      });
+
+    const syncProfile = () => {
+      apiCall('/api/student/profile')
+        .then((data) => {
+          if (data) {
+            setUser(data);
+          }
+        })
+        .catch((err) => {
+          console.error('Failed to sync student status', err);
+        });
+    };
+
+    syncProfile();
+
+    // Poll status every 5 seconds
+    const interval = setInterval(syncProfile, 5000);
+    return () => clearInterval(interval);
   }, [setUser]);
 
   useEffect(() => {
@@ -161,10 +170,21 @@ export default function StudentLayout({ children }: { children: React.ReactNode 
           </div>
           <div className="flex items-center gap-4">
             <div className="text-right">
-              <div className="text-xs text-gray-500">Security Shield</div>
-              <div className={`text-sm font-semibold transition-colors duration-200 ${isSecurityActive ? 'text-emerald-400 animate-pulse' : 'text-gray-500'}`}>
-                {isSecurityActive ? 'Active' : 'Inactive'}
-              </div>
+              {isSessionActive ? (
+                <>
+                  <div className="text-xs text-gray-500">Security Shield</div>
+                  <div className={`text-sm font-semibold transition-colors duration-200 ${isSecurityActive ? 'text-emerald-400 animate-pulse' : 'text-red-400'}`}>
+                    {isSecurityActive ? 'Active' : 'Inactive'}
+                  </div>
+                </>
+              ) : (
+                <>
+                  <div className="text-xs text-gray-500">Security Status</div>
+                  <div className={`text-sm font-semibold transition-colors duration-200 ${user?.status === 'ACTIVE' ? 'text-emerald-400' : 'text-red-400'}`}>
+                    {user?.status === 'ACTIVE' ? 'Active' : 'Inactive'}
+                  </div>
+                </>
+              )}
             </div>
           </div>
         </header>

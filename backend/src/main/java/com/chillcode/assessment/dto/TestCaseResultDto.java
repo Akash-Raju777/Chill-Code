@@ -13,4 +13,7 @@ public class TestCaseResultDto {
     private Integer runTimeMs;
     private Integer memoryUsedKb;
     private String message;
+    private String inputData;
+    private String expectedOutput;
+    private String actualOutput;
 }

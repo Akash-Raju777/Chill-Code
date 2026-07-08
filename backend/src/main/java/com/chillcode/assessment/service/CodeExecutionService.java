@@ -18,6 +18,7 @@ import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
 import java.time.LocalDateTime;
 import java.util.*;
+import java.util.stream.Collectors;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.JsonNode;
 
@@ -95,11 +96,15 @@ public class CodeExecutionService {
         List<TestCase> testCases = new ArrayList<>();
         if (runOnly) {
             boolean hasCustom = false;
+            List<TestCase> sampleTestCases = allTestCases.stream()
+                    .filter(tc -> !Boolean.TRUE.equals(tc.getIsHidden()))
+                    .collect(Collectors.toList());
+
             if (request.getCustomInput() != null && !request.getCustomInput().trim().isEmpty()) {
                 TestCase customTc1 = new TestCase();
                 customTc1.setId(-999L);
                 customTc1.setInputData(request.getCustomInput());
-                customTc1.setExpectedOutput(null);
+                customTc1.setExpectedOutput(findMatchingExpectedOutput(allTestCases, request.getCustomInput()));
                 customTc1.setIsHidden(false);
                 testCases.add(customTc1);
                 hasCustom = true;
@@ -108,14 +113,23 @@ public class CodeExecutionService {
                 TestCase customTc2 = new TestCase();
                 customTc2.setId(-998L);
                 customTc2.setInputData(request.getCustomInput2());
-                customTc2.setExpectedOutput(null);
+                customTc2.setExpectedOutput(findMatchingExpectedOutput(allTestCases, request.getCustomInput2()));
                 customTc2.setIsHidden(false);
                 testCases.add(customTc2);
                 hasCustom = true;
             }
+            if (request.getCustomInput3() != null && !request.getCustomInput3().trim().isEmpty()) {
+                TestCase customTc3 = new TestCase();
+                customTc3.setId(-997L);
+                customTc3.setInputData(request.getCustomInput3());
+                customTc3.setExpectedOutput(findMatchingExpectedOutput(allTestCases, request.getCustomInput3()));
+                customTc3.setIsHidden(false);
+                testCases.add(customTc3);
+                hasCustom = true;
+            }
 
             if (!hasCustom) {
-                testCases.addAll(allTestCases);
+                testCases.addAll(sampleTestCases);
             }
         } else {
             testCases.addAll(allTestCases);
@@ -134,6 +148,8 @@ public class CodeExecutionService {
                 TestCase tc = testCases.get(i);
                 TestCaseResultDto tcResult = new TestCaseResultDto();
                 tcResult.setTestCaseId(tc.getId());
+                tcResult.setInputData(tc.getInputData());
+                tcResult.setExpectedOutput(tc.getExpectedOutput());
 
                 try {
                     JsonNode res = executeOnJudge0(request.getCode(), languageId, tc.getInputData(), null);
@@ -159,6 +175,7 @@ public class CodeExecutionService {
                         tcResult.setStatus("COMPILATION_ERROR");
                         resultDto.setCompileError(compileOutput);
                         tcResult.setMessage("Compilation Error:\n" + compileOutput);
+                        tcResult.setActualOutput("Compilation Error:\n" + compileOutput);
                         overallVerdict = "COMPILATION_ERROR";
                         resultDto.getTestCaseResults().add(tcResult);
                         firstFailedJudge0Status = "Compilation Error";
@@ -166,6 +183,7 @@ public class CodeExecutionService {
                     } else if (statusId == 5) { // TLE
                         tcResult.setStatus("TLE");
                         tcResult.setMessage("Time Limit Exceeded");
+                        tcResult.setActualOutput("Time Limit Exceeded");
                         overallVerdict = updateVerdict(overallVerdict, "TIME_LIMIT_EXCEEDED");
                         if (failedTestCaseIndex == -1) {
                             failedTestCaseIndex = i + 1;
@@ -174,6 +192,7 @@ public class CodeExecutionService {
                     } else if (statusId == 8) { // MLE
                         tcResult.setStatus("MLE");
                         tcResult.setMessage("Memory Limit Exceeded");
+                        tcResult.setActualOutput("Memory Limit Exceeded");
                         overallVerdict = updateVerdict(overallVerdict, "MEMORY_LIMIT_EXCEEDED");
                         if (failedTestCaseIndex == -1) {
                             failedTestCaseIndex = i + 1;
@@ -182,6 +201,7 @@ public class CodeExecutionService {
                     } else if (statusId == 7 || statusId == 9 || statusId == 10 || statusId == 11 || statusId == 12) { // Runtime Error
                         tcResult.setStatus("RTE");
                         tcResult.setMessage("Runtime Error:\n" + stderr);
+                        tcResult.setActualOutput("Runtime Error:\n" + stderr);
                         overallVerdict = updateVerdict(overallVerdict, "RUNTIME_ERROR");
                         if (failedTestCaseIndex == -1) {
                             failedTestCaseIndex = i + 1;
@@ -193,6 +213,7 @@ public class CodeExecutionService {
                         if (tc.getExpectedOutput() != null) {
                             match = compareOutputs(tc.getExpectedOutput(), stdout);
                         }
+                        tcResult.setActualOutput(stdout);
                         if (match) {
                             tcResult.setStatus("PASSED");
                             tcResult.setMessage("Test Case Passed");
@@ -218,6 +239,7 @@ public class CodeExecutionService {
                 } catch (Exception e) {
                     tcResult.setStatus("FAILED");
                     tcResult.setMessage("Execution error: " + e.getMessage());
+                    tcResult.setActualOutput("Execution error: " + e.getMessage());
                     overallVerdict = updateVerdict(overallVerdict, "RUNTIME_ERROR");
                     if (failedTestCaseIndex == -1) {
                         failedTestCaseIndex = i + 1;
@@ -1207,6 +1229,47 @@ public class CodeExecutionService {
             return "Your code allocated more memory than allowed by the platform limits. Optimize your data structure allocations and check for memory leaks.";
         }
         return "An issue occurred during evaluation. Please inspect the logs to diagnose.";
+    }
+
+    private String findMatchingExpectedOutput(List<TestCase> allTestCases, String customInput) {
+        if (customInput == null || allTestCases == null) {
+            return null;
+        }
+        List<String> customLines = getFilteredLines(customInput);
+        for (TestCase tc : allTestCases) {
+            if (tc.getInputData() != null) {
+                List<String> tcLines = getFilteredLines(tc.getInputData());
+                if (customLines.equals(tcLines)) {
+                    return tc.getExpectedOutput();
+                }
+            }
+        }
+        return null;
+    }
+
+    private String getExpectedOutputForCustomInput(List<TestCase> allTestCases, List<TestCase> sampleTestCases, String customInput, int index) {
+        String matched = findMatchingExpectedOutput(allTestCases, customInput);
+        if (matched != null) {
+            return matched;
+        }
+        if (sampleTestCases != null && index < sampleTestCases.size()) {
+            return sampleTestCases.get(index).getExpectedOutput();
+        }
+        return null;
+    }
+
+    private List<String> getFilteredLines(String str) {
+        List<String> filtered = new ArrayList<>();
+        if (str == null) return filtered;
+        String clean = str.replace("\r\n", "\n").replace("\r", "\n").trim();
+        String[] lines = clean.split("\n", -1);
+        for (String line : lines) {
+            String trimmed = line.trim();
+            if (!trimmed.isEmpty()) {
+                filtered.add(trimmed);
+            }
+        }
+        return filtered;
     }
 
     private boolean compareOutputs(String expected, String actual) {

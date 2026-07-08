@@ -52,9 +52,15 @@ public class StudentService {
         com.chillcode.assessment.entity.User student = userRepository.findById(studentId)
                 .orElseThrow(() -> new RuntimeException("Student not found"));
 
+        List<StudentTest> myTests = studentTestRepository.findByStudentId(studentId);
+        java.util.Set<Long> existingTestIds = myTests.stream()
+                .map(st -> st.getTest().getId())
+                .collect(Collectors.toSet());
+
         List<com.chillcode.assessment.entity.Test> allTests = testRepository.findAll();
+        boolean savedAny = false;
         for (com.chillcode.assessment.entity.Test test : allTests) {
-            if (studentTestRepository.findByStudentIdAndTestId(studentId, test.getId()).isEmpty()) {
+            if (!existingTestIds.contains(test.getId())) {
                 com.chillcode.assessment.entity.StudentTest st = com.chillcode.assessment.entity.StudentTest.builder()
                         .student(student)
                         .test(test)
@@ -64,7 +70,12 @@ public class StudentService {
                         .isSuspended(false)
                         .build();
                 studentTestRepository.save(st);
+                savedAny = true;
             }
+        }
+
+        if (savedAny) {
+            myTests = studentTestRepository.findByStudentId(studentId);
         }
 
         // Calculate statistics based on questions and question statuses
@@ -81,7 +92,6 @@ public class StudentService {
         long incompleteQuestionsCount = allQuestions.size() - completedQuestionsCount;
 
         // Calculate average score of all student tests
-        List<StudentTest> myTests = studentTestRepository.findByStudentId(studentId);
         double totalScore = myTests.stream()
                 .filter(st -> "SUBMITTED".equals(st.getStatus()) || "EVALUATED".equals(st.getStatus()) || "COMPLETED".equals(st.getStatus()) || "PENDING".equals(st.getStatus()))
                 .mapToInt(st -> st.getScore() != null ? st.getScore() : 0)
@@ -134,13 +144,13 @@ public class StudentService {
         }
         stats.put("subjectStats", subjectStatsList);
 
-        // Recent activity logs: fetch latest 5 submissions made by the student
-        List<com.chillcode.assessment.entity.Submission> latestSubmissions = submissionRepository.findAllByStudentIdOrderByCreatedAtDesc(studentId);
+        // Recent activity logs: fetch latest 5 submissions made by the student using optimized pageable query
+        List<com.chillcode.assessment.entity.Submission> latestSubmissions = submissionRepository.findTop5ByStudentIdOrderByCreatedAtDesc(
+                studentId, org.springframework.data.domain.PageRequest.of(0, 5));
         List<String> activities = latestSubmissions.stream()
                 .map(sub -> String.format("Submitted solution for '%s' - Verdict: %s",
                         sub.getQuestion() != null ? sub.getQuestion().getTitle() : "Unknown",
                         sub.getStatus()))
-                .limit(5)
                 .collect(Collectors.toList());
         
         if (activities.isEmpty()) {

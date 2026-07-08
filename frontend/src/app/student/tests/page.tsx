@@ -285,6 +285,7 @@ export default function TestsWorkspace() {
               <tr className="border-b border-white/5 text-[10px] text-gray-500 uppercase font-bold tracking-wider select-none bg-[#11131c]">
                 <th className="p-4 pl-6 w-20 text-center">Status</th>
                 <th className="p-4">Problem Name</th>
+                <th className="p-4 w-24 text-center">Attempts</th>
                 <th className="p-4 w-32">Difficulty</th>
                 <th className="p-4">Tags</th>
                 <th className="p-4 w-40 text-center">Last Attempt</th>
@@ -355,6 +356,12 @@ export default function TestsWorkspace() {
                           <span>{subjectName}</span>
                         </div>
                       </div>
+                    </td>
+
+                    <td className="p-4 text-center">
+                      <span className="font-semibold text-gray-300">
+                        {q.attemptCount ?? 0}
+                      </span>
                     </td>
 
                     <td className="p-4">
