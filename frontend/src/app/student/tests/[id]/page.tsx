@@ -108,12 +108,19 @@ export default function CodingWorkspace() {
       });
   }, [setUser]);
 
+  // Guard ref to prevent duplicate recoverSession calls from dependency changes
+  const recoverSessionCalledRef = useRef<boolean>(false);
+
   // Auto-restore test session state and configure security immediately before interactions
   useEffect(() => {
     if (!mounted || !user?.id) return;
     // Only skip re-fetch if the store belongs to THIS user for THIS test
     const store = useTestStore.getState();
-    if (isSessionActive && questions && questions.length > 0 && store.activeTestId === testId && store.lastUserId === user.id) return;
+    if (store.isSessionActive && store.questions.length > 0 && store.activeTestId === testId && store.lastUserId === user.id) return;
+    // Prevent duplicate async calls
+    if (recoverSessionCalledRef.current) return;
+    recoverSessionCalledRef.current = true;
+
     // If stale session from different user or test, force-clear before re-init
     if (store.isSessionActive && (store.lastUserId !== user.id || store.activeTestId !== testId)) {
       store.clearTestSession();
@@ -170,13 +177,16 @@ export default function CodingWorkspace() {
             remainingSeconds = Math.max(0, totalSeconds - elapsedSeconds);
           }
 
+          // If time expired OR already submitted/evaluated, open in view mode
+          const isExpiredOrDone = remainingSeconds <= 0 || activeTest.status === 'SUBMITTED' || activeTest.status === 'EVALUATED';
+
           startTestSession(
             activeTest.test.id,
             activeTest.id,
             targetQuestions[0]?.title || '',
             targetQuestions,
-            remainingSeconds / 60,
-            activeTest.status === 'SUBMITTED' || activeTest.status === 'EVALUATED',
+            isExpiredOrDone ? 0 : remainingSeconds / 60,
+            isExpiredOrDone,
             isEnabled,
             user?.id
           );
@@ -186,11 +196,13 @@ export default function CodingWorkspace() {
       } catch (err) {
         console.error('Failed to recover exam session', err);
         router.push('/student/tests');
+      } finally {
+        recoverSessionCalledRef.current = false;
       }
     };
 
     recoverSession();
-  }, [mounted, isSessionActive, testId, startTestSession, router, user]);
+  }, [mounted, testId, startTestSession, router, user]);
 
   // Trigger fullscreen whenever security status becomes active
   useEffect(() => {
