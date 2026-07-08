@@ -909,13 +909,15 @@ public class CodeExecutionService {
         // Fetch all latest submissions for this student test
         List<Submission> submissions = submissionRepository.findByStudentTestId(studentTest.getId());
         
-        // Group by question and take the max score
+        // Group by question and take the max score for active submissions
         Map<Long, Integer> maxScores = new HashMap<>();
         for (Submission sub : submissions) {
-            maxScores.put(
-                sub.getQuestion().getId(),
-                Math.max(maxScores.getOrDefault(sub.getQuestion().getId(), 0), sub.getScore())
-            );
+            if (sub.getActive() == null || sub.getActive()) {
+                maxScores.put(
+                    sub.getQuestion().getId(),
+                    Math.max(maxScores.getOrDefault(sub.getQuestion().getId(), 0), sub.getScore())
+                );
+            }
         }
 
         int totalScore = maxScores.values().stream().mapToInt(Integer::intValue).sum();

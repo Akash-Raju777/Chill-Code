@@ -36,7 +36,16 @@ public class StartupValidator implements ApplicationRunner {
             throw new RuntimeException("Startup halted: Database connection is unavailable.");
         }
 
-        // 2. Validate Default Seed Users existence
+        // 2. Drop check constraint on status column if it exists to allow 'NO_SECURITY' status
+        try (Connection conn = dataSource.getConnection();
+             Statement stmt = conn.createStatement()) {
+            stmt.execute("ALTER TABLE app_users DROP CONSTRAINT IF EXISTS app_users_status_check");
+            System.out.println("[StartupValidator] Database constraint update: OK (Successfully dropped app_users_status_check if existed)");
+        } catch (Exception e) {
+            System.err.println("[StartupValidator] Warning: Could not drop check constraint app_users_status_check: " + e.getMessage());
+        }
+
+        // 3. Validate Default Seed Users existence
         boolean adminExists = userRepository.findByUsername("admin_demo").isPresent() || 
                              userRepository.findByRegisterNumber("admin_demo").isPresent() || 
                              userRepository.findByEmail("admin@chillcode.com").isPresent();

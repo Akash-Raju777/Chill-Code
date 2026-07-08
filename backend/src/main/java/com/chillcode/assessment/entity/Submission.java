@@ -75,6 +75,10 @@ public class Submission {
     @OneToMany(mappedBy = "submission", cascade = CascadeType.ALL, orphanRemoval = true)
     private java.util.List<SubmissionTestCase> submissionTestCases;
 
+    @Column(name = "active")
+    @Builder.Default
+    private Boolean active = true;
+
     @Column(name = "created_at", nullable = false, updatable = false)
     private LocalDateTime createdAt = LocalDateTime.now();
 

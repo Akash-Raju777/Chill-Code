@@ -182,11 +182,14 @@ public class TestService {
             throw new RuntimeException("Your attempt on this test has been suspended due to security violations.");
         }
 
-        // If re-attempting a failed test (PENDING), clear previous attempt's submissions and score
+        // If re-attempting a failed test (PENDING), deactivate previous attempt's submissions and clear score
         if ("PENDING".equals(st.getStatus())) {
             List<Submission> submissions = submissionRepository.findByStudentTestId(st.getId());
             if (submissions != null && !submissions.isEmpty()) {
-                submissionRepository.deleteAll(submissions);
+                for (Submission sub : submissions) {
+                    sub.setActive(false);
+                }
+                submissionRepository.saveAll(submissions);
             }
             st.setScore(0);
         }
@@ -552,10 +555,13 @@ public class TestService {
             List<Submission> submissions = submissionRepository.findByStudentTestId(st.getId());
             if (submissions != null && !submissions.isEmpty()) {
                 final Long targetQId = questionId;
-                List<Submission> toDelete = submissions.stream()
+                List<Submission> toDeactivate = submissions.stream()
                         .filter(sub -> sub.getQuestion().getId().equals(targetQId))
                         .collect(Collectors.toList());
-                submissionRepository.deleteAll(toDelete);
+                for (Submission sub : toDeactivate) {
+                    sub.setActive(false);
+                }
+                submissionRepository.saveAll(toDeactivate);
             }
             
             // Reset question completion status
