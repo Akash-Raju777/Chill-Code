@@ -80,10 +80,10 @@ public class AdminService {
                     Map<String, Object> data = new HashMap<>();
                     data.put("name", t.getName());
                     long assigned = studentTestRepository.findByTestId(t.getId()).stream()
-                            .filter(st -> st.getStudent() != null && com.chillcode.assessment.entity.UserStatus.ACTIVE.equals(st.getStudent().getStatus()))
+                            .filter(st -> st.getStudent() != null && (com.chillcode.assessment.entity.UserStatus.ACTIVE.equals(st.getStudent().getStatus()) || com.chillcode.assessment.entity.UserStatus.NO_SECURITY.equals(st.getStudent().getStatus())))
                             .count();
                     long attended = studentTestRepository.findByTestId(t.getId()).stream()
-                            .filter(st -> st.getStudent() != null && com.chillcode.assessment.entity.UserStatus.ACTIVE.equals(st.getStudent().getStatus()))
+                            .filter(st -> st.getStudent() != null && (com.chillcode.assessment.entity.UserStatus.ACTIVE.equals(st.getStudent().getStatus()) || com.chillcode.assessment.entity.UserStatus.NO_SECURITY.equals(st.getStudent().getStatus())))
                             .filter(st -> !"ASSIGNED".equals(st.getStatus()))
                             .count();
                     data.put("assigned", assigned);

@@ -174,14 +174,14 @@ export default function StudentLayout({ children }: { children: React.ReactNode 
                 <>
                   <div className="text-xs text-gray-500">Security Shield</div>
                   <div className={`text-sm font-semibold transition-colors duration-200 ${isSecurityActive ? 'text-emerald-400 animate-pulse' : 'text-red-400'}`}>
-                    {isSecurityActive ? 'Active' : 'Inactive'}
+                    {isSecurityActive ? 'Active' : (user?.status === 'NO_SECURITY' ? 'Off' : 'Inactive')}
                   </div>
                 </>
               ) : (
                 <>
                   <div className="text-xs text-gray-500">Security Status</div>
-                  <div className={`text-sm font-semibold transition-colors duration-200 ${user?.status === 'ACTIVE' ? 'text-emerald-400' : 'text-red-400'}`}>
-                    {user?.status === 'ACTIVE' ? 'Active' : 'Inactive'}
+                  <div className={`text-sm font-semibold transition-colors duration-200 ${(user?.status === 'ACTIVE' || user?.status === 'NO_SECURITY') ? 'text-emerald-400' : 'text-red-400'}`}>
+                    {user?.status === 'NO_SECURITY' ? 'Off' : (user?.status === 'ACTIVE' ? 'Active' : 'Inactive')}
                   </div>
                 </>
               )}

@@ -95,7 +95,7 @@ public class AdminController {
             }
             if (studentRequest.getStatus() != null) {
                 existingUser.setStatus(studentRequest.getStatus());
-                if (studentRequest.getStatus() == com.chillcode.assessment.entity.UserStatus.ACTIVE || studentRequest.getStatus() == com.chillcode.assessment.entity.UserStatus.INACTIVE) {
+                if (studentRequest.getStatus() == com.chillcode.assessment.entity.UserStatus.ACTIVE || studentRequest.getStatus() == com.chillcode.assessment.entity.UserStatus.NO_SECURITY || studentRequest.getStatus() == com.chillcode.assessment.entity.UserStatus.INACTIVE) {
                     existingUser.setSuspensionEndTime(null);
                     java.util.List<com.chillcode.assessment.entity.StudentTest> studentTests = studentTestRepository.findByStudentId(existingUser.getId());
                     for (com.chillcode.assessment.entity.StudentTest st : studentTests) {
