@@ -177,19 +177,47 @@ export default function CodingWorkspace() {
             remainingSeconds = Math.max(0, totalSeconds - elapsedSeconds);
           }
 
-          // If time expired OR already submitted/evaluated, open in view mode
-          const isExpiredOrDone = remainingSeconds <= 0 || activeTest.status === 'SUBMITTED' || activeTest.status === 'EVALUATED';
+          // View mode ONLY for already submitted/evaluated tests
+          const isDone = activeTest.status === 'SUBMITTED' || activeTest.status === 'EVALUATED';
+          // If time expired but not submitted, restart with full duration
+          if (remainingSeconds <= 0 && !isDone) {
+            remainingSeconds = totalSeconds;
+          }
 
           startTestSession(
             activeTest.test.id,
             activeTest.id,
             targetQuestions[0]?.title || '',
             targetQuestions,
-            isExpiredOrDone ? 0 : remainingSeconds / 60,
-            isExpiredOrDone,
+            isDone ? 0 : remainingSeconds / 60,
+            isDone,
             isEnabled,
             user?.id
           );
+
+          // For returning students (STARTED), restore their last submitted code per question
+          if (activeTest.status === 'STARTED' || activeTest.status === 'IN_PROGRESS') {
+            for (const q of targetQuestions) {
+              try {
+                const subs = await apiCall(`/api/student/submissions/test/${activeTest.id}/question/${q.id}`);
+                if (subs && subs.length > 0) {
+                  const sorted = [...subs].sort((a: any, b: any) => b.id - a.id);
+                  const latestCode = sorted[0].code || '';
+                  const latestLang = sorted[0].language || 'java';
+                  if (latestCode) {
+                    useTestStore.getState().updateCode(q.id, latestCode);
+                    useTestStore.getState().updateLanguage(q.id, latestLang);
+                  }
+                }
+              } catch (e) {
+                // If fetch fails, check localStorage backup
+                const backup = localStorage.getItem(`chillcode_code_backup_${user.id}_${q.id}`);
+                if (backup) {
+                  useTestStore.getState().updateCode(q.id, backup);
+                }
+              }
+            }
+          }
         } else {
           router.push('/student/tests');
         }
@@ -225,11 +253,15 @@ export default function CodingWorkspace() {
   }, [mounted, isSessionActive, isViewMode, decrementTime]);
 
   // Check Timer finish -> Auto submit (using transient subscriber to avoid re-rendering workspace)
+  const timerStartedRef = useRef<boolean>(false);
   useEffect(() => {
     if (!mounted || isViewMode) return;
+    // Mark that the timer has started ticking (don't auto-submit on initial load)
+    timerStartedRef.current = false;
     const unsubscribe = useTestStore.subscribe(
-      (state) => {
-        if (!state.isViewMode && state.isSessionActive && state.timeLeftSeconds === 0) {
+      (state, prevState) => {
+        // Only auto-submit when timer actively counts DOWN to 0 (not on initial load)
+        if (!state.isViewMode && state.isSessionActive && state.timeLeftSeconds === 0 && prevState.timeLeftSeconds > 0) {
           handleAutoSubmit();
         }
       }
