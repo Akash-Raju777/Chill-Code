@@ -128,6 +128,13 @@ export default function CodingWorkspace() {
 
     const recoverSession = async () => {
       try {
+        // Sync profile immediately to get the latest student status (e.g. NO_SECURITY)
+        const updatedProfile = await apiCall('/api/student/profile');
+        if (updatedProfile) {
+          useAuthStore.getState().setUser(updatedProfile);
+        }
+        const currentUserStatus = updatedProfile?.status || user?.status || 'ACTIVE';
+
         const tests = await apiCall('/api/student/tests');
         const activeTest = tests.find((st: any) => st.test.id === testId);
         if (!activeTest) {
@@ -138,7 +145,7 @@ export default function CodingWorkspace() {
         const isEnabled = activeTest.test.securityShieldEnabled ?? false;
         setSecurityShieldEnabled(isEnabled);
 
-        const isSecActive = user?.status === 'ACTIVE' && isEnabled;
+        const isSecActive = currentUserStatus === 'ACTIVE' && isEnabled;
 
         if ((activeTest.isSuspended || activeTest.status === 'SUSPENDED') && isSecActive) {
           suspendTest();

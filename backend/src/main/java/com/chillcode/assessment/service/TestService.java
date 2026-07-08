@@ -228,8 +228,9 @@ public class TestService {
         StudentTest st = studentTestRepository.findByStudentIdAndTestId(studentId, testId)
                 .orElseThrow(() -> new RuntimeException("Student-Test mapping not found."));
 
-        if (Boolean.FALSE.equals(st.getTest().getSecurityShieldEnabled())) {
-            return st; // Ignore warnings and suspension if security shield is disabled
+        if (Boolean.FALSE.equals(st.getTest().getSecurityShieldEnabled()) || 
+            (st.getStudent() != null && com.chillcode.assessment.entity.UserStatus.NO_SECURITY.equals(st.getStudent().getStatus()))) {
+            return st; // Ignore warnings and suspension if security shield is disabled or student has NO_SECURITY status
         }
 
         if (!"STARTED".equals(st.getStatus())) {

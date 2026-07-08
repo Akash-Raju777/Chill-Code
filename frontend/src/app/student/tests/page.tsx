@@ -185,8 +185,17 @@ export default function TestsWorkspace() {
   const confirmStart = async () => {
     if (!selectedTest || !selectedQuestion) return;
     try {
-      // Auto fullscreen request on interaction gesture only if security shield is enabled
-      if (selectedTest.test.securityShieldEnabled) {
+      // Sync profile immediately to get the latest student status (e.g. NO_SECURITY)
+      const updatedProfile = await apiCall('/api/student/profile');
+      if (updatedProfile) {
+        useAuthStore.getState().setUser(updatedProfile);
+      }
+
+      const latestUser = useAuthStore.getState().user;
+      const isSecActive = latestUser?.status === 'ACTIVE' && (selectedTest.test.securityShieldEnabled ?? false);
+
+      // Auto fullscreen request on interaction gesture only if security shield is enabled and student is ACTIVE
+      if (isSecActive) {
         try {
           const docEl = document.documentElement;
           if (docEl.requestFullscreen) {

@@ -30,6 +30,17 @@ interface SubmissionResult {
   totalTests: number;
 }
 
+const formatDate = (dateStr: string) => {
+  if (!dateStr) return 'N/A';
+  try {
+    const d = new Date(dateStr);
+    if (isNaN(d.getTime())) return 'N/A';
+    return d.toLocaleString();
+  } catch (e) {
+    return 'N/A';
+  }
+};
+
 export default function StudentResults() {
   const router = useRouter();
   const [submissions, setSubmissions] = useState<SubmissionResult[]>([]);
@@ -146,7 +157,7 @@ export default function StudentResults() {
                     </span>
                     <span className="flex items-center gap-1">
                       <Calendar className="w-3.5 h-3.5" />
-                      {new Date(item.createdAt).toLocaleString()}
+                      {formatDate(item.createdAt)}
                     </span>
                   </div>
                 </div>
