@@ -604,44 +604,55 @@ export default function TestsWorkspace() {
       </button>
 
       {/* Confirm Start Assessment Modal */}
-      {showConfirmModal && selectedTest && (
-        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <div className="w-full max-w-md bg-[#11131c] border border-white/10 p-6 rounded-2xl text-center shadow-2xl relative">
-            <AlertCircle className="w-12 h-12 text-[#7c3aed] mx-auto mb-4" />
-            <h3 className="text-lg font-bold text-white mb-2">
-              {selectedTest.test.securityShieldEnabled ? 'Initiate Coding Examination' : 'Start Practice Challenge'}
-            </h3>
-            <p className="text-xs text-gray-400 mb-6 leading-relaxed">
-              You are about to start <strong className="text-white">{selectedTest.test.name}</strong>.<br />
-              {selectedTest.test.securityShieldEnabled ? (
-                <>
-                  This exam has strict anti-cheating controls. 
-                  <br /><br />
-                  <strong className="text-red-400 font-semibold">Warning:</strong> Leaving full-screen mode, switching tabs, or opening developer tools will record warning logs. Accumulating 3 warnings will result in automatic submission and account suspension.
-                </>
-              ) : (
-                <>
-                  This is a practice environment. Feel free to reference documentation, copy/paste code snippets, and solve the problem at your own pace.
-                </>
-              )}
-            </p>
-            <div className="flex gap-3 justify-center">
-              <button
-                onClick={() => setShowConfirmModal(false)}
-                className="px-4 py-2 bg-[#0b0c10] border border-white/5 rounded-xl text-xs font-semibold hover:bg-white/5 text-gray-300"
-              >
-                Go Back
-              </button>
-              <button
-                onClick={confirmStart}
-                className="px-5 py-2.5 rounded-xl bg-[#7c3aed] hover:bg-[#8b5cf6] text-white text-xs font-bold shadow-lg shadow-[#7c3aed]/10"
-              >
-                Agree & Start
-              </button>
+      {showConfirmModal && selectedTest && (() => {
+        const isSecActive = user?.status === 'ACTIVE' && (selectedTest.test.securityShieldEnabled ?? false);
+        return (
+          <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+            <div className="w-full max-w-md bg-[#11131c] border border-white/10 p-6 rounded-2xl text-center shadow-2xl relative">
+              <AlertCircle className="w-12 h-12 text-[#7c3aed] mx-auto mb-4" />
+              <h3 className="text-lg font-bold text-white mb-2">
+                {isSecActive ? 'Initiate Coding Examination' : 'Start Practice Challenge'}
+              </h3>
+              <p className="text-xs text-gray-400 mb-6 leading-relaxed">
+                You are about to start <strong className="text-white">{selectedTest.test.name}</strong>.<br />
+                {isSecActive ? (
+                  <>
+                    This exam has strict anti-cheating controls. 
+                    <br /><br />
+                    <strong className="text-red-400 font-semibold">Warning:</strong> Leaving full-screen mode, switching tabs, or opening developer tools will record warning logs. Accumulating 3 warnings will result in automatic submission and account suspension.
+                  </>
+                ) : (
+                  <>
+                    {user?.status === 'NO_SECURITY' ? (
+                      <>
+                        Security checks are <strong className="text-emerald-400 font-semibold">disabled</strong> for your account. You can solve the problem at your own pace without anti-cheating restrictions.
+                      </>
+                    ) : (
+                      <>
+                        This is a practice environment. Feel free to reference documentation, copy/paste code snippets, and solve the problem at your own pace.
+                      </>
+                    )}
+                  </>
+                )}
+              </p>
+              <div className="flex gap-3 justify-center">
+                <button
+                  onClick={() => setShowConfirmModal(false)}
+                  className="px-4 py-2 bg-[#0b0c10] border border-white/5 rounded-xl text-xs font-semibold hover:bg-white/5 text-gray-300"
+                >
+                  Go Back
+                </button>
+                <button
+                  onClick={confirmStart}
+                  className="px-5 py-2.5 rounded-xl bg-[#7c3aed] hover:bg-[#8b5cf6] text-white text-xs font-bold shadow-lg shadow-[#7c3aed]/10"
+                >
+                  Agree & Start
+                </button>
+              </div>
             </div>
           </div>
-        </div>
-      )}
+        );
+      })()}
     </div>
   );
 }

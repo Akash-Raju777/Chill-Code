@@ -1203,24 +1203,73 @@ public class CodeExecutionService {
     private String getLocalFallbackExplanation(String status, String compileError, String stderr) {
         if ("COMPILATION_ERROR".equals(status)) {
             String err = compileError != null ? compileError : "";
-            if (err.contains("';' expected")) {
-                return "You forgot a semicolon at the end of the statement.";
-            } else if (err.contains("cannot find symbol")) {
-                return "The compiler cannot find the variable or class you referenced. Double check your variable names, spelling, and library imports.";
-            } else if (err.contains("class") && err.contains("should be declared in a file named")) {
-                return "Your Java class name must be declared as 'public class Solution' to match the online judge workspace execution files.";
-            } else if (err.contains("SyntaxError") || err.contains("invalid syntax")) {
-                return "Your code contains a syntax error. Verify your parentheses, colons, indentation alignment, and keyword spelling.";
+            
+            // Check for class, interface, enum, or record expected
+            if (err.contains("class, interface, enum, or record expected")) {
+                return "Syntax error: Your code is written outside of any valid class structure. In Java, all statements and methods must be declared inside a class, e.g., 'public class Solution { ... }'.";
+            }
+            
+            // Reached end of file while parsing
+            if (err.contains("reached end of file while parsing") || err.contains("expected '}'") || err.contains("expected declaration or statement")) {
+                return "Syntax error: Mismatched curly braces or parentheses. Ensure every opening '{' and '(' has a corresponding closing '}' and ')'.";
+            }
+            
+            // Semicolon expected
+            if (err.contains("';' expected") || err.contains("expected ';'") || err.contains("expected ';' before")) {
+                return "Syntax error: You are missing a semicolon ';' at the end of a statement.";
+            }
+            
+            // Cannot find symbol
+            if (err.contains("cannot find symbol") || err.contains("was not declared in this scope") || err.contains("is not defined")) {
+                return "Compiler error: Referenced variable or method cannot be found. Ensure all variables are declared, spelling is correct, and necessary packages are imported.";
+            }
+            
+            // Public class named Solution
+            if (err.contains("class") && err.contains("should be declared in a file named")) {
+                return "Workspace error: Your public class must be named 'Solution' (e.g., 'public class Solution') to match the execution environment.";
+            }
+
+            // Python/JS Syntax/Indent errors
+            if (err.contains("IndentationError") || err.contains("unexpected indent")) {
+                return "Indentation error: Python requires consistent indentation (spaces or tabs) to define blocks of code.";
+            }
+            
+            if (err.contains("expected ':'") || err.contains("SyntaxError: expected ':'")) {
+                return "Syntax error: A colon ':' is expected. Ensure your control flow statements (like if, for, while) and function definitions end with a colon.";
+            }
+            
+            if (err.contains("SyntaxError") || err.contains("invalid syntax") || err.contains("unexpected token") || err.contains("Unexpected token") || err.contains("Unexpected identifier")) {
+                return "Syntax error: The compiler encountered an unexpected token. Verify your structure, variable declaration keywords, and parentheses.";
+            }
+            
+            // Incompatible types
+            if (err.contains("incompatible types") || err.contains("cannot be converted to") || err.contains("invalid conversion")) {
+                return "Type mismatch error: You are attempting to assign a value of one type to a variable of a different, incompatible type.";
+            }
+
+            // Fallback: extract the error line if possible
+            if (!err.trim().isEmpty()) {
+                String[] lines = err.split("\n");
+                for (String line : lines) {
+                    if (line.contains("error:") || line.contains("Error:")) {
+                        return "Compilation failed: " + line.substring(line.indexOf("error:")).trim();
+                    }
+                }
             }
             return "Compilation failed. Review the compiler log details to resolve syntax errors or missing declaration identifiers.";
         } else if ("RUNTIME_ERROR".equals(status)) {
             String err = stderr != null ? stderr : "";
-            if (err.contains("NullPointerException") || err.contains("NoneType")) {
-                return "You are trying to access or manipulate an object reference that is null (NoneType).";
+            
+            if (err.contains("NullPointerException") || err.contains("NoneType") || err.contains("Cannot read properties of null")) {
+                return "Null pointer error: Your code is trying to access or manipulate an object/property that is null or undefined.";
             } else if (err.contains("/ by zero") || err.contains("ZeroDivisionError")) {
-                return "Your code attempted to divide a number by zero. Ensure your denominator variables are correctly verified before division.";
-            } else if (err.contains("IndexOutOfBoundsException") || err.contains("IndexError") || err.contains("out of bounds")) {
-                return "An index was accessed that is outside the bounds of the array, vector, or list. Double check your loop termination conditions.";
+                return "Arithmetic error: Attempted division by zero. Ensure your denominators are not zero before performing division.";
+            } else if (err.contains("IndexOutOfBoundsException") || err.contains("IndexError") || err.contains("out of bounds") || err.contains("out_of_range")) {
+                return "Index out of bounds error: Accessed an array or list index that doesn't exist. Check your loop boundaries and index offset.";
+            } else if (err.contains("StackOverflowError") || err.contains("maximum recursion depth exceeded")) {
+                return "Recursion error: Stack overflow. Ensure your recursive functions have a valid base case and terminate correctly.";
+            } else if (err.contains("segmentation fault") || err.contains("SIGSEGV")) {
+                return "Memory access violation (Segmentation Fault): The program tried to access restricted memory. Check pointers, memory limits, or array boundaries.";
             }
             return "Your code threw an unhandled runtime exception. Check the execution stack trace for exceptions, segmentation faults, or non-zero exits.";
         } else if ("WRONG_ANSWER".equals(status)) {

@@ -634,7 +634,21 @@ export default function CodingWorkspace() {
     const isAccepted = status === 'ACCEPTED' || status === 'FINISHED';
     
     // Status colors and text
-    let statusText = isAccepted ? 'Pass' : 'test case not matched';
+    let statusText = 'test case not matched';
+    if (isAccepted) {
+      statusText = 'Pass';
+    } else if (status === 'COMPILATION_ERROR') {
+      statusText = 'Compilation Error';
+    } else if (status === 'RUNTIME_ERROR') {
+      statusText = 'Runtime Error';
+    } else if (status === 'TIME_LIMIT_EXCEEDED') {
+      statusText = 'Time Limit Exceeded';
+    } else if (status === 'MEMORY_LIMIT_EXCEEDED') {
+      statusText = 'Memory Limit Exceeded';
+    } else if (status === 'WRONG_ANSWER') {
+      statusText = 'Wrong Answer';
+    }
+
     let statusColor = isAccepted 
       ? "text-emerald-400 bg-[#10b981]/10 border-[#10b981]/20" 
       : "text-red-400 bg-red-500/10 border-red-500/20";
