@@ -111,7 +111,9 @@ export default function CodingWorkspace() {
   // Auto-restore test session state and configure security immediately before interactions
   useEffect(() => {
     if (!mounted) return;
-    if (isSessionActive && questions && questions.length > 0) return;
+    // Only skip re-fetch if the store already has THIS test's session active
+    const storeTestId = useTestStore.getState().activeTestId;
+    if (isSessionActive && questions && questions.length > 0 && storeTestId === testId) return;
 
     const recoverSession = async () => {
       try {
@@ -832,11 +834,13 @@ export default function CodingWorkspace() {
         {/* Right Tools: Timer, Warnings, Submit */}
         <div className="flex items-center gap-6">
 
-          {/* Security Shield Indicator */}
+          {/* Security Status Indicator */}
           <div className="flex items-center gap-2 px-3 py-1.5 bg-[#0b0c10] border border-white/5 rounded-xl">
-            <span className="text-[10px] text-gray-500 uppercase font-bold tracking-wider">Security Shield</span>
-            <span className={`text-xs font-bold ${isSecurityStatusActive ? 'text-emerald-400 animate-pulse' : 'text-red-400'}`}>
-              {isSecurityStatusActive ? 'Active' : 'Inactive'}
+            <span className="text-[10px] text-gray-500 uppercase font-bold tracking-wider">
+              {securityShieldEnabled ? 'Security Shield' : 'Security Status'}
+            </span>
+            <span className={`text-xs font-bold ${user?.status === 'ACTIVE' ? 'text-emerald-400 animate-pulse' : 'text-red-400'}`}>
+              {user?.status === 'ACTIVE' ? 'Active' : 'Inactive'}
             </span>
           </div>
 

@@ -1,4 +1,5 @@
 import { create } from 'zustand';
+import { useTestStore } from './testStore';
 
 interface User {
   id: number;
@@ -18,6 +19,18 @@ interface AuthState {
   login: (user: User, token: string) => void;
   logout: () => void;
   setUser: (user: User) => void;
+}
+
+function clearAllCodeBackups() {
+  if (typeof window === 'undefined') return;
+  const keysToRemove: string[] = [];
+  for (let i = 0; i < localStorage.length; i++) {
+    const key = localStorage.key(i);
+    if (key && key.startsWith('chillcode_code_backup_')) {
+      keysToRemove.push(key);
+    }
+  }
+  keysToRemove.forEach((key) => localStorage.removeItem(key));
 }
 
 export const useAuthStore = create<AuthState>((set) => {
@@ -43,6 +56,9 @@ export const useAuthStore = create<AuthState>((set) => {
     token: initialToken,
     isAuthenticated: !!initialToken,
     login: (user, token) => {
+      // Clear any previous student's test session and code backups
+      useTestStore.getState().clearTestSession();
+      clearAllCodeBackups();
       if (typeof window !== 'undefined') {
         localStorage.setItem('chill_user', JSON.stringify(user));
         localStorage.setItem('chill_token', token);
@@ -50,6 +66,9 @@ export const useAuthStore = create<AuthState>((set) => {
       set({ user, token, isAuthenticated: true });
     },
     logout: () => {
+      // Clear test session state so next student gets a clean editor
+      useTestStore.getState().clearTestSession();
+      clearAllCodeBackups();
       if (typeof window !== 'undefined') {
         localStorage.removeItem('chill_user');
         localStorage.removeItem('chill_token');
