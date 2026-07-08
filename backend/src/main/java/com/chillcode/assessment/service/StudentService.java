@@ -99,17 +99,25 @@ public class StudentService {
                 .orElse(0.0);
 
         long completedTestsCount = myTests.stream()
-                .filter(st -> "COMPLETED".equals(st.getStatus()))
+                .filter(st -> "COMPLETED".equals(st.getStatus()) || "SUBMITTED".equals(st.getStatus()) || "EVALUATED".equals(st.getStatus()))
                 .count();
 
         long unattendedTestsCount = myTests.stream()
                 .filter(st -> "ASSIGNED".equals(st.getStatus()))
                 .count();
 
+        long inProgressTestsCount = myTests.stream()
+                .filter(st -> "STARTED".equals(st.getStatus()) || "IN_PROGRESS".equals(st.getStatus()))
+                .count();
+
         Map<String, Object> stats = new HashMap<>();
         stats.put("unattendedTests", unattendedTestsCount);
         stats.put("completedTests", completedTestsCount);
+        stats.put("inProgressTests", inProgressTestsCount);
+        stats.put("totalTests", myTests.size());
         stats.put("averageScore", Math.round(totalScore * 100.0) / 100.0);
+        stats.put("totalQuestions", allQuestions.size());
+        stats.put("completedQuestions", completedQuestionsCount);
 
         // Group questions by Subject
         List<com.chillcode.assessment.entity.Subject> subjects = subjectRepository.findAll();

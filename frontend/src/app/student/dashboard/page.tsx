@@ -18,7 +18,11 @@ interface SubjectStat {
 interface Stats {
   unattendedTests: number;
   completedTests: number;
+  inProgressTests: number;
+  totalTests: number;
   averageScore: number;
+  totalQuestions: number;
+  completedQuestions: number;
   recentActivities: string[];
   subjectStats: SubjectStat[];
 }
@@ -76,8 +80,10 @@ export default function StudentDashboard() {
   if (!stats) return null;
 
   const cardData = [
-    { label: 'Un-attended Tests', value: stats.unattendedTests, icon: BookOpen, color: 'text-indigo-400', bg: 'bg-indigo-500/10' },
-    { label: 'Completed Tests', value: stats.completedTests, icon: CheckSquare, color: 'text-emerald-400', bg: 'bg-emerald-500/10' },
+    { label: 'Unattended Tests', value: stats.unattendedTests ?? 0, icon: BookOpen, color: 'text-indigo-400', bg: 'bg-indigo-500/10', sub: 'Not started yet' },
+    { label: 'In Progress', value: stats.inProgressTests ?? 0, icon: Timer, color: 'text-amber-400', bg: 'bg-amber-500/10', sub: 'Currently active' },
+    { label: 'Tests Completed', value: stats.completedTests ?? 0, icon: CheckSquare, color: 'text-emerald-400', bg: 'bg-emerald-500/10', sub: 'Submitted / Evaluated' },
+    { label: 'Questions Solved', value: `${stats.completedQuestions ?? 0}/${stats.totalQuestions ?? 0}`, icon: Sparkles, color: 'text-purple-400', bg: 'bg-purple-500/10', sub: 'Problems completed' },
   ];
 
   return (
@@ -89,18 +95,19 @@ export default function StudentDashboard() {
       </div>
 
       {/* Cards Row */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
         {cardData.map((card) => {
           const Icon = card.icon;
           return (
             <div key={card.label} className="glass-panel p-4 rounded-xl flex flex-col justify-between">
-              <div className="flex justify-between items-center mb-4">
+              <div className="flex justify-between items-center mb-3">
                 <span className="text-xs font-semibold text-gray-500 uppercase tracking-wider">{card.label}</span>
                 <div className={`p-2 rounded-lg ${card.bg} ${card.color}`}>
                   <Icon className="w-4 h-4" />
                 </div>
               </div>
               <span className="text-2xl font-bold text-white">{card.value}</span>
+              <span className="text-[10px] text-gray-600 font-semibold mt-1">{card.sub}</span>
             </div>
           );
         })}
@@ -131,7 +138,7 @@ export default function StudentDashboard() {
                       <div className="space-y-1">
                         <h4 className="font-bold text-white text-sm">{sub.subjectName}</h4>
                         <p className="text-xs text-gray-500 font-semibold">
-                          {sub.completedCount} of {sub.totalCount} tests completed
+                          {sub.completedCount} of {sub.totalCount} questions solved
                         </p>
                       </div>
                       <span className={`text-[10px] font-bold px-2.5 py-1 rounded-full uppercase tracking-wider ${
