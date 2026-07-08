@@ -19,6 +19,7 @@ interface Question {
   allowedLanguages: string; // Comma separated
   tags?: string;
   testCases: TestCase[];
+  attemptCount?: number;
 }
 
 interface TestState {
