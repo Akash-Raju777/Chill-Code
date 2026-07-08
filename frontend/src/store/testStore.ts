@@ -33,6 +33,7 @@ interface TestState {
   isSessionActive: boolean;
   isViewMode: boolean;
   securityShieldEnabled: boolean;
+  lastUserId: number | null; // tracks which student owns this session
 
   startTestSession: (
     testId: number,
@@ -41,7 +42,8 @@ interface TestState {
     questions: Question[],
     durationMinutes: number,
     isViewMode?: boolean,
-    securityShieldEnabled?: boolean
+    securityShieldEnabled?: boolean,
+    userId?: number
   ) => void;
   setActiveQuestionIndex: (index: number) => void;
   updateCode: (questionId: number, code: string) => void;
@@ -62,8 +64,9 @@ export const useTestStore = create<TestState>((set) => ({
   isSessionActive: false,
   isViewMode: false,
   securityShieldEnabled: false,
+  lastUserId: null,
 
-  startTestSession: (testId, studentTestId, testName, questions, durationMinutes, isViewMode = false, securityShieldEnabled = false) => {
+  startTestSession: (testId, studentTestId, testName, questions, durationMinutes, isViewMode = false, securityShieldEnabled = false, userId) => {
     // Initial codes and languages mapping
     const codes: Record<number, string> = {};
     const languages: Record<number, string> = {};
@@ -87,6 +90,7 @@ export const useTestStore = create<TestState>((set) => ({
       isSessionActive: true,
       isViewMode,
       securityShieldEnabled,
+      lastUserId: userId ?? null,
     });
   },
 
@@ -123,5 +127,6 @@ export const useTestStore = create<TestState>((set) => ({
     isSessionActive: false,
     isViewMode: false,
     securityShieldEnabled: false,
+    lastUserId: null,
   }),
 }));

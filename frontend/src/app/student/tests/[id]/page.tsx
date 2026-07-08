@@ -110,10 +110,14 @@ export default function CodingWorkspace() {
 
   // Auto-restore test session state and configure security immediately before interactions
   useEffect(() => {
-    if (!mounted) return;
-    // Only skip re-fetch if the store already has THIS test's session active
-    const storeTestId = useTestStore.getState().activeTestId;
-    if (isSessionActive && questions && questions.length > 0 && storeTestId === testId) return;
+    if (!mounted || !user?.id) return;
+    // Only skip re-fetch if the store belongs to THIS user for THIS test
+    const store = useTestStore.getState();
+    if (isSessionActive && questions && questions.length > 0 && store.activeTestId === testId && store.lastUserId === user.id) return;
+    // If stale session from different user or test, force-clear before re-init
+    if (store.isSessionActive && (store.lastUserId !== user.id || store.activeTestId !== testId)) {
+      store.clearTestSession();
+    }
 
     const recoverSession = async () => {
       try {
@@ -173,7 +177,8 @@ export default function CodingWorkspace() {
             targetQuestions,
             remainingSeconds / 60,
             activeTest.status === 'SUBMITTED' || activeTest.status === 'EVALUATED',
-            isEnabled
+            isEnabled,
+            user?.id
           );
         } else {
           router.push('/student/tests');
