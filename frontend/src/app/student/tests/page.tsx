@@ -297,7 +297,10 @@ export default function TestsWorkspace() {
               {list.map((q) => {
                 const associatedTest = getAssociatedTest(q.subjectId);
                 const isSolved = q.status === 'COMPLETED';
-                const isSuspended = (associatedTest ? (associatedTest.isSuspended || associatedTest.status === 'SUSPENDED') : false) && user?.status === 'ACTIVE';
+                const isTestSuspendedFlag = (associatedTest ? (associatedTest.isSuspended || associatedTest.status === 'SUSPENDED') : false) && user?.status === 'ACTIVE';
+                // Only show "Suspended" for questions that were actively IN_PROGRESS when suspension happened
+                // Unstarted questions should not be blocked because of another question's suspension
+                const isSuspended = isTestSuspendedFlag && (q.status === 'IN_PROGRESS' || q.status === 'SUSPENDED');
                 const isStarted = q.status === 'IN_PROGRESS';
                 const subject = subjects.find((s) => s.id === q.subjectId);
                 const subjectName = subject ? subject.name : 'Unknown';

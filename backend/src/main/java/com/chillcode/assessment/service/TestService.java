@@ -168,6 +168,17 @@ public class TestService {
         }
 
         if (st.getIsSuspended()) {
+            // For practice arenas or tests without security shield, auto-clear suspension
+            // so students can attempt other questions (suspension was for the previous question session only)
+            boolean isPracticeArena = st.getTest().getName() != null && st.getTest().getName().toLowerCase().contains("practice arena");
+            boolean hasSecurityShield = Boolean.TRUE.equals(st.getTest().getSecurityShieldEnabled());
+            if (isPracticeArena || !hasSecurityShield) {
+                st.setIsSuspended(false);
+                st.setWarningsCount(0);
+                st.setStatus("STARTED");
+                st.setStartedAt(LocalDateTime.now());
+                return studentTestRepository.save(st);
+            }
             throw new RuntimeException("Your attempt on this test has been suspended due to security violations.");
         }
 
