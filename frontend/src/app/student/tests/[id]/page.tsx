@@ -409,7 +409,7 @@ export default function CodingWorkspace() {
     }
 
     try {
-      const st = await apiCall(`/api/student/tests/${testId}/warning?type=${type}&reason=${encodeURIComponent(reason)}`, {
+      const st = await apiCall(`/api/student/tests/${testId}/warning?type=${type}&reason=${encodeURIComponent(reason)}${currentQuestion ? `&questionId=${currentQuestion.id}` : ''}`, {
         method: 'POST',
       });
       

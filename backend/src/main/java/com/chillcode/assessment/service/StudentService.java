@@ -99,7 +99,7 @@ public class StudentService {
                 .orElse(0.0);
 
         long completedTestsCount = myTests.stream()
-                .filter(st -> "COMPLETED".equals(st.getStatus()) || "SUBMITTED".equals(st.getStatus()) || "EVALUATED".equals(st.getStatus()))
+                .filter(st -> "COMPLETED".equals(st.getStatus()) || "SUBMITTED".equals(st.getStatus()) || "EVALUATED".equals(st.getStatus()) || "PENDING".equals(st.getStatus()))
                 .count();
 
         long unattendedTestsCount = myTests.stream()
@@ -107,7 +107,7 @@ public class StudentService {
                 .count();
 
         long inProgressTestsCount = myTests.stream()
-                .filter(st -> "STARTED".equals(st.getStatus()) || "IN_PROGRESS".equals(st.getStatus()))
+                .filter(st -> "STARTED".equals(st.getStatus()) || "IN_PROGRESS".equals(st.getStatus()) || "SUSPENDED".equals(st.getStatus()))
                 .count();
 
         Map<String, Object> stats = new HashMap<>();

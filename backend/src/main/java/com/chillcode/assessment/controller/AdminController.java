@@ -34,6 +34,9 @@ public class AdminController {
     @Autowired
     private com.chillcode.assessment.repository.WarningRepository warningRepository;
 
+    @Autowired
+    private com.chillcode.assessment.repository.StudentQuestionStatusRepository studentQuestionStatusRepository;
+
     @GetMapping("/dashboard")
     public ResponseEntity<DashboardMetricsDto> getDashboardMetrics() {
         return ResponseEntity.ok(adminService.getDashboardMetrics());
@@ -107,6 +110,15 @@ public class AdminController {
                         }
                         studentTestRepository.save(st);
                     }
+
+                    // Reset suspended question statuses to IN_PROGRESS so they can be re-attempted
+                    java.util.List<com.chillcode.assessment.entity.StudentQuestionStatus> questionStatuses = studentQuestionStatusRepository.findByStudentId(existingUser.getId());
+                    for (com.chillcode.assessment.entity.StudentQuestionStatus sqs : questionStatuses) {
+                        if ("SUSPENDED".equals(sqs.getStatus())) {
+                            sqs.setStatus("IN_PROGRESS");
+                            studentQuestionStatusRepository.save(sqs);
+                        }
+                    }
                 }
             }
             if (studentRequest.getPassword() != null && !studentRequest.getPassword().isBlank()) {
@@ -157,6 +169,15 @@ public class AdminController {
                 st.setStatus("STARTED");
             }
             studentTestRepository.save(st);
+        }
+
+        // Reset suspended question statuses to IN_PROGRESS so they can be re-attempted
+        java.util.List<com.chillcode.assessment.entity.StudentQuestionStatus> questionStatuses = studentQuestionStatusRepository.findByStudentId(student.getId());
+        for (com.chillcode.assessment.entity.StudentQuestionStatus sqs : questionStatuses) {
+            if ("SUSPENDED".equals(sqs.getStatus())) {
+                sqs.setStatus("IN_PROGRESS");
+                studentQuestionStatusRepository.save(sqs);
+            }
         }
 
         return ResponseEntity.ok("Student suspension has been lifted.");

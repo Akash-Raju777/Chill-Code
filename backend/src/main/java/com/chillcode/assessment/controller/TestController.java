@@ -84,9 +84,10 @@ public class TestController {
     public ResponseEntity<com.chillcode.assessment.dto.StudentTestDto> logWarning(
             @PathVariable("id") Long id, 
             @RequestParam("type") String type, 
-            @RequestParam("reason") String reason) {
+            @RequestParam("reason") String reason,
+            @RequestParam(value = "questionId", required = false) Long questionId) {
         User student = getCurrentUser();
-        return ResponseEntity.ok(testService.recordWarningDto(id, student.getId(), type, reason));
+        return ResponseEntity.ok(testService.recordWarningDto(id, student.getId(), type, reason, questionId));
     }
 
     @PostMapping("/student/tests/{id}/request-reattempt")

@@ -221,7 +221,7 @@ public class TestService {
     }
 
     @Transactional
-    public StudentTest recordWarning(Long testId, Long studentId, String type, String reason) {
+    public StudentTest recordWarning(Long testId, Long studentId, String type, String reason, Long questionId) {
         StudentTest st = studentTestRepository.findByStudentIdAndTestId(studentId, testId)
                 .orElseThrow(() -> new RuntimeException("Student-Test mapping not found."));
 
@@ -246,6 +246,15 @@ public class TestService {
         if (warnings >= 3) {
             st.setStatus("SUSPENDED");
             st.setIsSuspended(true);
+            
+            // Mark specific question status as SUSPENDED
+            if (questionId != null) {
+                studentQuestionStatusRepository.findByStudentIdAndQuestionId(studentId, questionId)
+                        .ifPresent(sqs -> {
+                            sqs.setStatus("SUSPENDED");
+                            studentQuestionStatusRepository.save(sqs);
+                        });
+            }
             
             User student = st.getStudent();
 
@@ -490,8 +499,8 @@ public class TestService {
     }
 
     @Transactional
-    public com.chillcode.assessment.dto.StudentTestDto recordWarningDto(Long testId, Long studentId, String type, String reason) {
-        StudentTest st = recordWarning(testId, studentId, type, reason);
+    public com.chillcode.assessment.dto.StudentTestDto recordWarningDto(Long testId, Long studentId, String type, String reason, Long questionId) {
+        StudentTest st = recordWarning(testId, studentId, type, reason, questionId);
         return convertToStudentTestDto(st);
     }
 

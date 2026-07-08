@@ -45,6 +45,7 @@ export default function TestManagement() {
   const [shuffleQuestions, setShuffleQuestions] = useState(false);
   const [autoSubmit, setAutoSubmit] = useState(true);
   const [negativeMarking, setNegativeMarking] = useState(false);
+  const [securityShieldEnabled, setSecurityShieldEnabled] = useState(true);
 
   const fetchInitialData = async (isInitial = false) => {
     if (isInitial || tests.length === 0) {
@@ -113,6 +114,7 @@ export default function TestManagement() {
       shuffleQuestions,
       autoSubmit,
       negativeMarking,
+      securityShieldEnabled,
       maxMarks: selectedQuestionIds.length * 10,
     };
 
@@ -254,6 +256,14 @@ export default function TestManagement() {
                     onChange={(e) => setNegativeMarking(e.target.checked)}
                   />
                   Negative Marking
+                </label>
+                <label className="flex items-center gap-2 cursor-pointer text-xs text-emerald-400 font-semibold bg-emerald-500/10 px-2 py-1 rounded-lg border border-emerald-500/20">
+                  <input
+                    type="checkbox"
+                    checked={securityShieldEnabled}
+                    onChange={(e) => setSecurityShieldEnabled(e.target.checked)}
+                  />
+                  🛡️ Security Shield (Strict)
                 </label>
               </div>
 
