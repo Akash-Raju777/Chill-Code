@@ -1,6 +1,7 @@
 package com.chillcode.assessment.service;
 
 import com.chillcode.assessment.entity.Subject;
+import com.chillcode.assessment.entity.Submission;
 import com.chillcode.assessment.repository.SubjectRepository;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
