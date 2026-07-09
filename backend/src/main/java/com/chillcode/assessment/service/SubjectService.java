@@ -193,7 +193,7 @@ public class SubjectService {
                 int maxMarks = test.getMaxMarks() != null ? test.getMaxMarks() : 100;
 
                 String status = "ABSENT";
-                if ("SUBMITTED".equals(st.getStatus()) || "EVALUATED".equals(st.getStatus())) {
+                if ("SUBMITTED".equals(st.getStatus()) || "EVALUATED".equals(st.getStatus()) || "COMPLETED".equals(st.getStatus()) || "PENDING".equals(st.getStatus())) {
                     attendedCount++;
                     status = (score >= maxMarks * 0.4) ? "PASSED" : "FAILED";
                     if (score > rankScore) {

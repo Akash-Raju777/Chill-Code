@@ -44,6 +44,9 @@ public class TestService {
     @Autowired
     private StudentQuestionStatusRepository studentQuestionStatusRepository;
 
+    @Autowired
+    private CodeExecutionService codeExecutionService;
+
 
     public List<Test> getAllTests() {
         return testRepository.findAll();
@@ -188,6 +191,15 @@ public class TestService {
             if (submissions != null && !submissions.isEmpty()) {
                 for (Submission sub : submissions) {
                     sub.setActive(false);
+                    // Reset the StudentQuestionStatus for each question
+                    StudentQuestionStatus sqs = studentQuestionStatusRepository
+                            .findByStudentIdAndQuestionId(studentId, sub.getQuestion().getId())
+                            .orElse(null);
+                    if (sqs != null) {
+                        sqs.setStatus("NOT_STARTED");
+                        sqs.setCompletedAt(null);
+                        studentQuestionStatusRepository.save(sqs);
+                    }
                 }
                 submissionRepository.saveAll(submissions);
             }
@@ -436,9 +448,10 @@ public class TestService {
 
     @Transactional
     public com.chillcode.assessment.dto.StudentTestDto submitTestDto(Long testId, Long studentId, java.util.Map<String, java.util.Map<String, String>> questionCodes) {
-        StudentTest st = submitTest(testId, studentId);
+        StudentTest st = studentTestRepository.findByStudentIdAndTestId(studentId, testId)
+                .orElseThrow(() -> new RuntimeException("Student-Test mapping not found."));
 
-        // Save final draft codes as submissions
+        // Save final draft codes as submissions and evaluate them first
         if (questionCodes != null) {
             for (java.util.Map.Entry<String, java.util.Map<String, String>> entry : questionCodes.entrySet()) {
                 try {
@@ -460,36 +473,19 @@ public class TestService {
                             }
                             
                             if (!isDuplicate) {
-                                Submission sub = Submission.builder()
-                                        .studentTest(st)
-                                        .question(question)
-                                        .code(code)
-                                        .language(language != null ? language : "java")
-                                        .status("PENDING")
-                                        .runTimeMs(0)
-                                        .memoryUsedKb(0)
-                                        .score(0)
-                                        .build();
-                                submissionRepository.save(sub);
+                                try {
+                                    com.chillcode.assessment.dto.SubmitRequest submitReq = new com.chillcode.assessment.dto.SubmitRequest();
+                                    submitReq.setQuestionId(questionId);
+                                    submitReq.setStudentTestId(st.getId());
+                                    submitReq.setCode(code);
+                                    submitReq.setLanguage(language != null ? language : "java");
+                                    submitReq.setRunOnly(false); // Evaluate and save submission!
 
-                                StudentQuestionStatus statusObj = studentQuestionStatusRepository
-                                        .findByStudentIdAndQuestionId(studentId, question.getId())
-                                        .orElse(null);
-                                if (statusObj == null) {
-                                    statusObj = StudentQuestionStatus.builder()
-                                            .studentId(studentId)
-                                            .questionId(question.getId())
-                                            .status("IN_PROGRESS")
-                                            .attemptCount(1)
-                                            .lastAttemptAt(LocalDateTime.now())
-                                            .lastSubmissionId(sub.getId())
-                                            .build();
-                                } else {
-                                    statusObj.setAttemptCount(statusObj.getAttemptCount() + 1);
-                                    statusObj.setLastAttemptAt(LocalDateTime.now());
-                                    statusObj.setLastSubmissionId(sub.getId());
+                                    // Run submission evaluation synchronously
+                                    codeExecutionService.submitCode(submitReq);
+                                } catch (Exception e) {
+                                    System.err.println("Failed to evaluate submission dynamically: " + e.getMessage());
                                 }
-                                studentQuestionStatusRepository.save(statusObj);
                             }
                         }
                     }
@@ -498,6 +494,9 @@ public class TestService {
                 }
             }
         }
+
+        // Now submit and finalize the test (calculates score and status)
+        st = submitTest(testId, studentId);
 
         return convertToStudentTestDto(st);
     }
