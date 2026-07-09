@@ -634,7 +634,7 @@ export default function CodingWorkspace() {
     const isAccepted = status === 'ACCEPTED' || status === 'FINISHED';
     
     // Status colors and text
-    let statusText = 'test case not matched';
+    let statusText = 'test case failed';
     if (isAccepted) {
       statusText = 'Pass';
     } else if (status === 'COMPILATION_ERROR') {
@@ -646,7 +646,7 @@ export default function CodingWorkspace() {
     } else if (status === 'MEMORY_LIMIT_EXCEEDED') {
       statusText = 'Memory Limit Exceeded';
     } else if (status === 'WRONG_ANSWER') {
-      statusText = 'Wrong Answer';
+      statusText = 'test case failed';
     }
 
     let statusColor = isAccepted 
