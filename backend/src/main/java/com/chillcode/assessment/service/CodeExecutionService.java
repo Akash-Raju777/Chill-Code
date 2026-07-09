@@ -367,6 +367,10 @@ public class CodeExecutionService {
                 if (status.getCompletedAt() == null) {
                     status.setCompletedAt(LocalDateTime.now());
                 }
+            } else {
+                if (!"COMPLETED".equals(status.getStatus())) {
+                    status.setStatus("IN_PROGRESS");
+                }
             }
         }
 

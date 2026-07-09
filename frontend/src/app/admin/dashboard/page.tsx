@@ -42,11 +42,14 @@ export default function AdminDashboard() {
   const [data, setData] = useState<DashboardData | null>(null);
   const [reattemptRequests, setReattemptRequests] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState('');
 
   const fetchMetrics = async (isInitial = false) => {
     if (isInitial || !data) {
       setLoading(true);
+    } else {
+      setRefreshing(true);
     }
     try {
       const [response, reattempts] = await Promise.all([
@@ -59,6 +62,7 @@ export default function AdminDashboard() {
       setError(err.message || 'Failed to load dashboard metrics');
     } finally {
       setLoading(false);
+      setRefreshing(false);
     }
   };
 
@@ -168,10 +172,11 @@ export default function AdminDashboard() {
         </div>
         <button 
           onClick={() => fetchMetrics()} 
-          className="flex items-center gap-2 px-4 py-2 border border-white/10 rounded-xl text-sm font-semibold hover:bg-white/5 transition-all text-white"
+          disabled={refreshing}
+          className="flex items-center gap-2 px-4 py-2 border border-white/10 rounded-xl text-sm font-semibold hover:bg-white/5 transition-all text-white disabled:opacity-50"
         >
-          <RefreshCw className="w-4 h-4" />
-          Refresh Stats
+          <RefreshCw className={`w-4 h-4 ${refreshing ? 'animate-spin' : ''}`} />
+          {refreshing ? 'Refreshing...' : 'Refresh Stats'}
         </button>
       </div>
 

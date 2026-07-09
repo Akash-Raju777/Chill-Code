@@ -41,6 +41,9 @@ public class QuestionService {
     @Autowired
     private com.chillcode.assessment.repository.UserRepository userRepository;
 
+    @Autowired
+    private com.chillcode.assessment.repository.SubmissionRepository submissionRepository;
+
     @jakarta.persistence.PersistenceContext
     private jakarta.persistence.EntityManager entityManager;
 
@@ -263,12 +266,32 @@ public class QuestionService {
                 .build();
 
         StudentQuestionStatus status = statusMap.get(question.getId());
+        boolean hasAcceptedSubmission = false;
+        try {
+            org.springframework.security.core.Authentication auth = org.springframework.security.core.context.SecurityContextHolder.getContext().getAuthentication();
+            if (auth != null) {
+                String identifier = auth.getName();
+                if (identifier != null && !"anonymousUser".equals(identifier)) {
+                    java.util.Optional<com.chillcode.assessment.entity.User> userOpt = userRepository.findByRegisterNumber(identifier);
+                    if (userOpt.isEmpty()) userOpt = userRepository.findByUsername(identifier);
+                    if (userOpt.isEmpty()) userOpt = userRepository.findByEmail(identifier);
+                    if (userOpt.isPresent()) {
+                        Long studentId = userOpt.get().getId();
+                        hasAcceptedSubmission = submissionRepository.findAllByStudentIdOrderByCreatedAtDesc(studentId).stream()
+                                .filter(s -> s.getQuestion() != null && s.getQuestion().getId().equals(question.getId()))
+                                .filter(s -> s.getActive() == null || s.getActive())
+                                .anyMatch(s -> "ACCEPTED".equals(s.getStatus()));
+                    }
+                }
+            }
+        } catch (Exception ignored) {}
+
         if (status != null) {
-            dto.setStatus(status.getStatus());
+            dto.setStatus(hasAcceptedSubmission ? "COMPLETED" : status.getStatus());
             dto.setAttemptCount(status.getAttemptCount());
             dto.setLastAttemptAt(status.getLastAttemptAt() != null ? status.getLastAttemptAt().toString() : null);
         } else {
-            dto.setStatus("NOT_STARTED");
+            dto.setStatus(hasAcceptedSubmission ? "COMPLETED" : "NOT_STARTED");
             dto.setAttemptCount(0);
         }
         return dto;

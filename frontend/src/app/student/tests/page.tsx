@@ -416,7 +416,12 @@ export default function TestsWorkspace() {
                         <button
                           onClick={(e) => {
                             e.stopPropagation();
-                            handleAnotherAttempt(q.id);
+                            const associatedTest = getAssociatedTest(q.subjectId);
+                            if (associatedTest) {
+                              handleRequestReattempt(associatedTest.test.id, q.id);
+                            } else {
+                              alert('No associated test found.');
+                            }
                           }}
                           className="px-3 py-1.5 rounded-lg text-xs font-bold bg-indigo-500/10 hover:bg-indigo-500/25 border border-indigo-500/20 text-indigo-400 transition-all select-none"
                         >
