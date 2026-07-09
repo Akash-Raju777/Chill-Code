@@ -85,9 +85,23 @@ public class StudentService {
         java.util.Map<Long, com.chillcode.assessment.entity.StudentQuestionStatus> statusMap = allStatuses.stream()
                 .collect(Collectors.toMap(com.chillcode.assessment.entity.StudentQuestionStatus::getQuestionId, s -> s, (a, b) -> a));
 
-        long completedQuestionsCount = allStatuses.stream()
-                .filter(s -> "COMPLETED".equals(s.getStatus()))
-                .count();
+        long completedQuestionsCount = 0;
+        long unattendedTestsCount = 0;
+        long inProgressTestsCount = 0;
+
+        for (com.chillcode.assessment.entity.Question q : allQuestions) {
+            com.chillcode.assessment.entity.StudentQuestionStatus sqs = statusMap.get(q.getId());
+            boolean isSolved = sqs != null && "COMPLETED".equals(sqs.getStatus());
+            int attempts = sqs != null ? sqs.getAttemptCount() : 0;
+            
+            if (isSolved) {
+                completedQuestionsCount++;
+            } else if (attempts > 0) {
+                inProgressTestsCount++;
+            } else {
+                unattendedTestsCount++;
+            }
+        }
 
         long incompleteQuestionsCount = allQuestions.size() - completedQuestionsCount;
 
@@ -100,14 +114,6 @@ public class StudentService {
 
         long completedTestsCount = myTests.stream()
                 .filter(st -> "COMPLETED".equals(st.getStatus()) || "SUBMITTED".equals(st.getStatus()) || "EVALUATED".equals(st.getStatus()) || "PENDING".equals(st.getStatus()))
-                .count();
-
-        long unattendedTestsCount = myTests.stream()
-                .filter(st -> "ASSIGNED".equals(st.getStatus()))
-                .count();
-
-        long inProgressTestsCount = myTests.stream()
-                .filter(st -> "STARTED".equals(st.getStatus()) || "IN_PROGRESS".equals(st.getStatus()) || "SUSPENDED".equals(st.getStatus()))
                 .count();
 
         Map<String, Object> stats = new HashMap<>();

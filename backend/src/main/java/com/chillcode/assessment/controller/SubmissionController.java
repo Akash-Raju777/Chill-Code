@@ -24,6 +24,9 @@ public class SubmissionController {
     @Autowired
     private com.chillcode.assessment.repository.UserRepository userRepository;
 
+    @Autowired
+    private com.chillcode.assessment.repository.StudentQuestionStatusRepository studentQuestionStatusRepository;
+
     private com.chillcode.assessment.entity.User getCurrentUser() {
         String identifier = org.springframework.security.core.context.SecurityContextHolder.getContext().getAuthentication().getName();
         java.util.Optional<com.chillcode.assessment.entity.User> userOpt = userRepository.findByRegisterNumber(identifier);
@@ -111,6 +114,10 @@ public class SubmissionController {
                 if (sub.getQuestion().getSubject() != null) {
                     map.put("subjectName", sub.getQuestion().getSubject().getName());
                 }
+                com.chillcode.assessment.entity.StudentQuestionStatus sqs = studentQuestionStatusRepository
+                         .findByStudentIdAndQuestionId(student.getId(), sub.getQuestion().getId())
+                         .orElse(null);
+                 map.put("attempts", sqs != null ? sqs.getAttemptCount() : 1);
             }
             if (sub.getStudentTest() != null && sub.getStudentTest().getTest() != null) {
                 map.put("testId", sub.getStudentTest().getTest().getId());

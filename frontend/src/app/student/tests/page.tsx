@@ -270,11 +270,15 @@ export default function TestsWorkspace() {
   });
 
   const notStartedQuestions = filteredQuestions.filter((q) => {
-    return q.status === 'NOT_STARTED' || q.status === 'NOT_COMPLETED' || !q.status;
+    const isSolved = q.status === 'COMPLETED';
+    const hasAttempts = q.attemptCount > 0;
+    return !isSolved && !hasAttempts;
   });
 
   const inProgressQuestions = filteredQuestions.filter((q) => {
-    return q.status === 'IN_PROGRESS';
+    const isSolved = q.status === 'COMPLETED';
+    const hasAttempts = q.attemptCount > 0;
+    return !isSolved && hasAttempts;
   });
 
   const renderQuestionsTable = (list: any[], isCompletedTable: boolean) => {
@@ -313,10 +317,10 @@ export default function TestsWorkspace() {
                 const subject = subjects.find((s) => s.id === q.subjectId);
                 const subjectName = subject ? subject.name : 'Unknown';
 
-                let statusStr = "Un Attend";
+                let statusStr = "Un Complete";
                 if (isSolved) statusStr = "Completed";
                 else if (isSuspended) statusStr = "Suspended";
-                else if (isStarted) statusStr = "Pending";
+                else if (isStarted || q.attemptCount > 0) statusStr = "Pending";
 
                 let lastAttemptStr = "No attempt yet";
                 if (q.lastAttemptAt) {
@@ -406,7 +410,19 @@ export default function TestsWorkspace() {
                     )}
 
                     <td className="p-4 pr-6 text-right flex items-center justify-end gap-2">
-                      {!isSolved ? (
+                      {isCompletedTable ? (
+                        null
+                      ) : q.attemptCount > 0 ? (
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleAnotherAttempt(q.id);
+                          }}
+                          className="px-3 py-1.5 rounded-lg text-xs font-bold bg-indigo-500/10 hover:bg-indigo-500/25 border border-indigo-500/20 text-indigo-400 transition-all select-none"
+                        >
+                          Another Attempt
+                        </button>
+                      ) : (
                         <button
                           onClick={(e) => {
                             e.stopPropagation();
@@ -422,16 +438,6 @@ export default function TestsWorkspace() {
                           }`}
                         >
                           {isSuspended ? 'Suspended' : 'Write Test'}
-                        </button>
-                      ) : (
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            handleAnotherAttempt(q.id);
-                          }}
-                          className="px-3 py-1.5 rounded-lg text-xs font-bold bg-indigo-500/10 hover:bg-indigo-500/25 border border-indigo-500/20 text-indigo-400 transition-all select-none"
-                        >
-                          Another Attempt
                         </button>
                       )}
                     </td>
@@ -591,17 +597,6 @@ export default function TestsWorkspace() {
           )}
         </div>
       )}
-
-
-
-      {/* Daily Challenge floating glow button (Exactly matches Image 1) */}
-      <button 
-        onClick={() => questionsList.length > 0 && handleStartQuestionAttempt(questionsList[0])}
-        className="fixed bottom-6 right-6 flex items-center gap-2 px-5 py-3.5 rounded-full bg-[#7c3aed] hover:bg-[#8b5cf6] text-white font-bold text-xs tracking-wider transition-all shadow-xl shadow-[#7c3aed]/20 border border-white/10 glow-card hover:scale-105 active:scale-95 z-40"
-      >
-        <Zap className="w-4 h-4 fill-white" />
-        DAILY CHALLENGE
-      </button>
 
       {/* Confirm Start Assessment Modal */}
       {showConfirmModal && selectedTest && (() => {

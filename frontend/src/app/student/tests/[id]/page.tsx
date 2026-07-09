@@ -625,7 +625,7 @@ export default function CodingWorkspace() {
       return (
         <div className="text-gray-500 flex items-center justify-center py-12 font-sans select-none flex-col gap-2">
           <Terminal className="w-8 h-8 text-gray-600 animate-pulse" />
-          <span>Click 'Compile & Run' or 'Submit' to evaluate your solution.</span>
+          <span>Click 'Compile & Run' to evaluate your solution.</span>
         </div>
       );
     }
@@ -633,10 +633,13 @@ export default function CodingWorkspace() {
     const status = execResult.status;
     const isAccepted = status === 'ACCEPTED' || status === 'FINISHED';
     
+    // Check if it has any custom inputs (where expectedOutput is N/A or null/undefined)
+    const hasCustomInputResult = execResult.testCaseResults && execResult.testCaseResults.some((tc: any) => tc.expectedOutput === null || tc.expectedOutput === undefined || tc.expectedOutput === 'N/A');
+
     // Status colors and text
     let statusText = 'test case failed';
     if (isAccepted) {
-      statusText = 'Pass';
+      statusText = hasCustomInputResult ? 'Run Completed' : 'Pass';
     } else if (status === 'COMPILATION_ERROR') {
       statusText = 'Compilation Error';
     } else if (status === 'RUNTIME_ERROR') {
@@ -650,7 +653,7 @@ export default function CodingWorkspace() {
     }
 
     let statusColor = isAccepted 
-      ? "text-emerald-400 bg-[#10b981]/10 border-[#10b981]/20" 
+      ? (hasCustomInputResult ? "text-indigo-400 bg-indigo-500/10 border-indigo-500/20" : "text-emerald-400 bg-[#10b981]/10 border-[#10b981]/20") 
       : "text-red-400 bg-red-500/10 border-red-500/20";
 
     // Extraction helper for statistics
@@ -668,7 +671,11 @@ export default function CodingWorkspace() {
         <div className={`p-4 rounded-xl border ${statusColor} backdrop-blur-md flex items-center justify-between`}>
           <div className="flex items-center gap-3">
             {isAccepted ? (
-              <CheckCircle className="w-6 h-6 text-emerald-400" />
+              hasCustomInputResult ? (
+                <Terminal className="w-6 h-6 text-indigo-400" />
+              ) : (
+                <CheckCircle className="w-6 h-6 text-emerald-400" />
+              )
             ) : (
               <XCircle className="w-6 h-6 text-red-400" />
             )}
@@ -1221,14 +1228,6 @@ export default function CodingWorkspace() {
                   >
                     {executing && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
                     {executing ? 'Running...' : 'Compile & Run'}
-                  </button>
-                  <button 
-                    onClick={handleSubmitCode}
-                    disabled={executing}
-                    className="flex-1 sm:flex-none px-5 py-2.5 sm:py-2 rounded-xl bg-[#7c3aed] hover:bg-[#8b5cf6] text-white font-bold text-xs tracking-wider transition-all shadow-md shadow-[#7c3aed]/20 disabled:opacity-50 flex items-center justify-center gap-1.5"
-                  >
-                    {executing && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
-                    {executing ? 'Evaluating...' : 'Submit'}
                   </button>
                 </div>
               )}

@@ -295,25 +295,24 @@ export default function SubjectManagement() {
                     <table className="w-full text-left text-xs border-collapse">
                       <thead>
                         <tr className="border-b border-white/5 text-[10px] text-gray-500 font-bold uppercase bg-white/5">
+                          <th className="p-3">Question Name</th>
+                          <th className="p-3">Roll No</th>
                           <th className="p-3">Student Name</th>
-                          <th className="p-3">Register Number</th>
-                          <th className="p-3">Score Obtained</th>
-                          <th className="p-3">Status</th>
+                          <th className="p-3">Result</th>
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-white/5 text-gray-400">
                         {subjectStats.studentMarks.map((sm: any, idx: number) => (
                           <tr key={idx} className="hover:bg-white/5">
-                            <td className="p-3 font-semibold text-white">{sm.name}</td>
+                            <td className="p-3 font-semibold text-white">{sm.questionName || 'N/A'}</td>
                             <td className="p-3 font-mono">{sm.registerNumber}</td>
-                            <td className="p-3 font-bold text-white">{sm.score} / {sm.maxMarks}</td>
+                            <td className="p-3">{sm.name}</td>
                             <td className="p-3">
-                              <span className={`px-2 py-0.5 rounded-full text-[9px] font-bold ${
-                                sm.status === 'PASSED' ? 'bg-emerald-500/10 text-emerald-400' :
-                                sm.status === 'FAILED' ? 'bg-red-500/10 text-red-400' :
-                                'bg-gray-500/10 text-gray-400'
+                              <span className={`px-2.5 py-0.5 rounded-full text-[9px] font-bold ${
+                                sm.status === 'PASSED' ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20' :
+                                'bg-red-500/10 text-red-400 border border-red-500/20'
                               }`}>
-                                {sm.status}
+                                {sm.status === 'PASSED' ? 'PASS' : 'FAIL'}
                               </span>
                             </td>
                           </tr>

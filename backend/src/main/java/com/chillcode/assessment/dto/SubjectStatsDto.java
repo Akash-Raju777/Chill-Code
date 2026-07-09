@@ -57,6 +57,7 @@ public class SubjectStatsDto {
     public void setStudentMarks(List<StudentMarkDto> studentMarks) { this.studentMarks = studentMarks; }
 
     public static class StudentMarkDto {
+        private String questionName;
         private String name;
         private String registerNumber;
         private int score;
@@ -65,13 +66,26 @@ public class SubjectStatsDto {
 
         public StudentMarkDto() {}
 
-        public StudentMarkDto(String name, String registerNumber, int score, int maxMarks, String status) {
+        public StudentMarkDto(String questionName, String name, String registerNumber, int score, int maxMarks, String status) {
+            this.questionName = questionName;
             this.name = name;
             this.registerNumber = registerNumber;
             this.score = score;
             this.maxMarks = maxMarks;
             this.status = status;
         }
+
+        public StudentMarkDto(String name, String registerNumber, int score, int maxMarks, String status) {
+            this.questionName = "N/A";
+            this.name = name;
+            this.registerNumber = registerNumber;
+            this.score = score;
+            this.maxMarks = maxMarks;
+            this.status = status;
+        }
+
+        public String getQuestionName() { return questionName; }
+        public void setQuestionName(String questionName) { this.questionName = questionName; }
 
         public String getName() { return name; }
         public void setName(String name) { this.name = name; }

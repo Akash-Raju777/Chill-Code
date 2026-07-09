@@ -28,6 +28,7 @@ interface SubmissionResult {
   createdAt: string;
   passedTests: number;
   totalTests: number;
+  attempts?: number;
 }
 
 const formatDate = (dateStr: string) => {
@@ -62,21 +63,6 @@ export default function StudentResults() {
   useEffect(() => {
     fetchSubmissions();
   }, []);
-
-  const handleAnotherAttempt = async (item: SubmissionResult) => {
-    try {
-      await apiCall(`/api/student/question/${item.questionId}/another-attempt`, {
-        method: 'POST',
-      });
-      if (item.testId) {
-        router.push(`/student/tests/${item.testId}?question=${item.questionId}`);
-      } else {
-        router.push('/student/tests');
-      }
-    } catch (err: any) {
-      alert(err.message || 'Failed to request another attempt.');
-    }
-  };
 
   if (loading) {
     return (
@@ -118,6 +104,9 @@ export default function StudentResults() {
             if (isAccepted) {
               verdictText = "Accepted";
               badgeStyle = "bg-emerald-500/10 text-emerald-400 border border-emerald-500/20";
+            } else if (item.status === 'PENDING') {
+              verdictText = "Failed";
+              badgeStyle = "bg-red-500/10 text-red-400 border border-red-500/20";
             } else if (item.status === 'COMPILATION_ERROR') {
               verdictText = "Compilation Error";
               badgeStyle = "bg-amber-500/10 text-amber-400 border border-amber-500/20";
@@ -147,6 +136,9 @@ export default function StudentResults() {
                     <span className="text-gray-400 uppercase font-bold text-[10px] tracking-wider bg-white/5 px-2 py-0.5 rounded">
                       {item.subjectName || 'Unknown Subject'}
                     </span>
+                    <span className="text-indigo-400 font-bold text-[10px] tracking-wider bg-indigo-500/10 border border-indigo-500/20 px-2 py-0.5 rounded">
+                      Attempts: {item.attempts ?? 1}
+                    </span>
                     <span className="flex items-center gap-1">
                       <Clock className="w-3.5 h-3.5" />
                       {item.runTimeMs !== null ? `${item.runTimeMs} ms` : 'N/A'}
@@ -170,15 +162,6 @@ export default function StudentResults() {
                     <ExternalLink className="w-3.5 h-3.5" />
                     Details
                   </button>
-
-                  {!isAccepted && (
-                    <button
-                      onClick={() => handleAnotherAttempt(item)}
-                      className="flex items-center gap-1.5 px-3 py-1.5 bg-indigo-500/10 hover:bg-indigo-500/20 border border-indigo-500/20 text-indigo-400 font-bold rounded-lg text-xs transition-all"
-                    >
-                      View Attempt
-                    </button>
-                  )}
                 </div>
               </div>
             );
