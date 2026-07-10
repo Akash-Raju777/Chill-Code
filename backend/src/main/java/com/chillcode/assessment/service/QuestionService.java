@@ -50,22 +50,24 @@ public class QuestionService {
     public List<QuestionDto> getAllQuestions() {
         log.info("Repository Call: Load all questions from database");
         java.util.Map<Long, StudentQuestionStatus> statusMap = getStatusMapForCurrentStudent();
+        java.util.Set<Long> solvedSet = getSolvedQuestionIdsForCurrentStudent();
         List<TestCase> allTestCases = testCaseRepository.findAll();
         java.util.Map<Long, List<TestCase>> testCasesMap = allTestCases.stream()
                 .collect(Collectors.groupingBy(tc -> tc.getQuestion().getId()));
         return questionRepository.findAll().stream()
-                .map(q -> convertToDto(q, statusMap, testCasesMap.getOrDefault(q.getId(), java.util.Collections.emptyList())))
+                .map(q -> convertToDto(q, statusMap, testCasesMap.getOrDefault(q.getId(), java.util.Collections.emptyList()), solvedSet))
                 .collect(Collectors.toList());
     }
 
     public List<QuestionDto> getQuestionsBySubject(Long subjectId) {
         log.info("Repository Call: Load questions for subject ID: {} from database", subjectId);
         java.util.Map<Long, StudentQuestionStatus> statusMap = getStatusMapForCurrentStudent();
+        java.util.Set<Long> solvedSet = getSolvedQuestionIdsForCurrentStudent();
         List<TestCase> allTestCases = testCaseRepository.findAll();
         java.util.Map<Long, List<TestCase>> testCasesMap = allTestCases.stream()
                 .collect(Collectors.groupingBy(tc -> tc.getQuestion().getId()));
         return questionRepository.findBySubjectId(subjectId).stream()
-                .map(q -> convertToDto(q, statusMap, testCasesMap.getOrDefault(q.getId(), java.util.Collections.emptyList())))
+                .map(q -> convertToDto(q, statusMap, testCasesMap.getOrDefault(q.getId(), java.util.Collections.emptyList()), solvedSet))
                 .collect(Collectors.toList());
     }
 
@@ -74,7 +76,7 @@ public class QuestionService {
         Question question = questionRepository.findById(id)
                 .orElseThrow(() -> new RuntimeException("Question not found with id: " + id));
         java.util.Map<Long, StudentQuestionStatus> statusMap = getStatusMapForCurrentStudent();
-        return convertToDto(question, statusMap);
+        return convertToDto(question, statusMap, testCaseRepository.findByQuestionId(question.getId()), getSolvedQuestionIdsForCurrentStudent());
     }
 
     @Transactional
@@ -233,15 +235,15 @@ public class QuestionService {
     }
 
     private QuestionDto convertToDto(Question question) {
-        return convertToDto(question, java.util.Collections.emptyMap());
+        return convertToDto(question, java.util.Collections.emptyMap(), java.util.Collections.emptyList(), java.util.Collections.emptySet());
     }
 
     private QuestionDto convertToDto(Question question, java.util.Map<Long, StudentQuestionStatus> statusMap) {
         List<TestCase> testCases = testCaseRepository.findByQuestionId(question.getId());
-        return convertToDto(question, statusMap, testCases);
+        return convertToDto(question, statusMap, testCases, getSolvedQuestionIdsForCurrentStudent());
     }
 
-    private QuestionDto convertToDto(Question question, java.util.Map<Long, StudentQuestionStatus> statusMap, List<TestCase> testCases) {
+    private QuestionDto convertToDto(Question question, java.util.Map<Long, StudentQuestionStatus> statusMap, List<TestCase> testCases, java.util.Set<Long> solvedQuestionIds) {
         List<TestCaseDto> tcDtos = testCases != null ? testCases.stream()
                 .map(tc -> TestCaseDto.builder()
                         .id(tc.getId())
@@ -266,25 +268,7 @@ public class QuestionService {
                 .build();
 
         StudentQuestionStatus status = statusMap.get(question.getId());
-        boolean hasAcceptedSubmission = false;
-        try {
-            org.springframework.security.core.Authentication auth = org.springframework.security.core.context.SecurityContextHolder.getContext().getAuthentication();
-            if (auth != null) {
-                String identifier = auth.getName();
-                if (identifier != null && !"anonymousUser".equals(identifier)) {
-                    java.util.Optional<com.chillcode.assessment.entity.User> userOpt = userRepository.findByRegisterNumber(identifier);
-                    if (userOpt.isEmpty()) userOpt = userRepository.findByUsername(identifier);
-                    if (userOpt.isEmpty()) userOpt = userRepository.findByEmail(identifier);
-                    if (userOpt.isPresent()) {
-                        Long studentId = userOpt.get().getId();
-                        hasAcceptedSubmission = submissionRepository.findAllByStudentIdOrderByCreatedAtDesc(studentId).stream()
-                                .filter(s -> s.getQuestion() != null && s.getQuestion().getId().equals(question.getId()))
-                                .filter(s -> s.getActive() == null || s.getActive())
-                                .anyMatch(s -> "ACCEPTED".equals(s.getStatus()));
-                    }
-                }
-            }
-        } catch (Exception ignored) {}
+        boolean hasAcceptedSubmission = solvedQuestionIds != null && solvedQuestionIds.contains(question.getId());
 
         if (status != null) {
             dto.setStatus(hasAcceptedSubmission ? "COMPLETED" : status.getStatus());
@@ -295,6 +279,25 @@ public class QuestionService {
             dto.setAttemptCount(0);
         }
         return dto;
+    }
+
+    private java.util.Set<Long> getSolvedQuestionIdsForCurrentStudent() {
+        java.util.Set<Long> solved = new java.util.HashSet<>();
+        try {
+            org.springframework.security.core.Authentication auth = org.springframework.security.core.context.SecurityContextHolder.getContext().getAuthentication();
+            if (auth != null) {
+                String identifier = auth.getName();
+                if (identifier != null && !"anonymousUser".equals(identifier)) {
+                    java.util.Optional<com.chillcode.assessment.entity.User> userOpt = userRepository.findByRegisterNumber(identifier);
+                    if (userOpt.isEmpty()) userOpt = userRepository.findByUsername(identifier);
+                    if (userOpt.isEmpty()) userOpt = userRepository.findByEmail(identifier);
+                    if (userOpt.isPresent()) {
+                        solved.addAll(submissionRepository.findSolvedQuestionIdsByStudentId(userOpt.get().getId()));
+                    }
+                }
+            }
+        } catch (Exception ignored) {}
+        return solved;
     }
 
     private java.util.Map<Long, StudentQuestionStatus> getStatusMapForCurrentStudent() {
