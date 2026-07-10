@@ -43,9 +43,12 @@ export default function AdminDashboard() {
   const [reattemptRequests, setReattemptRequests] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const [fetching, setFetching] = useState(false);
   const [error, setError] = useState('');
 
   const fetchMetrics = async (isInitial = false) => {
+    if (fetching) return;
+    setFetching(true);
     if (isInitial || !data) {
       setLoading(true);
     } else {
@@ -63,6 +66,7 @@ export default function AdminDashboard() {
     } finally {
       setLoading(false);
       setRefreshing(false);
+      setFetching(false);
     }
   };
 
@@ -120,7 +124,7 @@ export default function AdminDashboard() {
     fetchMetrics(true);
     const interval = setInterval(() => {
       fetchMetrics(false);
-    }, 1000);
+    }, 3000);
     return () => clearInterval(interval);
   }, []);
 

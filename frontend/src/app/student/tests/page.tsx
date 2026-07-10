@@ -69,11 +69,14 @@ export default function TestsWorkspace() {
   const [subjectFilter, setSubjectFilter] = useState<number | 'ALL'>('ALL');
   const [hideSolved, setHideSolved] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
+  const [fetching, setFetching] = useState(false);
 
   const { startTestSession } = useTestStore();
   const { resetWarnings } = useSecurityStore();
 
   const fetchTests = async (isInitial = true) => {
+    if (fetching) return;
+    setFetching(true);
     if (isInitial) setLoading(true);
     else setRefreshing(true);
     setError('');
@@ -97,6 +100,7 @@ export default function TestsWorkspace() {
     } finally {
       if (isInitial) setLoading(false);
       setRefreshing(false);
+      setFetching(false);
     }
   };
 
@@ -105,7 +109,7 @@ export default function TestsWorkspace() {
 
     const interval = setInterval(() => {
       fetchTests(false);
-    }, 1000);
+    }, 3000);
 
     // Auto-refresh questions list when the student returns to/focuses this browser tab
     const handleFocus = () => {
