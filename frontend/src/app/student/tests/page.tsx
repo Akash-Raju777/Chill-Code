@@ -103,6 +103,10 @@ export default function TestsWorkspace() {
   useEffect(() => {
     fetchTests(true);
 
+    const interval = setInterval(() => {
+      fetchTests(false);
+    }, 1000);
+
     // Auto-refresh questions list when the student returns to/focuses this browser tab
     const handleFocus = () => {
       fetchTests(false);
@@ -110,6 +114,7 @@ export default function TestsWorkspace() {
     window.addEventListener('focus', handleFocus);
 
     return () => {
+      clearInterval(interval);
       window.removeEventListener('focus', handleFocus);
     };
   }, []);
@@ -275,14 +280,14 @@ export default function TestsWorkspace() {
 
   const notStartedQuestions = filteredQuestions.filter((q) => {
     const isSolved = q.status === 'COMPLETED';
-    const hasAttempts = q.attemptCount > 0;
-    return !isSolved && !hasAttempts;
+    const isNotStarted = q.status === 'NOT_STARTED' || !q.status;
+    return !isSolved && isNotStarted;
   });
 
   const inProgressQuestions = filteredQuestions.filter((q) => {
     const isSolved = q.status === 'COMPLETED';
-    const hasAttempts = q.attemptCount > 0;
-    return !isSolved && hasAttempts;
+    const isNotStarted = q.status === 'NOT_STARTED' || !q.status;
+    return !isSolved && !isNotStarted;
   });
 
   const renderQuestionsTable = (list: any[], isCompletedTable: boolean) => {
@@ -416,22 +421,7 @@ export default function TestsWorkspace() {
                     <td className="p-4 pr-6 text-right flex items-center justify-end gap-2">
                       {isCompletedTable ? (
                         null
-                      ) : q.attemptCount > 0 ? (
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            const associatedTest = getAssociatedTest(q.subjectId);
-                            if (associatedTest) {
-                              handleRequestReattempt(associatedTest.test.id, q.id);
-                            } else {
-                              alert('No associated test found.');
-                            }
-                          }}
-                          className="px-3 py-1.5 rounded-lg text-xs font-bold bg-indigo-500/10 hover:bg-indigo-500/25 border border-indigo-500/20 text-indigo-400 transition-all select-none"
-                        >
-                          Another Attempt
-                        </button>
-                      ) : (
+                      ) : (q.status === 'NOT_STARTED' || !q.status) ? (
                         <button
                           onClick={(e) => {
                             e.stopPropagation();
@@ -448,7 +438,28 @@ export default function TestsWorkspace() {
                         >
                           {isSuspended ? 'Suspended' : 'Write Test'}
                         </button>
-                      )}
+                      ) : (() => {
+                        const associatedTest = getAssociatedTest(q.subjectId);
+                        const isReattemptPending = associatedTest?.reattemptStatus === `PENDING:${q.id}`;
+                        return (
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              if (!isReattemptPending && associatedTest) {
+                                handleRequestReattempt(associatedTest.test.id, q.id);
+                              }
+                            }}
+                            disabled={isReattemptPending || isSuspended}
+                            className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all select-none ${
+                              isReattemptPending
+                                ? 'bg-amber-500/10 border border-amber-500/20 text-amber-400 cursor-not-allowed opacity-75'
+                                : 'bg-indigo-500/10 hover:bg-indigo-500/25 border border-indigo-500/20 text-indigo-400'
+                            }`}
+                          >
+                            {isReattemptPending ? 'Pending Approval' : 'Another Attempt'}
+                          </button>
+                        );
+                      })()}
                     </td>
                   </tr>
                 );

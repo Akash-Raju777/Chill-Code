@@ -120,7 +120,7 @@ export default function AdminDashboard() {
     fetchMetrics(true);
     const interval = setInterval(() => {
       fetchMetrics(false);
-    }, 5000);
+    }, 1000);
     return () => clearInterval(interval);
   }, []);
 
