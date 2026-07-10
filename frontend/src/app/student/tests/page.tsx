@@ -69,14 +69,14 @@ export default function TestsWorkspace() {
   const [subjectFilter, setSubjectFilter] = useState<number | 'ALL'>('ALL');
   const [hideSolved, setHideSolved] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
-  const [fetching, setFetching] = useState(false);
+  const fetchingRef = React.useRef(false);
 
   const { startTestSession } = useTestStore();
   const { resetWarnings } = useSecurityStore();
 
   const fetchTests = async (isInitial = true) => {
-    if (fetching) return;
-    setFetching(true);
+    if (fetchingRef.current) return;
+    fetchingRef.current = true;
     if (isInitial) setLoading(true);
     else setRefreshing(true);
     setError('');
@@ -100,20 +100,25 @@ export default function TestsWorkspace() {
     } finally {
       if (isInitial) setLoading(false);
       setRefreshing(false);
-      setFetching(false);
+      fetchingRef.current = false;
     }
   };
 
+  const fetchTestsRef = React.useRef(fetchTests);
   useEffect(() => {
-    fetchTests(true);
+    fetchTestsRef.current = fetchTests;
+  });
+
+  useEffect(() => {
+    fetchTestsRef.current(true);
 
     const interval = setInterval(() => {
-      fetchTests(false);
+      fetchTestsRef.current(false);
     }, 3000);
 
     // Auto-refresh questions list when the student returns to/focuses this browser tab
     const handleFocus = () => {
-      fetchTests(false);
+      fetchTestsRef.current(false);
     };
     window.addEventListener('focus', handleFocus);
 
@@ -284,14 +289,14 @@ export default function TestsWorkspace() {
 
   const notStartedQuestions = filteredQuestions.filter((q) => {
     const isSolved = q.status === 'COMPLETED';
-    const isNotStarted = q.status === 'NOT_STARTED' || !q.status;
-    return !isSolved && isNotStarted;
+    const hasAttempts = q.attemptCount > 0;
+    return !isSolved && !hasAttempts;
   });
 
   const inProgressQuestions = filteredQuestions.filter((q) => {
     const isSolved = q.status === 'COMPLETED';
-    const isNotStarted = q.status === 'NOT_STARTED' || !q.status;
-    return !isSolved && !isNotStarted;
+    const hasAttempts = q.attemptCount > 0;
+    return !isSolved && hasAttempts;
   });
 
   const renderQuestionsTable = (list: any[], isCompletedTable: boolean) => {
