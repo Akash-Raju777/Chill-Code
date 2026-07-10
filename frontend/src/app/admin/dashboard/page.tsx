@@ -118,6 +118,10 @@ export default function AdminDashboard() {
 
   useEffect(() => {
     fetchMetrics(true);
+    const interval = setInterval(() => {
+      fetchMetrics(false);
+    }, 5000);
+    return () => clearInterval(interval);
   }, []);
 
   if (loading) {

@@ -148,9 +148,7 @@ public class AdminController {
         }
 
         User student = studentOpt.get();
-        if (student.getStatus() != com.chillcode.assessment.entity.UserStatus.INACTIVE) {
-            student.setStatus(com.chillcode.assessment.entity.UserStatus.ACTIVE);
-        }
+        student.setStatus(com.chillcode.assessment.entity.UserStatus.ACTIVE);
         student.setSuspensionEndTime(null);
         userRepository.save(student);
 

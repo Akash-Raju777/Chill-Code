@@ -16,7 +16,8 @@ import {
   ArrowRight, 
   AlertCircle,
   Zap,
-  Loader2
+  Loader2,
+  RefreshCw
 } from 'lucide-react';
 
 interface Test {
@@ -67,12 +68,14 @@ export default function TestsWorkspace() {
   const [difficultyFilter, setDifficultyFilter] = useState<'ALL' | 'EASY' | 'MEDIUM' | 'HARD'>('ALL');
   const [subjectFilter, setSubjectFilter] = useState<number | 'ALL'>('ALL');
   const [hideSolved, setHideSolved] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
 
   const { startTestSession } = useTestStore();
   const { resetWarnings } = useSecurityStore();
 
   const fetchTests = async (isInitial = true) => {
     if (isInitial) setLoading(true);
+    else setRefreshing(true);
     setError('');
     try {
       const [testsData, questionsData, subjectsData, solvedData, profileData] = await Promise.all([
@@ -93,6 +96,7 @@ export default function TestsWorkspace() {
       setError(err.message || 'Failed to fetch practice challenges.');
     } finally {
       if (isInitial) setLoading(false);
+      setRefreshing(false);
     }
   };
 
@@ -542,15 +546,26 @@ export default function TestsWorkspace() {
           </div>
 
           {/* Hide solved toggle */}
-          <label className="flex items-center gap-2 text-xs font-semibold text-gray-400 select-none cursor-pointer">
-            <input
-              type="checkbox"
-              className="w-4 h-4 rounded bg-[#0b0c10] border-white/5 text-[#7c3aed] focus:ring-0"
-              checked={hideSolved}
-              onChange={(e) => setHideSolved(e.target.checked)}
-            />
-            Hide Solved
-          </label>
+          <div className="flex items-center gap-4">
+            <label className="flex items-center gap-2 text-xs font-semibold text-gray-400 select-none cursor-pointer">
+              <input
+                type="checkbox"
+                className="w-4 h-4 rounded bg-[#0b0c10] border-white/5 text-[#7c3aed] focus:ring-0"
+                checked={hideSolved}
+                onChange={(e) => setHideSolved(e.target.checked)}
+              />
+              Hide Solved
+            </label>
+
+            <button
+              onClick={() => fetchTests(false)}
+              disabled={refreshing}
+              className="flex items-center gap-2 px-3 py-1.5 bg-indigo-500/10 hover:bg-indigo-500/20 border border-indigo-500/20 text-indigo-400 font-bold rounded-lg text-xs transition-all disabled:opacity-50 select-none cursor-pointer"
+            >
+              <RefreshCw className={`w-3.5 h-3.5 ${refreshing ? 'animate-spin' : ''}`} />
+              {refreshing ? 'Refreshing...' : 'Refresh'}
+            </button>
+          </div>
         </div>
 
         {/* Counter label */}
