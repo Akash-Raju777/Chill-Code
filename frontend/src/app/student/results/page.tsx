@@ -104,23 +104,9 @@ export default function StudentResults() {
             if (isAccepted) {
               verdictText = "Accepted";
               badgeStyle = "bg-emerald-500/10 text-emerald-400 border border-emerald-500/20";
-            } else if (item.status === 'PENDING') {
+            } else {
               verdictText = "Failed";
               badgeStyle = "bg-red-500/10 text-red-400 border border-red-500/20";
-            } else if (item.status === 'COMPILATION_ERROR') {
-              verdictText = "Compilation Error";
-              badgeStyle = "bg-amber-500/10 text-amber-400 border border-amber-500/20";
-            } else if (item.status === 'RUNTIME_ERROR') {
-              verdictText = "Runtime Error";
-              badgeStyle = "bg-red-500/10 text-red-400 border border-red-500/20";
-            } else if (item.status === 'TIME_LIMIT_EXCEEDED') {
-              verdictText = "Time Limit Exceeded";
-              badgeStyle = "bg-orange-500/10 text-orange-400 border border-orange-500/20";
-            } else if (item.status === 'MEMORY_LIMIT_EXCEEDED') {
-              verdictText = "Memory Limit Exceeded";
-              badgeStyle = "bg-purple-500/10 text-purple-400 border border-purple-500/20";
-            } else if (item.status === 'WRONG_ANSWER') {
-              verdictText = "Output Not Matched";
             }
 
             return (
