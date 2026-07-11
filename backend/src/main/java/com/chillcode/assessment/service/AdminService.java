@@ -37,20 +37,15 @@ public class AdminService {
     private ActivityLogRepository activityLogRepository;
 
     public DashboardMetricsDto getDashboardMetrics() {
-        long totalStudents = userRepository.findAll().stream()
-                .filter(u -> u.getRole() == Role.STUDENT).count();
+        long totalStudents = userRepository.countByRole(Role.STUDENT);
         long totalSubjects = subjectRepository.count();
         long totalTests = testRepository.count();
         long totalQuestions = questionRepository.count();
 
         LocalDateTime now = LocalDateTime.now();
-        long todayActiveTests = testRepository.findAll().stream()
-                .filter(t -> t.getStartTime().isBefore(now) && t.getEndTime().isAfter(now))
-                .count();
+        long todayActiveTests = testRepository.countActiveTests(now);
 
-        long pendingEvaluations = studentTestRepository.findAll().stream()
-                .filter(st -> "SUBMITTED".equals(st.getStatus()))
-                .count();
+        long pendingEvaluations = studentTestRepository.countByStatus("SUBMITTED");
 
         // Prepare monthly tests chart using actual data
         List<Map<String, Object>> monthlyTests = new ArrayList<>();
@@ -91,22 +86,13 @@ public class AdminService {
                     studentParticipation.add(data);
                 });
 
-        // Language wise performance chart calculated dynamically from all student submissions
+        // Language wise performance chart calculated dynamically from database counts
         List<Map<String, Object>> languagePerformance = new ArrayList<>();
-        List<com.chillcode.assessment.entity.Submission> allSubmissions = submissionRepository.findAll();
-        Map<String, List<com.chillcode.assessment.entity.Submission>> subsByLang = allSubmissions.stream()
-                .collect(java.util.stream.Collectors.groupingBy(s -> s.getLanguage().toLowerCase()));
-
         String[] langs = {"java", "python", "cpp", "c", "javascript"};
         for (String lang : langs) {
-            List<com.chillcode.assessment.entity.Submission> langSubs = subsByLang.getOrDefault(lang, java.util.Collections.emptyList());
-            double avg = 0.0;
-            if (!langSubs.isEmpty()) {
-                avg = langSubs.stream()
-                        .mapToInt(s -> "ACCEPTED".equals(s.getStatus()) ? 100 : 0)
-                        .average()
-                        .orElse(0.0);
-            }
+            long total = submissionRepository.countSubmissionsByLanguage(lang);
+            long accepted = submissionRepository.countAcceptedSubmissionsByLanguage(lang);
+            double avg = total > 0 ? (accepted * 100.0 / total) : 0.0;
             Map<String, Object> data = new HashMap<>();
             data.put("language", lang.toUpperCase());
             data.put("avgScore", Math.round(avg * 10.0) / 10.0);

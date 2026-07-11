@@ -114,7 +114,7 @@ export default function TestsWorkspace() {
 
     const interval = setInterval(() => {
       fetchTestsRef.current(false);
-    }, 3000);
+    }, 10000);
 
     // Auto-refresh questions list when the student returns to/focuses this browser tab
     const handleFocus = () => {
