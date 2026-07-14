@@ -7,7 +7,11 @@ import java.time.LocalDateTime;
 @Entity
 @Table(
     name = "student_tests",
-    uniqueConstraints = {@UniqueConstraint(columnNames = {"student_id", "test_id"})}
+    uniqueConstraints = {@UniqueConstraint(columnNames = {"student_id", "test_id"})},
+    indexes = {
+        @Index(name = "idx_student_tests_student", columnList = "student_id"),
+        @Index(name = "idx_student_tests_test", columnList = "test_id")
+    }
 )
 @Getter
 @Setter

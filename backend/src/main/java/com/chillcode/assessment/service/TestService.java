@@ -288,6 +288,12 @@ public class TestService {
     }
 
     public com.chillcode.assessment.dto.StudentTestDto convertToStudentTestDto(StudentTest st) {
+        return convertToStudentTestDto(st, null, null);
+    }
+
+    public com.chillcode.assessment.dto.StudentTestDto convertToStudentTestDto(StudentTest st, 
+            java.util.Map<Long, StudentQuestionStatus> sqsMap,
+            java.util.Map<Long, List<Question>> questionsBySubjectMap) {
         if (st == null) return null;
         
         Test test = st.getTest();
@@ -331,13 +337,22 @@ public class TestService {
 
         String displayTitle = test != null ? test.getName() : "";
         if (test != null && test.getName().toLowerCase().contains("practice arena") && test.getSubject() != null && st.getStudent() != null) {
-            List<Question> questions = questionRepository.findBySubjectId(test.getSubject().getId());
+            List<Question> questions = null;
+            if (questionsBySubjectMap != null) {
+                questions = questionsBySubjectMap.get(test.getSubject().getId());
+            } else {
+                questions = questionRepository.findBySubjectId(test.getSubject().getId());
+            }
             if (questions != null && !questions.isEmpty()) {
+                java.util.Map<Long, StudentQuestionStatus> localSqsMap = sqsMap;
+                if (localSqsMap == null) {
+                    List<StudentQuestionStatus> sqsList = studentQuestionStatusRepository.findByStudentId(st.getStudent().getId());
+                    localSqsMap = sqsList.stream()
+                            .collect(Collectors.toMap(StudentQuestionStatus::getQuestionId, s -> s, (s1, s2) -> s1));
+                }
                 java.util.Set<String> titles = new java.util.LinkedHashSet<>();
                 for (Question question : questions) {
-                    StudentQuestionStatus sqs = studentQuestionStatusRepository
-                            .findByStudentIdAndQuestionId(st.getStudent().getId(), question.getId())
-                            .orElse(null);
+                    StudentQuestionStatus sqs = localSqsMap.get(question.getId());
                     String qStatus = (sqs != null && "COMPLETED".equals(sqs.getStatus())) ? "PASS" : "FAIL";
                     titles.add(question.getTitle() + "|" + qStatus);
                 }
@@ -430,8 +445,17 @@ public class TestService {
             }
         }
 
+        List<StudentQuestionStatus> sqsList = studentQuestionStatusRepository.findByStudentId(studentId);
+        java.util.Map<Long, StudentQuestionStatus> sqsMap = sqsList.stream()
+                .collect(Collectors.toMap(StudentQuestionStatus::getQuestionId, s -> s, (s1, s2) -> s1));
+
+        List<Question> allQuestions = questionRepository.findAll();
+        java.util.Map<Long, List<Question>> questionsBySubjectMap = allQuestions.stream()
+                .filter(q -> q.getSubject() != null)
+                .collect(Collectors.groupingBy(q -> q.getSubject().getId()));
+
         return studentTestRepository.findByStudentId(studentId).stream()
-                .map(this::convertToStudentTestDto)
+                .map(st -> convertToStudentTestDto(st, sqsMap, questionsBySubjectMap))
                 .collect(Collectors.toList());
     }
 

@@ -333,15 +333,13 @@ public class CodeExecutionService {
     }
 
     private User getCurrentUser() {
+        Object principal = org.springframework.security.core.context.SecurityContextHolder.getContext().getAuthentication().getPrincipal();
+        if (principal instanceof com.chillcode.assessment.security.CustomUserDetails) {
+            return ((com.chillcode.assessment.security.CustomUserDetails) principal).getUser();
+        }
         String identifier = org.springframework.security.core.context.SecurityContextHolder.getContext().getAuthentication().getName();
-        Optional<User> userOpt = userRepository.findByRegisterNumber(identifier);
-        if (userOpt.isEmpty()) {
-            userOpt = userRepository.findByUsername(identifier);
-        }
-        if (userOpt.isEmpty()) {
-            userOpt = userRepository.findByEmail(identifier);
-        }
-        return userOpt.orElseThrow(() -> new RuntimeException("Current user not found"));
+        return userRepository.findByIdentifier(identifier)
+                .orElseThrow(() -> new RuntimeException("Current user not found"));
     }
 
     private void updateStudentQuestionStatus(User student, Question question, Submission submission, boolean runOnly) {

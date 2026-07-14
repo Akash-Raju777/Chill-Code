@@ -81,19 +81,22 @@ export default function TestsWorkspace() {
     else setRefreshing(true);
     setError('');
     try {
-      const [testsData, questionsData, subjectsData, solvedData, profileData] = await Promise.all([
-        apiCall('/api/student/tests'),
-        apiCall('/api/student/questions'),
-        apiCall('/api/student/subjects'),
-        apiCall('/api/student/submissions/solved'),
-        apiCall('/api/student/profile'),
-      ]);
-      setStudentTests(testsData);
-      setQuestionsList(questionsData);
-      setSubjects(subjectsData);
-      setSolvedQuestionIds(solvedData || []);
-      if (profileData) {
-        useAuthStore.getState().setUser(profileData);
+      if (isInitial) {
+        const [testsData, questionsData, subjectsData] = await Promise.all([
+          apiCall('/api/student/tests'),
+          apiCall('/api/student/questions'),
+          apiCall('/api/student/subjects'),
+        ]);
+        setStudentTests(testsData);
+        setQuestionsList(questionsData);
+        setSubjects(subjectsData);
+      } else {
+        const [testsData, questionsData] = await Promise.all([
+          apiCall('/api/student/tests'),
+          apiCall('/api/student/questions'),
+        ]);
+        setStudentTests(testsData);
+        setQuestionsList(questionsData);
       }
     } catch (err: any) {
       setError(err.message || 'Failed to fetch practice challenges.');
@@ -357,7 +360,9 @@ export default function TestsWorkspace() {
                     key={q.id} 
                     className="hover:bg-white/5 transition-all group cursor-pointer"
                     onClick={() => {
-                      if (!isSolved && !isSuspended) {
+                      if (isSolved) {
+                        handleViewQuestionAttempt(q);
+                      } else if (!isSuspended) {
                         handleStartQuestionAttempt(q);
                       }
                     }}
@@ -429,7 +434,39 @@ export default function TestsWorkspace() {
 
                     <td className="p-4 pr-6 text-right flex items-center justify-end gap-2">
                       {isCompletedTable ? (
-                        null
+                        <div className="flex gap-2 justify-end">
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleViewQuestionAttempt(q);
+                            }}
+                            className="px-3 py-1.5 rounded-lg text-xs font-bold transition-all select-none bg-emerald-500/10 hover:bg-emerald-500/20 border border-emerald-500/20 text-emerald-400"
+                          >
+                            View Code
+                          </button>
+                          {(() => {
+                            const associatedTest = getAssociatedTest(q.subjectId);
+                            const isReattemptPending = associatedTest?.reattemptStatus === `PENDING:${q.id}`;
+                            return (
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  if (!isReattemptPending && associatedTest) {
+                                    handleRequestReattempt(associatedTest.test.id, q.id);
+                                  }
+                                }}
+                                disabled={isReattemptPending || isSuspended}
+                                className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all select-none ${
+                                  isReattemptPending
+                                    ? 'bg-amber-500/10 border border-amber-500/20 text-amber-400 cursor-not-allowed opacity-75'
+                                    : 'bg-indigo-500/10 hover:bg-indigo-500/25 border border-indigo-500/20 text-indigo-400'
+                                }`}
+                              >
+                                {isReattemptPending ? 'Pending Approval' : 'Another Attempt'}
+                              </button>
+                            );
+                          })()}
+                        </div>
                       ) : (q.status === 'NOT_STARTED' || !q.status) ? (
                         <button
                           onClick={(e) => {

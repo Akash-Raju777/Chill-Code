@@ -51,15 +51,8 @@ public class JwtRequestFilter extends OncePerRequestFilter {
             UserDetails userDetails = this.userDetailsService.loadUserByUsername(username);
 
             if (jwtUtils.validateToken(jwt, userDetails)) {
-                java.util.Optional<User> userOpt = userRepository.findByRegisterNumber(username);
-                if (userOpt.isEmpty()) {
-                    userOpt = userRepository.findByUsername(username);
-                }
-                if (userOpt.isEmpty()) {
-                    userOpt = userRepository.findByEmail(username);
-                }
-                if (userOpt.isPresent()) {
-                    User user = userOpt.get();
+                if (userDetails instanceof CustomUserDetails) {
+                    User user = ((CustomUserDetails) userDetails).getUser();
                     if (user.getStatus() == UserStatus.INACTIVE || user.getStatus() == UserStatus.SUSPENDED) {
                         response.sendError(HttpServletResponse.SC_FORBIDDEN, "Your account is " + user.getStatus().name().toLowerCase() + ".");
                         return;

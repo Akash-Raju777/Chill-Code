@@ -20,22 +20,9 @@ public class UserDetailsServiceImpl implements UserDetailsService {
 
     @Override
     public UserDetails loadUserByUsername(String identifier) throws UsernameNotFoundException {
-        // Find user by register number, username, or email
-        Optional<User> userOpt = userRepository.findByRegisterNumber(identifier);
-        if (userOpt.isEmpty()) {
-            userOpt = userRepository.findByUsername(identifier);
-        }
-        if (userOpt.isEmpty()) {
-            userOpt = userRepository.findByEmail(identifier);
-        }
-
-        User user = userOpt.orElseThrow(() -> 
+        User user = userRepository.findByIdentifier(identifier).orElseThrow(() -> 
             new UsernameNotFoundException("User not found with identifier: " + identifier));
 
-        return new org.springframework.security.core.userdetails.User(
-            user.getRegisterNumber() != null ? user.getRegisterNumber() : user.getUsername(),
-            user.getPassword(),
-            Collections.singletonList(new SimpleGrantedAuthority("ROLE_" + user.getRole().name()))
-        );
+        return new CustomUserDetails(user);
     }
 }

@@ -31,15 +31,13 @@ public class QuestionController {
     private com.chillcode.assessment.service.CodeExecutionService codeExecutionService;
 
     private com.chillcode.assessment.entity.User getCurrentUser() {
+        Object principal = org.springframework.security.core.context.SecurityContextHolder.getContext().getAuthentication().getPrincipal();
+        if (principal instanceof com.chillcode.assessment.security.CustomUserDetails) {
+            return ((com.chillcode.assessment.security.CustomUserDetails) principal).getUser();
+        }
         String identifier = org.springframework.security.core.context.SecurityContextHolder.getContext().getAuthentication().getName();
-        java.util.Optional<com.chillcode.assessment.entity.User> userOpt = userRepository.findByRegisterNumber(identifier);
-        if (userOpt.isEmpty()) {
-            userOpt = userRepository.findByUsername(identifier);
-        }
-        if (userOpt.isEmpty()) {
-            userOpt = userRepository.findByEmail(identifier);
-        }
-        return userOpt.orElseThrow(() -> new RuntimeException("Current user not found"));
+        return userRepository.findByIdentifier(identifier)
+                .orElseThrow(() -> new RuntimeException("Current user not found"));
     }
 
     // Both Admin and Student can get questions list of a subject

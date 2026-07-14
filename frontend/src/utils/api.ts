@@ -63,7 +63,7 @@ export async function apiCall(endpoint: string, options: RequestInit = {}) {
   }
 
   if (method === 'GET') {
-    apiCache.set(cacheKey, { data, expiry: Date.now() + 200 });
+    apiCache.set(cacheKey, { data, expiry: Date.now() + 1500 });
   }
 
   return data;

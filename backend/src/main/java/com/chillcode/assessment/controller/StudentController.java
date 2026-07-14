@@ -29,15 +29,13 @@ public class StudentController {
     private UserRepository userRepository;
 
     private User getCurrentUser() {
+        Object principal = SecurityContextHolder.getContext().getAuthentication().getPrincipal();
+        if (principal instanceof com.chillcode.assessment.security.CustomUserDetails) {
+            return ((com.chillcode.assessment.security.CustomUserDetails) principal).getUser();
+        }
         String identifier = SecurityContextHolder.getContext().getAuthentication().getName();
-        Optional<User> userOpt = userRepository.findByRegisterNumber(identifier);
-        if (userOpt.isEmpty()) {
-            userOpt = userRepository.findByUsername(identifier);
-        }
-        if (userOpt.isEmpty()) {
-            userOpt = userRepository.findByEmail(identifier);
-        }
-        return userOpt.orElseThrow(() -> new RuntimeException("Current user not found"));
+        return userRepository.findByIdentifier(identifier)
+                .orElseThrow(() -> new RuntimeException("Current user not found"));
     }
 
     @GetMapping("/dashboard/stats")

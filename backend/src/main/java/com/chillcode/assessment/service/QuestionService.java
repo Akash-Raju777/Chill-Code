@@ -47,24 +47,64 @@ public class QuestionService {
     @jakarta.persistence.PersistenceContext
     private jakarta.persistence.EntityManager entityManager;
 
+    private com.chillcode.assessment.entity.User getCurrentUserEntity() {
+        try {
+            org.springframework.security.core.Authentication auth = org.springframework.security.core.context.SecurityContextHolder.getContext().getAuthentication();
+            if (auth == null) return null;
+            Object principal = auth.getPrincipal();
+            if (principal instanceof com.chillcode.assessment.security.CustomUserDetails) {
+                return ((com.chillcode.assessment.security.CustomUserDetails) principal).getUser();
+            }
+            String identifier = auth.getName();
+            if (identifier == null || "anonymousUser".equals(identifier)) {
+                return null;
+            }
+            return userRepository.findByIdentifier(identifier).orElse(null);
+        } catch (Exception e) {
+            log.warn("Failed to fetch current user entity: {}", e.getMessage());
+            return null;
+        }
+    }
+
+    private java.util.Map<Long, StudentQuestionStatus> getStatusMapForStudent(com.chillcode.assessment.entity.User student) {
+        if (student == null) return java.util.Collections.emptyMap();
+        try {
+            if (student.getRole() == com.chillcode.assessment.entity.Role.STUDENT) {
+                List<StudentQuestionStatus> statuses = studentQuestionStatusRepository.findByStudentId(student.getId());
+                return statuses.stream().collect(Collectors.toMap(StudentQuestionStatus::getQuestionId, s -> s, (s1, s2) -> s1));
+            }
+        } catch (Exception e) {
+            log.warn("Failed to fetch student status map: {}", e.getMessage());
+        }
+        return java.util.Collections.emptyMap();
+    }
+
+    private java.util.Set<Long> getSolvedQuestionIdsForStudent(com.chillcode.assessment.entity.User student) {
+        java.util.Set<Long> solved = new java.util.HashSet<>();
+        if (student == null) return solved;
+        try {
+            solved.addAll(submissionRepository.findSolvedQuestionIdsByStudentId(student.getId()));
+        } catch (Exception ignored) {}
+        return solved;
+    }
+
     public List<QuestionDto> getAllQuestions() {
         log.info("Repository Call: Load all questions from database");
-        java.util.Map<Long, StudentQuestionStatus> statusMap = getStatusMapForCurrentStudent();
-        java.util.Set<Long> solvedSet = getSolvedQuestionIdsForCurrentStudent();
-        List<TestCase> allTestCases = testCaseRepository.findAll();
-        java.util.Map<Long, List<TestCase>> testCasesMap = allTestCases.stream()
-                .collect(Collectors.groupingBy(tc -> tc.getQuestion().getId()));
+        com.chillcode.assessment.entity.User student = getCurrentUserEntity();
+        java.util.Map<Long, StudentQuestionStatus> statusMap = getStatusMapForStudent(student);
+        java.util.Set<Long> solvedSet = getSolvedQuestionIdsForStudent(student);
         return questionRepository.findAll().stream()
-                .map(q -> convertToDto(q, statusMap, testCasesMap.getOrDefault(q.getId(), java.util.Collections.emptyList()), solvedSet))
+                .map(q -> convertToDto(q, statusMap, java.util.Collections.emptyList(), solvedSet))
                 .collect(Collectors.toList());
     }
 
     public List<QuestionDto> getQuestionsBySubject(Long subjectId) {
         log.info("Repository Call: Load questions for subject ID: {} from database", subjectId);
-        java.util.Map<Long, StudentQuestionStatus> statusMap = getStatusMapForCurrentStudent();
-        java.util.Set<Long> solvedSet = getSolvedQuestionIdsForCurrentStudent();
-        List<TestCase> allTestCases = testCaseRepository.findAll();
-        java.util.Map<Long, List<TestCase>> testCasesMap = allTestCases.stream()
+        com.chillcode.assessment.entity.User student = getCurrentUserEntity();
+        java.util.Map<Long, StudentQuestionStatus> statusMap = getStatusMapForStudent(student);
+        java.util.Set<Long> solvedSet = getSolvedQuestionIdsForStudent(student);
+        List<TestCase> subjectTestCases = testCaseRepository.findByQuestionSubjectId(subjectId);
+        java.util.Map<Long, List<TestCase>> testCasesMap = subjectTestCases.stream()
                 .collect(Collectors.groupingBy(tc -> tc.getQuestion().getId()));
         return questionRepository.findBySubjectId(subjectId).stream()
                 .map(q -> convertToDto(q, statusMap, testCasesMap.getOrDefault(q.getId(), java.util.Collections.emptyList()), solvedSet))
@@ -75,8 +115,9 @@ public class QuestionService {
         log.info("Repository Call: Load question by ID: {} from database", id);
         Question question = questionRepository.findById(id)
                 .orElseThrow(() -> new RuntimeException("Question not found with id: " + id));
-        java.util.Map<Long, StudentQuestionStatus> statusMap = getStatusMapForCurrentStudent();
-        return convertToDto(question, statusMap, testCaseRepository.findByQuestionId(question.getId()), getSolvedQuestionIdsForCurrentStudent());
+        com.chillcode.assessment.entity.User student = getCurrentUserEntity();
+        java.util.Map<Long, StudentQuestionStatus> statusMap = getStatusMapForStudent(student);
+        return convertToDto(question, statusMap, testCaseRepository.findByQuestionId(question.getId()), getSolvedQuestionIdsForStudent(student));
     }
 
     @Transactional
@@ -288,9 +329,7 @@ public class QuestionService {
             if (auth != null) {
                 String identifier = auth.getName();
                 if (identifier != null && !"anonymousUser".equals(identifier)) {
-                    java.util.Optional<com.chillcode.assessment.entity.User> userOpt = userRepository.findByRegisterNumber(identifier);
-                    if (userOpt.isEmpty()) userOpt = userRepository.findByUsername(identifier);
-                    if (userOpt.isEmpty()) userOpt = userRepository.findByEmail(identifier);
+                    java.util.Optional<com.chillcode.assessment.entity.User> userOpt = userRepository.findByIdentifier(identifier);
                     if (userOpt.isPresent()) {
                         solved.addAll(submissionRepository.findSolvedQuestionIdsByStudentId(userOpt.get().getId()));
                     }
@@ -308,13 +347,7 @@ public class QuestionService {
             if (identifier == null || "anonymousUser".equals(identifier)) {
                 return java.util.Collections.emptyMap();
             }
-            java.util.Optional<com.chillcode.assessment.entity.User> userOpt = userRepository.findByRegisterNumber(identifier);
-            if (userOpt.isEmpty()) {
-                userOpt = userRepository.findByUsername(identifier);
-            }
-            if (userOpt.isEmpty()) {
-                userOpt = userRepository.findByEmail(identifier);
-            }
+            java.util.Optional<com.chillcode.assessment.entity.User> userOpt = userRepository.findByIdentifier(identifier);
             if (userOpt.isPresent()) {
                 com.chillcode.assessment.entity.User student = userOpt.get();
                 if (student.getRole() == com.chillcode.assessment.entity.Role.STUDENT) {

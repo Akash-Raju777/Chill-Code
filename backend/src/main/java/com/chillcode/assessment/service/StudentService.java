@@ -79,31 +79,10 @@ public class StudentService {
         }
 
         // Calculate statistics based on questions and question statuses
-        List<com.chillcode.assessment.entity.Question> allQuestions = questionRepository.findAll();
-        List<com.chillcode.assessment.entity.StudentQuestionStatus> allStatuses = studentQuestionStatusRepository.findByStudentId(studentId);
-        
-        java.util.Map<Long, com.chillcode.assessment.entity.StudentQuestionStatus> statusMap = allStatuses.stream()
-                .collect(Collectors.toMap(com.chillcode.assessment.entity.StudentQuestionStatus::getQuestionId, s -> s, (a, b) -> a));
-
-        long completedQuestionsCount = 0;
-        long unattendedTestsCount = 0;
-        long inProgressTestsCount = 0;
-
-        for (com.chillcode.assessment.entity.Question q : allQuestions) {
-            com.chillcode.assessment.entity.StudentQuestionStatus sqs = statusMap.get(q.getId());
-            boolean isSolved = sqs != null && "COMPLETED".equals(sqs.getStatus());
-            int attempts = sqs != null ? sqs.getAttemptCount() : 0;
-            
-            if (isSolved) {
-                completedQuestionsCount++;
-            } else if (attempts > 0) {
-                inProgressTestsCount++;
-            } else {
-                unattendedTestsCount++;
-            }
-        }
-
-        long incompleteQuestionsCount = allQuestions.size() - completedQuestionsCount;
+        long totalQuestionsCount = questionRepository.count();
+        long completedQuestionsCount = studentQuestionStatusRepository.countByStudentIdAndStatus(studentId, "COMPLETED");
+        long inProgressQuestionsCount = studentQuestionStatusRepository.countByStudentIdAndAttemptCountGreaterThanAndStatusNot(studentId, "COMPLETED");
+        long unattendedQuestionsCount = totalQuestionsCount - completedQuestionsCount - inProgressQuestionsCount;
 
         // Calculate average score of all student tests
         double totalScore = myTests.stream()
@@ -117,41 +96,33 @@ public class StudentService {
                 .count();
 
         Map<String, Object> stats = new HashMap<>();
-        stats.put("unattendedTests", unattendedTestsCount);
+        stats.put("unattendedTests", unattendedQuestionsCount);
         stats.put("completedTests", completedTestsCount);
-        stats.put("inProgressTests", inProgressTestsCount);
+        stats.put("inProgressTests", inProgressQuestionsCount);
         stats.put("totalTests", myTests.size());
         stats.put("averageScore", Math.round(totalScore * 100.0) / 100.0);
-        stats.put("totalQuestions", allQuestions.size());
+        stats.put("totalQuestions", totalQuestionsCount);
         stats.put("completedQuestions", completedQuestionsCount);
 
-        // Group questions by Subject
-        List<com.chillcode.assessment.entity.Subject> subjects = subjectRepository.findAll();
+        // Group questions by Subject using optimized native query
+        List<Object[]> dbSubjectStats = subjectRepository.getSubjectStatsForStudent(studentId);
         List<Map<String, Object>> subjectStatsList = new java.util.ArrayList<>();
         
-        for (com.chillcode.assessment.entity.Subject subject : subjects) {
-            List<com.chillcode.assessment.entity.Question> subjectQuestions = allQuestions.stream()
-                    .filter(q -> q.getSubject() != null && q.getSubject().getId().equals(subject.getId()))
-                    .collect(Collectors.toList());
-
-            if (subjectQuestions.isEmpty()) continue;
-
-            long completed = subjectQuestions.stream()
-                    .filter(q -> {
-                        com.chillcode.assessment.entity.StudentQuestionStatus sqs = statusMap.get(q.getId());
-                        return sqs != null && "COMPLETED".equals(sqs.getStatus());
-                    })
-                    .count();
-
-            long incomplete = subjectQuestions.size() - completed;
+        for (Object[] row : dbSubjectStats) {
+            Long subjectId = ((Number) row[0]).longValue();
+            String name = (String) row[1];
+            String color = (String) row[2];
+            long total = ((Number) row[3]).longValue();
+            long completed = ((Number) row[4]).longValue();
+            long incomplete = total - completed;
 
             Map<String, Object> subMap = new HashMap<>();
-            subMap.put("subjectId", subject.getId());
-            subMap.put("subjectName", subject.getName());
-            subMap.put("subjectColor", subject.getColor());
+            subMap.put("subjectId", subjectId);
+            subMap.put("subjectName", name);
+            subMap.put("subjectColor", color);
             subMap.put("completedCount", completed);
             subMap.put("incompleteCount", incomplete);
-            subMap.put("totalCount", subjectQuestions.size());
+            subMap.put("totalCount", total);
             subMap.put("status", incomplete == 0 ? "COMPLETED" : "INCOMPLETE");
 
             subjectStatsList.add(subMap);

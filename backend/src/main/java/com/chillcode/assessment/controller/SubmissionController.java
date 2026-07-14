@@ -28,15 +28,13 @@ public class SubmissionController {
     private com.chillcode.assessment.repository.StudentQuestionStatusRepository studentQuestionStatusRepository;
 
     private com.chillcode.assessment.entity.User getCurrentUser() {
+        Object principal = org.springframework.security.core.context.SecurityContextHolder.getContext().getAuthentication().getPrincipal();
+        if (principal instanceof com.chillcode.assessment.security.CustomUserDetails) {
+            return ((com.chillcode.assessment.security.CustomUserDetails) principal).getUser();
+        }
         String identifier = org.springframework.security.core.context.SecurityContextHolder.getContext().getAuthentication().getName();
-        java.util.Optional<com.chillcode.assessment.entity.User> userOpt = userRepository.findByRegisterNumber(identifier);
-        if (userOpt.isEmpty()) {
-            userOpt = userRepository.findByUsername(identifier);
-        }
-        if (userOpt.isEmpty()) {
-            userOpt = userRepository.findByEmail(identifier);
-        }
-        return userOpt.orElseThrow(() -> new RuntimeException("Current user not found"));
+        return userRepository.findByIdentifier(identifier)
+                .orElseThrow(() -> new RuntimeException("Current user not found"));
     }
 
     @PostMapping("/submissions")
@@ -89,6 +87,10 @@ public class SubmissionController {
         com.chillcode.assessment.entity.User student = getCurrentUser();
         List<Submission> submissions = submissionRepository.findAllByStudentIdOrderByCreatedAtDesc(student.getId());
         
+        List<com.chillcode.assessment.entity.StudentQuestionStatus> sqsList = studentQuestionStatusRepository.findByStudentId(student.getId());
+        java.util.Map<Long, com.chillcode.assessment.entity.StudentQuestionStatus> sqsMap = sqsList.stream()
+                .collect(java.util.stream.Collectors.toMap(com.chillcode.assessment.entity.StudentQuestionStatus::getQuestionId, s -> s, (s1, s2) -> s1));
+
         List<java.util.Map<String, Object>> result = new java.util.ArrayList<>();
         for (Submission sub : submissions) {
             java.util.Map<String, Object> map = new java.util.HashMap<>();
@@ -114,10 +116,8 @@ public class SubmissionController {
                 if (sub.getQuestion().getSubject() != null) {
                     map.put("subjectName", sub.getQuestion().getSubject().getName());
                 }
-                com.chillcode.assessment.entity.StudentQuestionStatus sqs = studentQuestionStatusRepository
-                         .findByStudentIdAndQuestionId(student.getId(), sub.getQuestion().getId())
-                         .orElse(null);
-                 map.put("attempts", sqs != null ? sqs.getAttemptCount() : 1);
+                com.chillcode.assessment.entity.StudentQuestionStatus sqs = sqsMap.get(sub.getQuestion().getId());
+                map.put("attempts", sqs != null ? sqs.getAttemptCount() : 1);
             }
             if (sub.getStudentTest() != null && sub.getStudentTest().getTest() != null) {
                 map.put("testId", sub.getStudentTest().getTest().getId());

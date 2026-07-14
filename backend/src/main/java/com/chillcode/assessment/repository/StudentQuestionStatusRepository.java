@@ -13,4 +13,9 @@ public interface StudentQuestionStatusRepository extends JpaRepository<StudentQu
     List<StudentQuestionStatus> findByStudentId(Long studentId);
     List<StudentQuestionStatus> findByStudentIdAndStatus(Long studentId, String status);
     List<StudentQuestionStatus> findByQuestionId(Long questionId);
+
+    long countByStudentIdAndStatus(Long studentId, String status);
+
+    @org.springframework.data.jpa.repository.Query("SELECT COUNT(s) FROM StudentQuestionStatus s WHERE s.studentId = :studentId AND s.attemptCount > 0 AND s.status <> :status")
+    long countByStudentIdAndAttemptCountGreaterThanAndStatusNot(@org.springframework.data.repository.query.Param("studentId") Long studentId, @org.springframework.data.repository.query.Param("status") String status);
 }
