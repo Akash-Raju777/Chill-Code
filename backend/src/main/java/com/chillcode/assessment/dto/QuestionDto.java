@@ -21,6 +21,10 @@ public class QuestionDto {
     private String outputFormat;
     private String allowedLanguages;
     private String tags;
+    private Integer totalMarks;
+    private Integer passingMarks;
+    private Double negativeMarks;
+    private Boolean partialMarksEnabled;
     private List<TestCaseDto> testCases;
     
     // Status tracking fields

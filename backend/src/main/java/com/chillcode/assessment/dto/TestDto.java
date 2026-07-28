@@ -11,6 +11,7 @@ import java.util.List;
 @Builder
 public class TestDto {
     private Long id;
+    private String testCode;
     private Long subjectId;
     private String name;
     private Integer durationMinutes;

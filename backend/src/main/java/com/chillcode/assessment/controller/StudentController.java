@@ -70,12 +70,7 @@ public class StudentController {
         return ResponseEntity.ok("Instruction broadcasted successfully to all students.");
     }
 
-    @GetMapping("/achievements")
-    public ResponseEntity<List<Achievement>> getAchievements() {
-        User student = getCurrentUser();
-        log.info("API Request: Load achievements for student ID: {}", student.getId());
-        return ResponseEntity.ok(studentService.getAchievementsForUser(student.getId()));
-    }
+
 
     @GetMapping("/profile")
     public ResponseEntity<Map<String, Object>> getProfile() {

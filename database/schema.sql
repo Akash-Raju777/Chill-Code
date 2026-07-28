@@ -194,7 +194,142 @@ CREATE TABLE IF NOT EXISTS ai_hint_cache (
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
--- Enable Row Level Security (RLS) for all tables to prevent unauthorized direct client access through Supabase/PostgREST
+-- Badges Table
+CREATE TABLE IF NOT EXISTS badges (
+    id BIGSERIAL PRIMARY KEY,
+    name VARCHAR(100) NOT NULL,
+    description TEXT NULL,
+    icon VARCHAR(100) DEFAULT 'Award',
+    type VARCHAR(50) NOT NULL, -- 'SUBJECT_RANKING', 'LANGUAGE_MASTER', 'CONTEST', 'CUSTOM'
+    status VARCHAR(20) DEFAULT 'ACTIVE',
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Badge Rules Table
+CREATE TABLE IF NOT EXISTS badge_rules (
+    id BIGSERIAL PRIMARY KEY,
+    badge_id BIGINT NOT NULL,
+    category VARCHAR(50) NOT NULL, -- 'LANGUAGE', 'SUBJECT', 'GENERAL'
+    target_subject_id BIGINT NULL,
+    target_language VARCHAR(30) NULL, -- 'java', 'python', 'c', 'cpp', 'javascript'
+    min_accepted_tests INT DEFAULT 0,
+    min_avg_score DOUBLE PRECISION DEFAULT 0.0,
+    min_problems_solved INT DEFAULT 0,
+    rank_position INT NULL, -- 1 for Gold, 2 for Silver, 3 for Bronze
+    status VARCHAR(20) DEFAULT 'ACTIVE',
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (badge_id) REFERENCES badges(id) ON DELETE CASCADE,
+    FOREIGN KEY (target_subject_id) REFERENCES subjects(id) ON DELETE SET NULL
+);
+
+-- Student Badges Table
+CREATE TABLE IF NOT EXISTS student_badges (
+    id BIGSERIAL PRIMARY KEY,
+    student_id BIGINT NOT NULL,
+    badge_id BIGINT NOT NULL,
+    earned_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    source_test_id BIGINT NULL,
+    status VARCHAR(20) DEFAULT 'ACTIVE',
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (student_id) REFERENCES app_users(id) ON DELETE CASCADE,
+    FOREIGN KEY (badge_id) REFERENCES badges(id) ON DELETE CASCADE,
+    FOREIGN KEY (source_test_id) REFERENCES tests(id) ON DELETE SET NULL,
+    CONSTRAINT unique_student_badge UNIQUE (student_id, badge_id)
+);
+
+-- Subject Rankings Table
+CREATE TABLE IF NOT EXISTS subject_rankings (
+    id BIGSERIAL PRIMARY KEY,
+    subject_id BIGINT NOT NULL,
+    student_id BIGINT NOT NULL,
+    rank_position INT NOT NULL,
+    total_score INT DEFAULT 0,
+    test_cases_passed INT DEFAULT 0,
+    total_time_taken_seconds BIGINT DEFAULT 0,
+    last_submission_time TIMESTAMP NULL,
+    status VARCHAR(20) DEFAULT 'ACTIVE',
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (subject_id) REFERENCES subjects(id) ON DELETE CASCADE,
+    FOREIGN KEY (student_id) REFERENCES app_users(id) ON DELETE CASCADE,
+    CONSTRAINT unique_subject_student_rank UNIQUE (subject_id, student_id)
+);
+
+-- Badge Sets Table
+CREATE TABLE IF NOT EXISTS badge_sets (
+    id BIGSERIAL PRIMARY KEY,
+    name VARCHAR(150) NOT NULL,
+    test_id BIGINT NOT NULL,
+    test_code VARCHAR(50) NOT NULL,
+    subject_id BIGINT NOT NULL,
+    number_of_winners INT DEFAULT 3,
+    enable_language_badge BOOLEAN DEFAULT false,
+    language_name VARCHAR(50) NULL,
+    language_badge_name VARCHAR(150) NULL,
+    language_badge_icon VARCHAR(50) DEFAULT '☕',
+    language_award_rank INT DEFAULT 1,
+    status VARCHAR(20) DEFAULT 'ACTIVE',
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (test_id) REFERENCES tests(id) ON DELETE CASCADE,
+    FOREIGN KEY (subject_id) REFERENCES subjects(id) ON DELETE CASCADE
+);
+
+-- Badge Definitions Table
+CREATE TABLE IF NOT EXISTS badge_definitions (
+    id BIGSERIAL PRIMARY KEY,
+    badge_set_id BIGINT NOT NULL,
+    rank_position INT NOT NULL,
+    badge_name VARCHAR(150) NOT NULL,
+    badge_icon VARCHAR(100) DEFAULT 'Award',
+    badge_color VARCHAR(30) DEFAULT '#f59e0b',
+    badge_order INT DEFAULT 1,
+    status VARCHAR(20) DEFAULT 'ACTIVE',
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (badge_set_id) REFERENCES badge_sets(id) ON DELETE CASCADE
+);
+
+-- Student Achievements Table (Permanent Historical Record)
+CREATE TABLE IF NOT EXISTS student_achievements (
+    id BIGSERIAL PRIMARY KEY,
+    student_id BIGINT NOT NULL,
+    badge_name VARCHAR(150) NOT NULL,
+    badge_icon VARCHAR(100) DEFAULT 'Award',
+    badge_category VARCHAR(50) DEFAULT 'Test Ranking',
+    test_id BIGINT NULL,
+    test_code VARCHAR(50) NULL,
+    test_name VARCHAR(150) NULL,
+    subject_name VARCHAR(100) NULL,
+    rank_achieved VARCHAR(50) NULL,
+    awarded_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    awarded_by VARCHAR(100) DEFAULT 'Automatic System',
+    status VARCHAR(20) DEFAULT 'ACTIVE',
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (student_id) REFERENCES app_users(id) ON DELETE CASCADE,
+    FOREIGN KEY (test_id) REFERENCES tests(id) ON DELETE SET NULL
+);
+
+-- Language Master Badges Table
+CREATE TABLE IF NOT EXISTS language_master_badges (
+    id BIGSERIAL PRIMARY KEY,
+    student_id BIGINT NOT NULL,
+    test_id BIGINT NOT NULL,
+    subject VARCHAR(100) NOT NULL,
+    badge_name VARCHAR(150) NOT NULL,
+    badge_icon VARCHAR(50) DEFAULT '☕',
+    awarded_rank INT DEFAULT 1,
+    awarded_date TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (student_id) REFERENCES app_users(id) ON DELETE CASCADE,
+    FOREIGN KEY (test_id) REFERENCES tests(id) ON DELETE CASCADE
+);
+
+-- Enable Row Level Security (RLS) for all tables
 ALTER TABLE app_users ENABLE ROW LEVEL SECURITY;
 ALTER TABLE subjects ENABLE ROW LEVEL SECURITY;
 ALTER TABLE questions ENABLE ROW LEVEL SECURITY;
@@ -210,5 +345,13 @@ ALTER TABLE achievements ENABLE ROW LEVEL SECURITY;
 ALTER TABLE notifications ENABLE ROW LEVEL SECURITY;
 ALTER TABLE activity_logs ENABLE ROW LEVEL SECURITY;
 ALTER TABLE ai_hint_cache ENABLE ROW LEVEL SECURITY;
+ALTER TABLE badges ENABLE ROW LEVEL SECURITY;
+ALTER TABLE badge_rules ENABLE ROW LEVEL SECURITY;
+ALTER TABLE student_badges ENABLE ROW LEVEL SECURITY;
+ALTER TABLE subject_rankings ENABLE ROW LEVEL SECURITY;
+ALTER TABLE badge_sets ENABLE ROW LEVEL SECURITY;
+ALTER TABLE badge_definitions ENABLE ROW LEVEL SECURITY;
+ALTER TABLE student_achievements ENABLE ROW LEVEL SECURITY;
+ALTER TABLE language_master_badges ENABLE ROW LEVEL SECURITY;
 
 

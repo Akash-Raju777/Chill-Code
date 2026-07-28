@@ -1,11 +1,17 @@
 package com.chillcode.assessment.entity;
 
 import jakarta.persistence.*;
+import lombok.*;
 import java.time.LocalDateTime;
 import java.util.List;
 
 @Entity
 @Table(name = "questions")
+@Getter
+@Setter
+@NoArgsConstructor
+@AllArgsConstructor
+@Builder
 public class Question {
 
     @Id
@@ -40,6 +46,22 @@ public class Question {
 
     private String tags; // Comma-separated tags: Arrays,Strings,DP
 
+    @Column(name = "total_marks")
+    @Builder.Default
+    private Integer totalMarks = 20;
+
+    @Column(name = "passing_marks")
+    @Builder.Default
+    private Integer passingMarks = 10;
+
+    @Column(name = "negative_marks")
+    @Builder.Default
+    private Double negativeMarks = 0.0;
+
+    @Column(name = "partial_marks_enabled")
+    @Builder.Default
+    private Boolean partialMarksEnabled = true;
+
     @OneToMany(mappedBy = "question", cascade = CascadeType.ALL, orphanRemoval = true)
     private List<TestCase> testCases;
 
@@ -47,115 +69,13 @@ public class Question {
     private List<Submission> submissions;
 
     @Column(name = "created_at", nullable = false, updatable = false)
+    @Builder.Default
     private LocalDateTime createdAt = LocalDateTime.now();
 
     @PrePersist
     protected void onCreate() {
-        createdAt = LocalDateTime.now();
-    }
-
-    public Question() {}
-
-    public Question(Long id, Subject subject, String title, Difficulty difficulty, String problemStatement, 
-                    String constraints, String inputFormat, String outputFormat, 
-                    String allowedLanguages, String tags, List<TestCase> testCases, List<Submission> submissions, LocalDateTime createdAt) {
-        this.id = id;
-        this.subject = subject;
-        this.title = title;
-        this.difficulty = difficulty;
-        this.problemStatement = problemStatement;
-        this.constraints = constraints;
-        this.inputFormat = inputFormat;
-        this.outputFormat = outputFormat;
-        this.allowedLanguages = allowedLanguages;
-        this.tags = tags;
-        this.testCases = testCases;
-        this.submissions = submissions;
-        this.createdAt = createdAt;
-    }
-
-    // Getters and Setters
-    public Long getId() { return id; }
-    public void setId(Long id) { this.id = id; }
-
-    public Subject getSubject() { return subject; }
-    public void setSubject(Subject subject) { this.subject = subject; }
-
-    public String getTitle() { return title; }
-    public void setTitle(String title) { this.title = title; }
-
-    public Difficulty getDifficulty() { return difficulty; }
-    public void setDifficulty(Difficulty difficulty) { this.difficulty = difficulty; }
-
-    public String getProblemStatement() { return problemStatement; }
-    public void setProblemStatement(String problemStatement) { this.problemStatement = problemStatement; }
-
-    public String getConstraints() { return constraints; }
-    public void setConstraints(String constraints) { this.constraints = constraints; }
-
-    public String getInputFormat() { return inputFormat; }
-    public void setInputFormat(String inputFormat) { this.inputFormat = inputFormat; }
-
-    public String getOutputFormat() { return outputFormat; }
-    public void setOutputFormat(String outputFormat) { this.outputFormat = outputFormat; }
-
-
-
-
-
-    public String getAllowedLanguages() { return allowedLanguages; }
-    public void setAllowedLanguages(String allowedLanguages) { this.allowedLanguages = allowedLanguages; }
-
-    public String getTags() { return tags; }
-    public void setTags(String tags) { this.tags = tags; }
-
-    public List<TestCase> getTestCases() { return testCases; }
-    public void setTestCases(List<TestCase> testCases) { this.testCases = testCases; }
-
-    public List<Submission> getSubmissions() { return submissions; }
-    public void setSubmissions(List<Submission> submissions) { this.submissions = submissions; }
-
-    public LocalDateTime getCreatedAt() { return createdAt; }
-    public void setCreatedAt(LocalDateTime createdAt) { this.createdAt = createdAt; }
-
-    public static QuestionBuilder builder() {
-        return new QuestionBuilder();
-    }
-
-    public static class QuestionBuilder {
-        private Long id;
-        private Subject subject;
-        private String title;
-        private Difficulty difficulty;
-        private String problemStatement;
-        private String constraints;
-        private String inputFormat;
-        private String outputFormat;
-        private String allowedLanguages;
-        private String tags;
-        private List<TestCase> testCases;
-        private List<Submission> submissions;
-        private LocalDateTime createdAt;
-
-        public QuestionBuilder id(Long id) { this.id = id; return this; }
-        public QuestionBuilder subject(Subject subject) { this.subject = subject; return this; }
-        public QuestionBuilder title(String title) { this.title = title; return this; }
-        public QuestionBuilder difficulty(Difficulty difficulty) { this.difficulty = difficulty; return this; }
-        public QuestionBuilder problemStatement(String problemStatement) { this.problemStatement = problemStatement; return this; }
-        public QuestionBuilder constraints(String constraints) { this.constraints = constraints; return this; }
-        public QuestionBuilder inputFormat(String inputFormat) { this.inputFormat = inputFormat; return this; }
-        public QuestionBuilder outputFormat(String outputFormat) { this.outputFormat = outputFormat; return this; }
-
-        public QuestionBuilder allowedLanguages(String allowedLanguages) { this.allowedLanguages = allowedLanguages; return this; }
-        public QuestionBuilder tags(String tags) { this.tags = tags; return this; }
-        public QuestionBuilder testCases(List<TestCase> testCases) { this.testCases = testCases; return this; }
-        public QuestionBuilder submissions(List<Submission> submissions) { this.submissions = submissions; return this; }
-        public QuestionBuilder createdAt(LocalDateTime createdAt) { this.createdAt = createdAt; return this; }
-
-        public Question build() {
-            return new Question(id, subject, title, difficulty, problemStatement, constraints, inputFormat, outputFormat, 
-                                allowedLanguages, tags, testCases, submissions, 
-                                createdAt != null ? createdAt : LocalDateTime.now());
+        if (createdAt == null) {
+            createdAt = LocalDateTime.now();
         }
     }
 }

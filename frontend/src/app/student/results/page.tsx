@@ -48,11 +48,27 @@ export default function StudentResults() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
 
+  const [unlockedBadgeModal, setUnlockedBadgeModal] = useState<any>(null);
+
   const fetchSubmissions = async () => {
     setLoading(true);
     try {
-      const data = await apiCall('/api/student/submissions');
+      const [data, earnedList] = await Promise.all([
+        apiCall('/api/student/submissions'),
+        apiCall('/api/student/badges/earned').catch(() => []),
+      ]);
       setSubmissions(data || []);
+
+      // Check if a badge was earned recently (within last 5 minutes)
+      if (earnedList && earnedList.length > 0) {
+        const sorted = [...earnedList].sort((a, b) => new Date(b.earnedAt).getTime() - new Date(a.earnedAt).getTime());
+        const latest = sorted[0];
+        const now = new Date().getTime();
+        const earnedTime = new Date(latest.earnedAt).getTime();
+        if (now - earnedTime < 300000) { // 5 minutes window
+          setUnlockedBadgeModal(latest.badge);
+        }
+      }
     } catch (err: any) {
       setError(err.message || 'Failed to load submission results');
     } finally {
@@ -77,7 +93,32 @@ export default function StudentResults() {
   }
 
   return (
-    <div className="space-y-6 min-h-screen bg-[#0b0c10] text-[#c5c6c7] p-2 font-sans">
+    <div className="space-y-6 min-h-screen bg-[#0b0c10] text-[#c5c6c7] p-2 font-sans relative">
+      {/* Feature 14: Animated Badge Unlock Notification Modal */}
+      {unlockedBadgeModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/80 backdrop-blur-md p-4 animate-in fade-in zoom-in duration-300">
+          <div className="bg-gradient-to-b from-purple-900/90 via-slate-900 to-slate-950 border-2 border-amber-400/80 rounded-3xl p-8 max-w-md w-full text-center space-y-6 shadow-2xl shadow-purple-500/20 relative overflow-hidden">
+            <div className="absolute -top-10 -right-10 w-40 h-40 bg-amber-400/20 rounded-full blur-3xl pointer-events-none" />
+            <div className="w-24 h-24 rounded-3xl bg-amber-500/20 border-2 border-amber-400 flex items-center justify-center text-5xl mx-auto shadow-xl shadow-amber-500/30 animate-bounce">
+              🎉
+            </div>
+            <div className="space-y-2">
+              <span className="text-xs font-black uppercase tracking-widest text-amber-400 bg-amber-500/10 px-3 py-1 rounded-full border border-amber-500/30">
+                Badge Unlocked!
+              </span>
+              <h2 className="text-2xl font-extrabold text-white">{unlockedBadgeModal.name}</h2>
+              <p className="text-xs text-slate-300">{unlockedBadgeModal.description}</p>
+            </div>
+            <button
+              onClick={() => setUnlockedBadgeModal(null)}
+              className="w-full py-3 bg-gradient-to-r from-amber-500 to-orange-500 text-slate-950 font-black rounded-xl text-sm uppercase tracking-wider shadow-lg shadow-amber-500/25 hover:brightness-110 transition-all"
+            >
+              Claim Badge
+            </button>
+          </div>
+        </div>
+      )}
+
       <div>
         <h1 className="text-2xl font-bold text-white tracking-tight">Academic Results</h1>
         <p className="text-sm text-gray-500">View detailed scoring outputs and submission history</p>
@@ -99,22 +140,16 @@ export default function StudentResults() {
         <div className="space-y-4">
           {submissions.map((item) => {
             const isAccepted = item.status === 'ACCEPTED';
-            let verdictText = item.status;
-            let badgeStyle = "bg-red-500/10 text-red-400 border border-red-500/20";
-            
-            if (isAccepted) {
-              verdictText = "Accepted";
-              badgeStyle = "bg-emerald-500/10 text-emerald-400 border border-emerald-500/20";
-            } else {
-              verdictText = "Failed";
-              badgeStyle = "bg-red-500/10 text-red-400 border border-red-500/20";
-            }
+            let verdictText = isAccepted ? "PASS" : "FAIL";
+            let badgeStyle = isAccepted 
+              ? "bg-emerald-500/10 text-emerald-400 border border-emerald-500/20"
+              : "bg-red-500/10 text-red-400 border border-red-500/20";
 
             return (
               <div key={item.id} className="glass-panel p-6 rounded-2xl flex flex-col md:flex-row md:items-center justify-between gap-6 border border-white/5 bg-[#11131c] hover:border-white/10 transition-all">
                 <div className="space-y-2 flex-1">
                   <div className="flex flex-wrap items-center gap-2">
-                    <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${badgeStyle}`}>
+                    <span className={`text-[10px] font-black px-3 py-1 rounded-full uppercase tracking-wider ${badgeStyle}`}>
                       {verdictText}
                     </span>
                     <h3 className="font-bold text-white text-lg">{item.questionName || 'Unknown Question'}</h3>

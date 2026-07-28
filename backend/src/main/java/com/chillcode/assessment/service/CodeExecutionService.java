@@ -915,17 +915,28 @@ public class CodeExecutionService {
         
         // Group by question and take the max score for active submissions
         Map<Long, Integer> maxScores = new HashMap<>();
+        int totalPassedCases = 0;
+        int totalCases = 0;
+
         for (Submission sub : submissions) {
             if (sub.getActive() == null || sub.getActive()) {
                 maxScores.put(
                     sub.getQuestion().getId(),
                     Math.max(maxScores.getOrDefault(sub.getQuestion().getId(), 0), sub.getScore())
                 );
+                if (sub.getPassedTests() != null) totalPassedCases += sub.getPassedTests();
+                if (sub.getTotalTests() != null) totalCases += sub.getTotalTests();
             }
         }
 
         int totalScore = maxScores.values().stream().mapToInt(Integer::intValue).sum();
         studentTest.setScore(totalScore);
+        studentTest.setTestCasesPassed(totalPassedCases);
+        studentTest.setTotalTestCases(totalCases);
+
+        int maxMarks = studentTest.getTest().getMaxMarks() != null ? studentTest.getTest().getMaxMarks() : 100;
+        studentTest.setPassFailStatus(totalScore >= (maxMarks / 2) ? "PASS" : "FAIL");
+
         studentTestRepository.save(studentTest);
 
         // Check if student earned achievement (e.g. solve 1 problem successfully)

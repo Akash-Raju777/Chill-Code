@@ -259,17 +259,31 @@ export default function CodingWorkspace() {
     return () => clearInterval(interval);
   }, [mounted, isSessionActive, isViewMode, decrementTime]);
 
-  // Check Timer finish -> Auto submit (using transient subscriber to avoid re-rendering workspace)
+  // Check Timer finish & warning checkpoints -> Auto submit & warnings
   const timerStartedRef = useRef<boolean>(false);
+  const warnedTimesRef = useRef<Set<number>>(new Set());
+
   useEffect(() => {
     if (!mounted || isViewMode) return;
-    // Mark that the timer has started ticking (don't auto-submit on initial load)
-    timerStartedRef.current = false;
+    warnedTimesRef.current.clear();
     const unsubscribe = useTestStore.subscribe(
       (state, prevState) => {
-        // Only auto-submit when timer actively counts DOWN to 0 (not on initial load)
-        if (!state.isViewMode && state.isSessionActive && state.timeLeftSeconds === 0 && prevState.timeLeftSeconds > 0) {
-          handleAutoSubmit();
+        const seconds = state.timeLeftSeconds;
+        if (!state.isViewMode && state.isSessionActive) {
+          if (seconds === 600 && !warnedTimesRef.current.has(600)) {
+            warnedTimesRef.current.add(600);
+            alert('⚠️ Timer Warning: 10 minutes remaining in your test!');
+          } else if (seconds === 300 && !warnedTimesRef.current.has(300)) {
+            warnedTimesRef.current.add(300);
+            alert('⚠️ Timer Warning: 5 minutes remaining in your test!');
+          } else if (seconds === 60 && !warnedTimesRef.current.has(60)) {
+            warnedTimesRef.current.add(60);
+            alert('⚠️ Timer Warning: 1 minute remaining! Please finalize your code.');
+          }
+
+          if (seconds === 0 && prevState.timeLeftSeconds > 0) {
+            handleAutoSubmit();
+          }
         }
       }
     );

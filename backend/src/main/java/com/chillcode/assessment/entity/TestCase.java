@@ -28,7 +28,12 @@ public class TestCase {
     private String expectedOutput;
 
     @Column(name = "is_hidden")
+    @Builder.Default
     private Boolean isHidden = true;
+
+    @Column(name = "marks")
+    @Builder.Default
+    private Integer marks = 5;
 
     @OneToMany(mappedBy = "testCase", cascade = CascadeType.ALL, orphanRemoval = true)
     private java.util.List<SubmissionTestCase> submissionTestCases;

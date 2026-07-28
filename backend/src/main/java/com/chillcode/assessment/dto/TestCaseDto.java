@@ -12,4 +12,5 @@ public class TestCaseDto {
     private String inputData;
     private String expectedOutput;
     private Boolean isHidden;
+    private Integer marks;
 }

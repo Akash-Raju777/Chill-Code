@@ -146,6 +146,10 @@ public class QuestionService {
                 .outputFormat(questionDto.getOutputFormat())
                 .allowedLanguages(questionDto.getAllowedLanguages())
                 .tags(questionDto.getTags())
+                .totalMarks(questionDto.getTotalMarks() != null ? questionDto.getTotalMarks() : 20)
+                .passingMarks(questionDto.getPassingMarks() != null ? questionDto.getPassingMarks() : 10)
+                .negativeMarks(questionDto.getNegativeMarks() != null ? questionDto.getNegativeMarks() : 0.0)
+                .partialMarksEnabled(questionDto.getPartialMarksEnabled() != null ? questionDto.getPartialMarksEnabled() : true)
                 .build();
 
         Question savedQuestion = questionRepository.save(question);
@@ -158,6 +162,7 @@ public class QuestionService {
                         .inputData(tcDto.getInputData())
                         .expectedOutput(tcDto.getExpectedOutput())
                         .isHidden(tcDto.getIsHidden())
+                        .marks(tcDto.getMarks() != null ? tcDto.getMarks() : 5)
                         .build();
                 testCaseRepository.save(testCase);
             }
@@ -294,6 +299,7 @@ public class QuestionService {
                         .inputData(tc.getInputData())
                         .expectedOutput(tc.getExpectedOutput())
                         .isHidden(tc.getIsHidden())
+                        .marks(tc.getMarks() != null ? tc.getMarks() : 5)
                         .build())
                 .collect(Collectors.toList()) : java.util.Collections.emptyList();
 
@@ -308,6 +314,10 @@ public class QuestionService {
                 .outputFormat(question.getOutputFormat())
                 .allowedLanguages(question.getAllowedLanguages())
                 .tags(question.getTags())
+                .totalMarks(question.getTotalMarks() != null ? question.getTotalMarks() : 20)
+                .passingMarks(question.getPassingMarks() != null ? question.getPassingMarks() : 10)
+                .negativeMarks(question.getNegativeMarks() != null ? question.getNegativeMarks() : 0.0)
+                .partialMarksEnabled(question.getPartialMarksEnabled() != null ? question.getPartialMarksEnabled() : true)
                 .testCases(tcDtos)
                 .build();
 

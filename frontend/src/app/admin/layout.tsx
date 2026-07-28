@@ -51,6 +51,8 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
     { name: 'Dashboard', path: '/admin/dashboard', icon: LayoutDashboard },
     { name: 'Subject Management', path: '/admin/subjects', icon: BookOpen },
     { name: 'Question Management', path: '/admin/questions', icon: Code2 },
+    { name: 'Badge Management', path: '/admin/badges', icon: Award },
+    { name: 'Student Achievements', path: '/admin/achievements', icon: TrendingUp },
     { name: 'Send Instructions', path: '/admin/instructions', icon: Megaphone },
     { name: 'Students', path: '/admin/students', icon: Users },
     { name: 'Chat with Ash', path: '/admin/ash', icon: MessageSquare },

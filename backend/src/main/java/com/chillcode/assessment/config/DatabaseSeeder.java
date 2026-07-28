@@ -44,6 +44,12 @@ public class DatabaseSeeder implements CommandLineRunner {
     @Autowired
     private com.chillcode.assessment.repository.StudentQuestionStatusRepository studentQuestionStatusRepository;
 
+    @Autowired
+    private com.chillcode.assessment.repository.BadgeRepository badgeRepository;
+
+    @Autowired
+    private com.chillcode.assessment.repository.BadgeRuleRepository badgeRuleRepository;
+
     @Override
     @Transactional
     public void run(String... args) throws Exception {
@@ -60,6 +66,9 @@ public class DatabaseSeeder implements CommandLineRunner {
             userRepository.save(admin);
             System.out.println("Seeded Demo Admin successfully.");
         }
+
+        // Seed default Language & Ranking Badges
+        seedDefaultBadges();
 
         // Seed student_demo if it doesn't exist
         if (userRepository.findByRegisterNumber("student_demo").isEmpty() && userRepository.findByEmail("student@chillcode.com").isEmpty()) {
@@ -222,9 +231,14 @@ public class DatabaseSeeder implements CommandLineRunner {
             }
 
             if (test == null) {
+                String prefix = subject.getName().replaceAll("[^a-zA-Z]", "").toUpperCase();
+                if (prefix.length() > 6) prefix = prefix.substring(0, 6);
+                String testCode = prefix + "-001";
+
                 test = com.chillcode.assessment.entity.Test.builder()
                         .subject(subject)
                         .name(testName)
+                        .testCode(testCode)
                         .durationMinutes(120)
                         .startTime(LocalDateTime.now().minusDays(1))
                         .endTime(LocalDateTime.now().plusYears(1))
@@ -237,7 +251,7 @@ public class DatabaseSeeder implements CommandLineRunner {
                         .questions(new java.util.HashSet<>())
                         .build();
                 test = testRepository.save(test);
-                System.out.println("Seeded test: " + testName);
+                System.out.println("Seeded test: " + testName + " (" + testCode + ")");
             }
 
             // Link existing questions of this subject to this test
@@ -327,6 +341,51 @@ public class DatabaseSeeder implements CommandLineRunner {
                     }
                 }
             }
+        }
+    }
+
+    private void seedDefaultBadges() {
+        // 1. Java Expert
+        createBadgeIfAbsent("Java Expert", "Demonstrated exceptional mastery in Java programming.", "Coffee", "LANGUAGE_MASTER", "LANGUAGE", "java", 1, 50.0, 1, null);
+        // 2. Python Master
+        createBadgeIfAbsent("Python Master", "Demonstrated high proficiency in Python syntax and algorithms.", "Terminal", "LANGUAGE_MASTER", "LANGUAGE", "python", 1, 50.0, 1, null);
+        // 3. C Programmer
+        createBadgeIfAbsent("C Programmer", "Mastered procedural C programming and memory management.", "Code2", "LANGUAGE_MASTER", "LANGUAGE", "c", 1, 50.0, 1, null);
+        // 4. C++ Expert
+        createBadgeIfAbsent("C++ Expert", "Demonstrated advanced C++ object-oriented and STL skills.", "Flame", "LANGUAGE_MASTER", "LANGUAGE", "cpp", 1, 50.0, 1, null);
+        // 5. JavaScript Ninja
+        createBadgeIfAbsent("JavaScript Ninja", "Demonstrated mastery of web scripting and JS logic.", "Globe", "LANGUAGE_MASTER", "LANGUAGE", "javascript", 1, 50.0, 1, null);
+
+        // Subject Performance Badges
+        createBadgeIfAbsent("🥇 Gold Medalist", "Awarded for achieving 1st Rank in a Subject Leaderboard.", "Award", "SUBJECT_RANKING", "SUBJECT", null, 0, 0.0, 0, 1);
+        createBadgeIfAbsent("🥈 Silver Medalist", "Awarded for achieving 2nd Rank in a Subject Leaderboard.", "Award", "SUBJECT_RANKING", "SUBJECT", null, 0, 0.0, 0, 2);
+        createBadgeIfAbsent("🥉 Bronze Medalist", "Awarded for achieving 3rd Rank in a Subject Leaderboard.", "Award", "SUBJECT_RANKING", "SUBJECT", null, 0, 0.0, 0, 3);
+    }
+
+    private void createBadgeIfAbsent(String name, String description, String icon, String type, String category, String lang, int minTests, double minScore, int minSolved, Integer rankPos) {
+        if (badgeRepository.findByName(name).isEmpty()) {
+            com.chillcode.assessment.entity.Badge badge = com.chillcode.assessment.entity.Badge.builder()
+                    .name(name)
+                    .description(description)
+                    .icon(icon)
+                    .type(type)
+                    .status("ACTIVE")
+                    .build();
+            badge = badgeRepository.save(badge);
+
+            com.chillcode.assessment.entity.BadgeRule rule = com.chillcode.assessment.entity.BadgeRule.builder()
+                    .badge(badge)
+                    .category(category)
+                    .targetLanguage(lang)
+                    .minAcceptedTests(minTests)
+                    .minAvgScore(minScore)
+                    .minProblemsSolved(minSolved)
+                    .rankPosition(rankPos)
+                    .status("ACTIVE")
+                    .build();
+            badgeRuleRepository.save(rule);
+
+            System.out.println("Seeded default badge: " + name);
         }
     }
 }

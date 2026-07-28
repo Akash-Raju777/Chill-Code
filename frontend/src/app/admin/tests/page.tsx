@@ -17,6 +17,7 @@ interface Question {
 
 interface Test {
   id: number;
+  testCode?: string;
   name: string;
   durationMinutes: number;
   startTime: string;
@@ -326,7 +327,12 @@ export default function TestManagement() {
                   </div>
                   <span className="text-xs text-gray-500 font-semibold">{t.durationMinutes} Mins</span>
                 </div>
-                <h3 className="font-bold text-white text-lg">{t.name}</h3>
+                <div className="flex items-center gap-2">
+                  <span className="text-[10px] font-mono font-bold text-emerald-400 bg-emerald-500/10 px-2.5 py-0.5 rounded border border-emerald-500/20">
+                    {t.testCode || `TEST-${t.id}`}
+                  </span>
+                  <h3 className="font-bold text-white text-lg">{t.name}</h3>
+                </div>
                 <p className="text-xs text-gray-400 leading-relaxed font-sans">{t.instructions || 'No instructions provided.'}</p>
               </div>
 

@@ -17,7 +17,7 @@ public class SubjectController {
     private SubjectService subjectService;
 
     // Both Admin and Student can get subjects list
-    @GetMapping({"/admin/subjects", "/student/subjects"})
+    @GetMapping({"/admin/subjects", "/student/subjects", "/subjects"})
     public ResponseEntity<List<Subject>> getAllSubjects() {
         return ResponseEntity.ok(subjectService.getAllSubjects());
     }

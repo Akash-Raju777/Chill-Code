@@ -55,7 +55,28 @@ public class StudentTest {
     @Column(name = "reattempt_status", length = 30)
     private String reattemptStatus;
 
+    @Column(name = "time_taken_seconds")
+    @Builder.Default
+    private Long timeTakenSeconds = 0L;
+
+    @Column(name = "auto_submitted")
+    @Builder.Default
+    private Boolean autoSubmitted = false;
+
+    @Column(name = "pass_fail_status", length = 10)
+    @Builder.Default
+    private String passFailStatus = "PENDING"; // 'PASS', 'FAIL', 'PENDING'
+
+    @Column(name = "test_cases_passed")
+    @Builder.Default
+    private Integer testCasesPassed = 0;
+
+    @Column(name = "total_test_cases")
+    @Builder.Default
+    private Integer totalTestCases = 0;
+
     @Column(name = "created_at", nullable = false, updatable = false)
+    @Builder.Default
     private LocalDateTime createdAt = LocalDateTime.now();
 
     @PrePersist

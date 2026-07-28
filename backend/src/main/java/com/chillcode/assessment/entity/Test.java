@@ -63,11 +63,23 @@ public class Test {
     @Builder.Default
     private Set<Question> questions = new HashSet<>();
 
+    @Column(name = "test_code", length = 50)
+    private String testCode;
+
     @Column(name = "created_at", nullable = false, updatable = false)
+    @Builder.Default
     private LocalDateTime createdAt = LocalDateTime.now();
 
     @PrePersist
     protected void onCreate() {
-        createdAt = LocalDateTime.now();
+        if (createdAt == null) {
+            createdAt = LocalDateTime.now();
+        }
+        if (testCode == null || testCode.trim().isEmpty()) {
+            String prefix = (subject != null && subject.getName() != null) ? 
+                    subject.getName().replaceAll("[^a-zA-Z]", "").toUpperCase() : "TEST";
+            if (prefix.length() > 6) prefix = prefix.substring(0, 6);
+            testCode = prefix + "-" + String.format("%03d", id != null ? id : System.currentTimeMillis() % 1000);
+        }
     }
 }

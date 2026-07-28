@@ -13,7 +13,9 @@ import {
   X,
   Code2,
   Settings,
-  Bell
+  Bell,
+  Award,
+  Trophy
 } from 'lucide-react';
 import Link from 'next/link';
 
@@ -121,6 +123,28 @@ export default function StudentLayout({ children }: { children: React.ReactNode 
             >
               <ClipboardCheck className="w-4 h-4" />
               RESULTS
+            </Link>
+            <Link
+              href="/student/achievements"
+              className={`flex items-center gap-3 px-4 py-3 rounded-xl text-xs font-semibold tracking-wider transition-all ${
+                pathname === '/student/achievements'
+                  ? 'bg-indigo-500/10 text-indigo-400 border-l-2 border-indigo-500'
+                  : 'text-gray-400 hover:bg-white/5 hover:text-white'
+              }`}
+            >
+              <Award className="w-4 h-4 text-purple-400" />
+              ACHIEVEMENTS
+            </Link>
+            <Link
+              href="/student/leaderboard"
+              className={`flex items-center gap-3 px-4 py-3 rounded-xl text-xs font-semibold tracking-wider transition-all ${
+                pathname === '/student/leaderboard'
+                  ? 'bg-indigo-500/10 text-indigo-400 border-l-2 border-indigo-500'
+                  : 'text-gray-400 hover:bg-white/5 hover:text-white'
+              }`}
+            >
+              <Trophy className="w-4 h-4 text-amber-400" />
+              LEADERBOARD
             </Link>
             <Link
               href="/student/notifications"

@@ -47,6 +47,15 @@ public class TestService {
     @Autowired
     private CodeExecutionService codeExecutionService;
 
+    @Autowired
+    private RankingService rankingService;
+
+    @Autowired
+    private BadgeService badgeService;
+
+    @Autowired
+    private BadgeSetService badgeSetService;
+
 
     public List<Test> getAllTests() {
         return testRepository.findAll();
@@ -213,6 +222,11 @@ public class TestService {
 
     @Transactional
     public StudentTest submitTest(Long testId, Long studentId) {
+        return submitTest(testId, studentId, false);
+    }
+
+    @Transactional
+    public StudentTest submitTest(Long testId, Long studentId, boolean isAutoSubmitted) {
         StudentTest st = studentTestRepository.findByStudentIdAndTestId(studentId, testId)
                 .orElseThrow(() -> new RuntimeException("Student-Test mapping not found."));
 
@@ -222,17 +236,40 @@ public class TestService {
 
         int score = st.getScore() != null ? st.getScore() : 0;
         int maxMarks = st.getTest().getMaxMarks() != null ? st.getTest().getMaxMarks() : 100;
+        int passingThreshold = maxMarks / 2;
 
-        if (score >= (maxMarks / 2)) {
+        if (score >= passingThreshold) {
             st.setStatus("COMPLETED");
+            st.setPassFailStatus("PASS");
         } else {
             st.setStatus("PENDING");
+            st.setPassFailStatus("FAIL");
             st.setWarningsCount(0);
             st.setIsSuspended(false);
         }
 
+        st.setAutoSubmitted(isAutoSubmitted);
         st.setSubmittedAt(LocalDateTime.now());
-        return studentTestRepository.save(st);
+
+        if (st.getStartedAt() != null) {
+            long seconds = java.time.Duration.between(st.getStartedAt(), st.getSubmittedAt()).getSeconds();
+            st.setTimeTakenSeconds(Math.max(1L, seconds));
+        }
+
+        StudentTest savedSt = studentTestRepository.save(st);
+
+        // Update subject ranking & award badges asynchronously
+        try {
+            if (savedSt.getTest() != null && savedSt.getTest().getSubject() != null) {
+                rankingService.updateSubjectRankings(savedSt.getTest().getSubject().getId());
+            }
+            badgeService.evaluateAndAwardBadges(studentId, testId);
+            badgeSetService.allocateBadgesForTest(testId);
+        } catch (Exception e) {
+            System.err.println("Non-fatal error updating ranking/badges: " + e.getMessage());
+        }
+
+        return savedSt;
     }
 
     @Transactional
@@ -312,6 +349,7 @@ public class TestService {
         if (test != null) {
             testDto = new com.chillcode.assessment.dto.StudentTestDto.TestDetailsDto(
                 test.getId(),
+                test.getTestCode() != null ? test.getTestCode() : "TEST-" + test.getId(),
                 test.getName(),
                 test.getDurationMinutes(),
                 test.getStartTime(),
