@@ -28,77 +28,85 @@ public class OverallLeaderboardService {
 
     @Transactional(readOnly = true)
     public List<OverallLeaderboardEntry> getOverallLeaderboard(String timeFilter, String departmentFilter) {
-        List<User> students = userRepository.findAll().stream()
-                .filter(u -> u.getRole() == Role.STUDENT)
-                .collect(Collectors.toList());
-
-        if (departmentFilter != null && !departmentFilter.trim().isEmpty() && !"ALL".equalsIgnoreCase(departmentFilter)) {
-            students = students.stream()
-                    .filter(s -> s.getDepartment() != null && s.getDepartment().equalsIgnoreCase(departmentFilter))
-                    .collect(Collectors.toList());
-        }
-
-        List<StudentTest> allStudentTests = studentTestRepository.findAll().stream()
-                .filter(st -> "SUBMITTED".equalsIgnoreCase(st.getStatus()) || "EVALUATED".equalsIgnoreCase(st.getStatus()) || "COMPLETED".equalsIgnoreCase(st.getStatus()))
-                .collect(Collectors.toList());
-
-        List<OverallLeaderboardEntry> entries = new ArrayList<>();
-
-        for (User student : students) {
-            List<StudentTest> myTests = allStudentTests.stream()
-                    .filter(st -> st.getStudent() != null && st.getStudent().getId().equals(student.getId()))
+        try {
+            List<User> students = userRepository.findAll().stream()
+                    .filter(u -> u.getRole() == Role.STUDENT)
                     .collect(Collectors.toList());
 
-            int totalMarks = myTests.stream().mapToInt(st -> st.getScore() != null ? st.getScore() : 0).sum();
-            long totalTestsPassed = myTests.stream()
-                    .filter(st -> "PASS".equalsIgnoreCase(st.getPassFailStatus()) || "COMPLETED".equalsIgnoreCase(st.getStatus()))
-                    .count();
+            if (departmentFilter != null && !departmentFilter.trim().isEmpty() && !"ALL".equalsIgnoreCase(departmentFilter)) {
+                students = students.stream()
+                        .filter(s -> s.getDepartment() != null && s.getDepartment().equalsIgnoreCase(departmentFilter))
+                        .collect(Collectors.toList());
+            }
 
-            int totalBadges = studentAchievementRepository.findByStudentIdOrderByAwardedAtDesc(student.getId()).size();
+            // Use eager JOIN FETCH query to avoid N+1 lazy loading of student field
+            List<StudentTest> allStudentTests = studentTestRepository.findAllCompletedWithStudents();
 
-            double avgScore = myTests.isEmpty() ? 0.0 :
-                    myTests.stream().mapToInt(st -> st.getScore() != null ? st.getScore() : 0).average().orElse(0.0);
+            List<OverallLeaderboardEntry> entries = new ArrayList<>();
 
-            double avgTimeSec = myTests.isEmpty() ? 0.0 :
-                    myTests.stream().mapToLong(st -> st.getTimeTakenSeconds() != null ? st.getTimeTakenSeconds() : 0L).average().orElse(0.0);
+            for (User student : students) {
+                List<StudentTest> myTests = allStudentTests.stream()
+                        .filter(st -> st.getStudent() != null && st.getStudent().getId().equals(student.getId()))
+                        .collect(Collectors.toList());
 
-            entries.add(new OverallLeaderboardEntry(
-                    student.getId(),
-                    student.getName(),
-                    student.getRegisterNumber(),
-                    student.getDepartment(),
-                    totalMarks,
-                    (int) totalTestsPassed,
-                    totalBadges,
-                    avgScore,
-                    avgTimeSec
-            ));
+                int totalMarks = myTests.stream().mapToInt(st -> st.getScore() != null ? st.getScore() : 0).sum();
+                long totalTestsPassed = myTests.stream()
+                        .filter(st -> "PASS".equalsIgnoreCase(st.getPassFailStatus()) || "COMPLETED".equalsIgnoreCase(st.getStatus()))
+                        .count();
+
+                int totalBadges = 0;
+                try {
+                    totalBadges = studentAchievementRepository.findByStudentIdOrderByAwardedAtDesc(student.getId()).size();
+                } catch (Exception ignored) {}
+
+                double avgScore = myTests.isEmpty() ? 0.0 :
+                        myTests.stream().mapToInt(st -> st.getScore() != null ? st.getScore() : 0).average().orElse(0.0);
+
+                double avgTimeSec = myTests.isEmpty() ? 0.0 :
+                        myTests.stream().mapToLong(st -> st.getTimeTakenSeconds() != null ? st.getTimeTakenSeconds() : 0L).average().orElse(0.0);
+
+                entries.add(new OverallLeaderboardEntry(
+                        student.getId(),
+                        student.getName(),
+                        student.getRegisterNumber(),
+                        student.getDepartment(),
+                        totalMarks,
+                        (int) totalTestsPassed,
+                        totalBadges,
+                        avgScore,
+                        avgTimeSec
+                ));
+            }
+
+            // Sort priority: 1. Total Marks, 2. Total Tests Passed, 3. Total Badges, 4. Average Score, 5. Lowest Avg Completion Time
+            entries.sort((a, b) -> {
+                int scoreComp = Integer.compare(b.totalMarks, a.totalMarks);
+                if (scoreComp != 0) return scoreComp;
+
+                int passComp = Integer.compare(b.totalTestsPassed, a.totalTestsPassed);
+                if (passComp != 0) return passComp;
+
+                int badgeComp = Integer.compare(b.totalBadges, a.totalBadges);
+                if (badgeComp != 0) return badgeComp;
+
+                int avgComp = Double.compare(b.avgScore, a.avgScore);
+                if (avgComp != 0) return avgComp;
+
+                return Double.compare(a.avgTimeSec, b.avgTimeSec);
+            });
+
+            int rank = 1;
+            for (OverallLeaderboardEntry entry : entries) {
+                entry.rankPosition = rank++;
+            }
+
+            return entries;
+        } catch (Exception e) {
+            System.err.println("[OverallLeaderboardService] Error computing leaderboard: " + e.getMessage());
+            return new ArrayList<>();
         }
-
-        // Sort priority: 1. Total Marks, 2. Total Tests Passed, 3. Total Badges, 4. Average Score, 5. Lowest Avg Completion Time
-        entries.sort((a, b) -> {
-            int scoreComp = Integer.compare(b.totalMarks, a.totalMarks);
-            if (scoreComp != 0) return scoreComp;
-
-            int passComp = Integer.compare(b.totalTestsPassed, a.totalTestsPassed);
-            if (passComp != 0) return passComp;
-
-            int badgeComp = Integer.compare(b.totalBadges, a.totalBadges);
-            if (badgeComp != 0) return badgeComp;
-
-            int avgComp = Double.compare(b.avgScore, a.avgScore);
-            if (avgComp != 0) return avgComp;
-
-            return Double.compare(a.avgTimeSec, b.avgTimeSec);
-        });
-
-        int rank = 1;
-        for (OverallLeaderboardEntry entry : entries) {
-            entry.rankPosition = rank++;
-        }
-
-        return entries;
     }
+
 
     public String generateCsvExport(List<OverallLeaderboardEntry> entries) {
         StringBuilder sb = new StringBuilder();
