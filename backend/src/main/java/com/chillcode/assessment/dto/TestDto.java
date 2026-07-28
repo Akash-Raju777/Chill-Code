@@ -13,6 +13,7 @@ public class TestDto {
     private Long id;
     private String testCode;
     private Long subjectId;
+    private String subjectName;
     private String name;
     private Integer durationMinutes;
     private LocalDateTime startTime;

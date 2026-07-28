@@ -1,5 +1,6 @@
 package com.chillcode.assessment.entity;
 
+import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import jakarta.persistence.*;
 import lombok.*;
 import java.time.LocalDateTime;
@@ -13,6 +14,7 @@ import java.util.Set;
 @NoArgsConstructor
 @AllArgsConstructor
 @Builder
+@JsonIgnoreProperties({"hibernateLazyInitializer", "handler"})
 public class Test {
 
     @Id
@@ -61,6 +63,7 @@ public class Test {
         inverseJoinColumns = @JoinColumn(name = "question_id")
     )
     @Builder.Default
+    @com.fasterxml.jackson.annotation.JsonIgnore
     private Set<Question> questions = new HashSet<>();
 
     @Column(name = "test_code", length = 50)

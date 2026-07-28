@@ -1,5 +1,6 @@
 package com.chillcode.assessment.entity;
 
+import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import jakarta.persistence.*;
 import lombok.*;
 import java.time.LocalDateTime;
@@ -12,6 +13,7 @@ import java.util.List;
 @NoArgsConstructor
 @AllArgsConstructor
 @Builder
+@JsonIgnoreProperties({"hibernateLazyInitializer", "handler"})
 public class Question {
 
     @Id
@@ -63,9 +65,11 @@ public class Question {
     private Boolean partialMarksEnabled = true;
 
     @OneToMany(mappedBy = "question", cascade = CascadeType.ALL, orphanRemoval = true)
+    @com.fasterxml.jackson.annotation.JsonIgnore
     private List<TestCase> testCases;
 
     @OneToMany(mappedBy = "question", cascade = CascadeType.ALL, orphanRemoval = true)
+    @com.fasterxml.jackson.annotation.JsonIgnore
     private List<Submission> submissions;
 
     @Column(name = "created_at", nullable = false, updatable = false)

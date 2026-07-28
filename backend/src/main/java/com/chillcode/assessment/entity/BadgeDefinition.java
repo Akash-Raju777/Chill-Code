@@ -21,6 +21,7 @@ public class BadgeDefinition {
 
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "badge_set_id", nullable = false)
+    @com.fasterxml.jackson.annotation.JsonIgnore
     private BadgeSet badgeSet;
 
     @Column(name = "rank_position", nullable = false)
