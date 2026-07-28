@@ -113,6 +113,7 @@ export default function TestsWorkspace() {
   });
 
   useEffect(() => {
+    router.refresh();
     fetchTestsRef.current(true);
 
     const interval = setInterval(() => {
@@ -444,28 +445,6 @@ export default function TestsWorkspace() {
                           >
                             View Code
                           </button>
-                          {(() => {
-                            const associatedTest = getAssociatedTest(q.subjectId);
-                            const isReattemptPending = associatedTest?.reattemptStatus === `PENDING:${q.id}`;
-                            return (
-                              <button
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  if (!isReattemptPending && associatedTest) {
-                                    handleRequestReattempt(associatedTest.test.id, q.id);
-                                  }
-                                }}
-                                disabled={isReattemptPending || isSuspended}
-                                className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all select-none ${
-                                  isReattemptPending
-                                    ? 'bg-amber-500/10 border border-amber-500/20 text-amber-400 cursor-not-allowed opacity-75'
-                                    : 'bg-indigo-500/10 hover:bg-indigo-500/25 border border-indigo-500/20 text-indigo-400'
-                                }`}
-                              >
-                                {isReattemptPending ? 'Pending Approval' : 'Another Attempt'}
-                              </button>
-                            );
-                          })()}
                         </div>
                       ) : (q.status === 'NOT_STARTED' || !q.status) ? (
                         <button
@@ -509,6 +488,7 @@ export default function TestsWorkspace() {
                     </td>
                   </tr>
                 );
+                
               })}
             </tbody>
           </table>
@@ -523,7 +503,7 @@ export default function TestsWorkspace() {
       {/* Top Header Panel (Matches Practice Arena) */}
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 border-b border-white/5 pb-6">
         <div>
-          <h1 className="text-2xl font-bold text-white tracking-tight">Practice Arena</h1>
+          <h1 className="text-2xl font-bold text-white tracking-tight">Chill Code</h1>
           <p className="text-xs text-gray-500 mt-1">Select an assigned assessment block to start coding.</p>
         </div>
         

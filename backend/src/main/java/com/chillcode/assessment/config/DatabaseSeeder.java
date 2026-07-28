@@ -35,6 +35,15 @@ public class DatabaseSeeder implements CommandLineRunner {
     @Autowired
     private com.chillcode.assessment.repository.QuestionRepository questionRepository;
 
+    @Autowired
+    private com.chillcode.assessment.repository.TestCaseRepository testCaseRepository;
+
+    @Autowired
+    private com.chillcode.assessment.repository.SubmissionRepository submissionRepository;
+
+    @Autowired
+    private com.chillcode.assessment.repository.StudentQuestionStatusRepository studentQuestionStatusRepository;
+
     @Override
     @Transactional
     public void run(String... args) throws Exception {
@@ -90,6 +99,106 @@ public class DatabaseSeeder implements CommandLineRunner {
                 .build();
             subjectRepository.save(cSubject);
             System.out.println("Seeded default C Programming subject successfully.");
+        }
+
+        // Seed Java questions if not exists
+        com.chillcode.assessment.entity.Subject javaSubject = subjectRepository.findByName("Java Programming").orElse(null);
+        if (javaSubject != null && questionRepository.findBySubjectId(javaSubject.getId()).isEmpty()) {
+            com.chillcode.assessment.entity.Question q1 = com.chillcode.assessment.entity.Question.builder()
+                .subject(javaSubject)
+                .title("Two Sum")
+                .difficulty(com.chillcode.assessment.entity.Difficulty.EASY)
+                .problemStatement("Given an array of integers nums and an integer target, return indices of the two numbers such that they add up to target.\nYou may assume that each input would have exactly one solution, and you may not use the same element twice.")
+                .constraints("2 <= nums.length <= 10^4\n-10^9 <= nums[i] <= 10^9\n-10^9 <= target <= 10^9")
+                .inputFormat("First line contains array size, second line contains space-separated array integers, third line contains target integer.")
+                .outputFormat("Print two space-separated indices of the numbers.")
+                .allowedLanguages("java,python,cpp,javascript")
+                .tags("Arrays,Hash Table")
+                .build();
+            q1 = questionRepository.save(q1);
+
+            // Add test cases
+            com.chillcode.assessment.entity.TestCase tc1 = com.chillcode.assessment.entity.TestCase.builder()
+                .question(q1)
+                .inputData("4\n2 7 11 15\n9")
+                .expectedOutput("0 1")
+                .isHidden(false)
+                .build();
+            testCaseRepository.save(tc1);
+
+            com.chillcode.assessment.entity.TestCase tc2 = com.chillcode.assessment.entity.TestCase.builder()
+                .question(q1)
+                .inputData("3\n3 2 4\n6")
+                .expectedOutput("1 2")
+                .isHidden(true)
+                .build();
+            testCaseRepository.save(tc2);
+
+            com.chillcode.assessment.entity.Question q2 = com.chillcode.assessment.entity.Question.builder()
+                .subject(javaSubject)
+                .title("Palindrome Check")
+                .difficulty(com.chillcode.assessment.entity.Difficulty.EASY)
+                .problemStatement("Given an integer x, return true if x is a palindrome, and false otherwise.")
+                .constraints("-2^31 <= x <= 2^31 - 1")
+                .inputFormat("A single integer x.")
+                .outputFormat("Print 'true' if palindrome, 'false' otherwise.")
+                .allowedLanguages("java,python,cpp,javascript")
+                .tags("Math,Strings")
+                .build();
+            q2 = questionRepository.save(q2);
+
+            com.chillcode.assessment.entity.TestCase tc3 = com.chillcode.assessment.entity.TestCase.builder()
+                .question(q2)
+                .inputData("121")
+                .expectedOutput("true")
+                .isHidden(false)
+                .build();
+            testCaseRepository.save(tc3);
+
+            com.chillcode.assessment.entity.TestCase tc4 = com.chillcode.assessment.entity.TestCase.builder()
+                .question(q2)
+                .inputData("-121")
+                .expectedOutput("false")
+                .isHidden(true)
+                .build();
+            testCaseRepository.save(tc4);
+
+            System.out.println("Seeded Java questions and test cases successfully.");
+        }
+
+        // Seed C questions if not exists
+        com.chillcode.assessment.entity.Subject cSubject = subjectRepository.findByName("C Programming").orElse(null);
+        if (cSubject != null && questionRepository.findBySubjectId(cSubject.getId()).isEmpty()) {
+            com.chillcode.assessment.entity.Question q3 = com.chillcode.assessment.entity.Question.builder()
+                .subject(cSubject)
+                .title("Reverse a String")
+                .difficulty(com.chillcode.assessment.entity.Difficulty.EASY)
+                .problemStatement("Write a program to reverse a given string input.")
+                .constraints("1 <= s.length <= 10000")
+                .inputFormat("A single line string.")
+                .outputFormat("Reversed string.")
+                .allowedLanguages("c,cpp,java,python")
+                .tags("Strings,Pointers")
+                .build();
+            q3 = questionRepository.save(q3);
+
+            com.chillcode.assessment.entity.TestCase tc5 = com.chillcode.assessment.entity.TestCase.builder()
+                .question(q3)
+                .inputData("hello")
+                .expectedOutput("olleh")
+                .isHidden(false)
+                .build();
+            testCaseRepository.save(tc5);
+
+            com.chillcode.assessment.entity.TestCase tc6 = com.chillcode.assessment.entity.TestCase.builder()
+                .question(q3)
+                .inputData("ChillCode")
+                .expectedOutput("edoCllihC")
+                .isHidden(true)
+                .build();
+            testCaseRepository.save(tc6);
+
+            System.out.println("Seeded C questions and test cases successfully.");
         }
 
         // Seed tests and assign to students
@@ -159,6 +268,63 @@ public class DatabaseSeeder implements CommandLineRunner {
                             .isRead(false)
                             .build();
                     notificationRepository.save(notification);
+                }
+            }
+        }
+
+        // Seed a sample solved submission for student_demo
+        User studentDemo = userRepository.findByRegisterNumber("student_demo").orElse(null);
+        if (studentDemo != null) {
+            com.chillcode.assessment.entity.Subject javaSub = subjectRepository.findByName("Java Programming").orElse(null);
+            if (javaSub != null) {
+                com.chillcode.assessment.entity.Question qTwoSum = questionRepository.findBySubjectId(javaSub.getId()).stream()
+                    .filter(q -> q.getTitle().equalsIgnoreCase("Two Sum"))
+                    .findFirst().orElse(null);
+                String testName = javaSub.getName() + " Practice Arena";
+                com.chillcode.assessment.entity.Test javaTest = testRepository.findAll().stream()
+                    .filter(t -> t.getName().equalsIgnoreCase(testName))
+                    .findFirst().orElse(null);
+                
+                if (qTwoSum != null && javaTest != null) {
+                    com.chillcode.assessment.entity.StudentTest st = studentTestRepository.findByStudentIdAndTestId(studentDemo.getId(), javaTest.getId()).orElse(null);
+                    if (st != null && submissionRepository.findByStudentTestIdAndQuestionId(st.getId(), qTwoSum.getId()).isEmpty()) {
+                        // Create accepted submission
+                        com.chillcode.assessment.entity.Submission sub = com.chillcode.assessment.entity.Submission.builder()
+                            .studentTest(st)
+                            .question(qTwoSum)
+                            .language("java")
+                            .code("public class Solution {\n    public int[] twoSum(int[] nums, int target) {\n        return new int[]{0, 1};\n    }\n}")
+                            .status("ACCEPTED")
+                            .runTimeMs(15)
+                            .memoryUsedKb(2048)
+                            .score(100)
+                            .passedTests(2)
+                            .totalTests(2)
+                            .active(true)
+                            .createdAt(LocalDateTime.now().minusHours(2))
+                            .build();
+                        submissionRepository.save(sub);
+
+                        // Seed student question status as COMPLETED
+                        com.chillcode.assessment.entity.StudentQuestionStatus sqs = com.chillcode.assessment.entity.StudentQuestionStatus.builder()
+                            .studentId(studentDemo.getId())
+                            .questionId(qTwoSum.getId())
+                            .status("COMPLETED")
+                            .attemptCount(1)
+                            .lastSubmissionId(sub.getId())
+                            .completedAt(LocalDateTime.now().minusHours(2))
+                            .lastAttemptAt(LocalDateTime.now().minusHours(2))
+                            .build();
+                        studentQuestionStatusRepository.save(sqs);
+
+                        // Update StudentTest status to EVALUATED and score
+                        st.setStatus("EVALUATED");
+                        st.setScore(100);
+                        st.setSubmittedAt(LocalDateTime.now().minusHours(2));
+                        studentTestRepository.save(st);
+
+                        System.out.println("Seeded sample accepted submission for Two Sum successfully.");
+                    }
                 }
             }
         }

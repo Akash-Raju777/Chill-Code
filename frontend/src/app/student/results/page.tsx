@@ -61,6 +61,7 @@ export default function StudentResults() {
   };
 
   useEffect(() => {
+    router.refresh();
     fetchSubmissions();
   }, []);
 

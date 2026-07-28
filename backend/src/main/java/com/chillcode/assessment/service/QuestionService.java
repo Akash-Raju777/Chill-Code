@@ -83,7 +83,10 @@ public class QuestionService {
         java.util.Set<Long> solved = new java.util.HashSet<>();
         if (student == null) return solved;
         try {
-            solved.addAll(submissionRepository.findSolvedQuestionIdsByStudentId(student.getId()));
+            List<StudentQuestionStatus> completedStatuses = studentQuestionStatusRepository.findByStudentIdAndStatus(student.getId(), "COMPLETED");
+            for (StudentQuestionStatus sqs : completedStatuses) {
+                solved.add(sqs.getQuestionId());
+            }
         } catch (Exception ignored) {}
         return solved;
     }
@@ -331,7 +334,10 @@ public class QuestionService {
                 if (identifier != null && !"anonymousUser".equals(identifier)) {
                     java.util.Optional<com.chillcode.assessment.entity.User> userOpt = userRepository.findByIdentifier(identifier);
                     if (userOpt.isPresent()) {
-                        solved.addAll(submissionRepository.findSolvedQuestionIdsByStudentId(userOpt.get().getId()));
+                        List<StudentQuestionStatus> completedStatuses = studentQuestionStatusRepository.findByStudentIdAndStatus(userOpt.get().getId(), "COMPLETED");
+                        for (StudentQuestionStatus sqs : completedStatuses) {
+                            solved.add(sqs.getQuestionId());
+                        }
                     }
                 }
             }
