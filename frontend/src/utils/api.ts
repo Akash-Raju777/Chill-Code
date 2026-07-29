@@ -1,17 +1,26 @@
 import { useAuthStore } from '../store/authStore';
 
-const BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080';
+/**
+ * Centralized API Base URL Configuration.
+ * Automatically switches based on environment:
+ * - Local Development (.env.local): http://localhost:8080
+ * - Production (.env.production): https://chill-code-2.onrender.com
+ */
+const RAW_API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080';
+const BASE_URL = RAW_API_URL.replace(/\/$/, '');
 
 const apiCache = new Map<string, { data: any; expiry: number }>();
 
 export async function apiCall(endpoint: string, options: RequestInit = {}) {
   const method = options.method || 'GET';
-  
+  const cleanEndpoint = endpoint.startsWith('/') ? endpoint : `/${endpoint}`;
+  const fullUrl = `${BASE_URL}${cleanEndpoint}`;
+
   if (method !== 'GET') {
     apiCache.clear();
   }
 
-  const cacheKey = `${method}:${endpoint}`;
+  const cacheKey = `${method}:${cleanEndpoint}`;
   if (method === 'GET') {
     const cached = apiCache.get(cacheKey);
     if (cached && Date.now() < cached.expiry) {
@@ -20,7 +29,7 @@ export async function apiCall(endpoint: string, options: RequestInit = {}) {
   }
 
   const token = useAuthStore.getState().token;
-  
+
   const headers = new Headers(options.headers || {});
   if (token) {
     headers.set('Authorization', `Bearer ${token}`);
@@ -29,19 +38,32 @@ export async function apiCall(endpoint: string, options: RequestInit = {}) {
     headers.set('Content-Type', 'application/json');
   }
 
-  let response;
+  let response: Response;
   try {
-    response = await fetch(`${BASE_URL}${endpoint}`, {
+    response = await fetch(fullUrl, {
       cache: 'no-store',
       ...options,
       headers,
     });
   } catch (err: any) {
-    throw new Error('Network connection refused or server offline. Please check your connection.');
+    console.error(`[API Network Error] Failed to connect to ${fullUrl}:`, err);
+
+    const isLocal = BASE_URL.includes('localhost') || BASE_URL.includes('127.0.0.1');
+
+    if (isLocal) {
+      throw new Error(
+        `Backend server is not running.\n\nPlease start the Spring Boot backend before using the application. (Cannot connect to ${BASE_URL})`
+      );
+    } else {
+      throw new Error(
+        `Unable to connect to backend server (${BASE_URL}). Please check your connection or try again later.`
+      );
+    }
   }
 
+  // Handle Authentication / Session Failures
   if (response.status === 401 || response.status === 403) {
-    if (!endpoint.includes('/api/auth/login')) {
+    if (!cleanEndpoint.includes('/api/auth/login')) {
       useAuthStore.getState().logout();
       if (typeof window !== 'undefined') {
         window.location.href = '/';
@@ -49,8 +71,23 @@ export async function apiCall(endpoint: string, options: RequestInit = {}) {
     }
   }
 
+  // Handle Specific Error Status Codes with Detailed Messages
   if (!response.ok) {
-    const errorText = await response.text();
+    let errorText = '';
+    try {
+      errorText = await response.text();
+    } catch (_) {}
+
+    console.error(`[API Error ${response.status}] ${method} ${fullUrl}:`, errorText || response.statusText);
+
+    if (response.status === 404) {
+      throw new Error(errorText || `API endpoint not found (404): ${cleanEndpoint}`);
+    }
+
+    if (response.status === 500) {
+      throw new Error(errorText || `Server returned an unexpected error (500). Please try again later.`);
+    }
+
     throw new Error(errorText || `API Error: ${response.status} ${response.statusText}`);
   }
 
@@ -93,4 +130,3 @@ export const fetchSubjectLeaderboard = (subjectId: number) => apiCall(`/api/stud
 export const fetchTopSubjectRankings = (subjectId: number, limit = 10) => apiCall(`/api/student/leaderboard/top/${subjectId}?limit=${limit}`);
 export const fetchOverallLeaderboard = (timeFilter = 'ALL', departmentFilter = 'ALL') => apiCall(`/api/student/leaderboard/overall?timeFilter=${timeFilter}&departmentFilter=${departmentFilter}`);
 export const fetchStudentLeaderboardSummary = () => apiCall('/api/student/leaderboard/summary');
-
