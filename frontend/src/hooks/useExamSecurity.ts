@@ -85,7 +85,11 @@ export function useExamSecurity({ testId, onWarning, isSessionActive, internalCl
       }
     };
 
-    const handleBlur = () => {
+    const handleBlur = (e: FocusEvent) => {
+      // Ignore blur events that bubble up from inputs/buttons inside the document
+      if (e.target !== window && e.target !== document) {
+        return;
+      }
       // Blur fires instantly on Alt+Tab or clicking outside the window.
       // Only fire if student was inside fullscreen (to avoid duplicate triggers on exit overlay)
       if (document.fullscreenElement && !document.hidden) {
