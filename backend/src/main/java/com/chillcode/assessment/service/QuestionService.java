@@ -136,6 +136,24 @@ public class QuestionService {
             return convertToDto(existingOpt.get());
         }
 
+        // Module 1 & 2: Calculate total marks from test cases and validate passing marks
+        int computedTotalMarks = 0;
+        if (questionDto.getTestCases() != null && !questionDto.getTestCases().isEmpty()) {
+            for (TestCaseDto tcDto : questionDto.getTestCases()) {
+                computedTotalMarks += (tcDto.getMarks() != null ? tcDto.getMarks() : 5);
+            }
+        } else {
+            computedTotalMarks = questionDto.getTotalMarks() != null ? questionDto.getTotalMarks() : 20;
+        }
+
+        int passingMarks = questionDto.getPassingMarks() != null ? questionDto.getPassingMarks() : 10;
+        if (passingMarks < 0) {
+            throw new IllegalArgumentException("Passing Marks cannot be negative.");
+        }
+        if (passingMarks > computedTotalMarks) {
+            throw new IllegalArgumentException("Passing Marks cannot exceed Total Marks.");
+        }
+
         Question question = Question.builder()
                 .subject(subject)
                 .title(questionDto.getTitle())
@@ -146,8 +164,8 @@ public class QuestionService {
                 .outputFormat(questionDto.getOutputFormat())
                 .allowedLanguages(questionDto.getAllowedLanguages())
                 .tags(questionDto.getTags())
-                .totalMarks(questionDto.getTotalMarks() != null ? questionDto.getTotalMarks() : 20)
-                .passingMarks(questionDto.getPassingMarks() != null ? questionDto.getPassingMarks() : 10)
+                .totalMarks(computedTotalMarks)
+                .passingMarks(passingMarks)
                 .negativeMarks(questionDto.getNegativeMarks() != null ? questionDto.getNegativeMarks() : 0.0)
                 .partialMarksEnabled(questionDto.getPartialMarksEnabled() != null ? questionDto.getPartialMarksEnabled() : true)
                 .build();
@@ -191,6 +209,24 @@ public class QuestionService {
         Subject subject = subjectRepository.findById(questionDto.getSubjectId())
                 .orElseThrow(() -> new RuntimeException("Subject not found with id: " + questionDto.getSubjectId()));
 
+        // Module 1 & 2: Calculate total marks from test cases and validate passing marks
+        int computedTotalMarks = 0;
+        if (questionDto.getTestCases() != null && !questionDto.getTestCases().isEmpty()) {
+            for (TestCaseDto tcDto : questionDto.getTestCases()) {
+                computedTotalMarks += (tcDto.getMarks() != null ? tcDto.getMarks() : 5);
+            }
+        } else {
+            computedTotalMarks = questionDto.getTotalMarks() != null ? questionDto.getTotalMarks() : 20;
+        }
+
+        int passingMarks = questionDto.getPassingMarks() != null ? questionDto.getPassingMarks() : 10;
+        if (passingMarks < 0) {
+            throw new IllegalArgumentException("Passing Marks cannot be negative.");
+        }
+        if (passingMarks > computedTotalMarks) {
+            throw new IllegalArgumentException("Passing Marks cannot exceed Total Marks.");
+        }
+
         question.setSubject(subject);
         question.setTitle(questionDto.getTitle());
         question.setDifficulty(questionDto.getDifficulty());
@@ -200,6 +236,8 @@ public class QuestionService {
         question.setOutputFormat(questionDto.getOutputFormat());
         question.setAllowedLanguages(questionDto.getAllowedLanguages());
         question.setTags(questionDto.getTags());
+        question.setTotalMarks(computedTotalMarks);
+        question.setPassingMarks(passingMarks);
 
         Question savedQuestion = questionRepository.save(question);
         log.info("Question Updated: Question ID: {}, Title: '{}' successfully updated in database", savedQuestion.getId(), savedQuestion.getTitle());
@@ -230,6 +268,7 @@ public class QuestionService {
                         .inputData(tcDto.getInputData())
                         .expectedOutput(tcDto.getExpectedOutput())
                         .isHidden(tcDto.getIsHidden())
+                        .marks(tcDto.getMarks() != null ? tcDto.getMarks() : 5)
                         .build();
                 testCaseRepository.save(testCase);
             }

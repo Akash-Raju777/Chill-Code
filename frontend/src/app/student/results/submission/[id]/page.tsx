@@ -99,30 +99,34 @@ export default function SubmissionResultPage() {
     );
   }
 
-  const isAccepted = submission.status === 'ACCEPTED';
-  let verdictText = submission.status;
-  let verdictColor = "text-red-400 border-red-500/20 bg-red-500/10";
-  let VerdictIcon = XCircle;
+  const isPass = submission.overallResult === 'PASS' || submission.status === 'ACCEPTED';
+  let verdictText = isPass ? 'PASS' : 'FAIL';
+  let verdictColor = isPass ? 'text-emerald-400 border-emerald-500/20 bg-emerald-500/10' : 'text-red-400 border-red-500/20 bg-red-500/10';
+  let VerdictIcon = isPass ? CheckCircle2 : XCircle;
 
-  if (isAccepted) {
-    verdictText = "Accepted";
-    verdictColor = "text-emerald-400 border-emerald-500/20 bg-emerald-500/10";
-    VerdictIcon = CheckCircle2;
-  } else if (submission.status === 'COMPILATION_ERROR') {
-    verdictText = "Compilation Error";
+  if (submission.status === 'COMPILATION_ERROR') {
+    verdictText = "Compilation Error (FAIL)";
     verdictColor = "text-amber-400 border-amber-500/20 bg-amber-500/10";
   } else if (submission.status === 'RUNTIME_ERROR') {
-    verdictText = "Runtime Error";
+    verdictText = "Runtime Error (FAIL)";
     verdictColor = "text-red-400 border-red-500/20 bg-red-500/10";
   } else if (submission.status === 'TIME_LIMIT_EXCEEDED') {
-    verdictText = "Time Limit Exceeded";
+    verdictText = "Time Limit Exceeded (FAIL)";
     verdictColor = "text-orange-400 border-orange-500/20 bg-orange-500/10";
   } else if (submission.status === 'MEMORY_LIMIT_EXCEEDED') {
-    verdictText = "Memory Limit Exceeded";
+    verdictText = "Memory Limit Exceeded (FAIL)";
     verdictColor = "text-purple-400 border-purple-500/20 bg-purple-500/10";
   } else if (submission.status === 'WRONG_ANSWER') {
-    verdictText = "Output Not Matched";
+    verdictText = isPass ? "Output Mismatched (PASS)" : "Output Mismatched (FAIL)";
   }
+
+  const score = submission.score ?? 0;
+  const totalMarks = submission.totalMarks ?? 20;
+  const passingMarks = submission.passingMarks ?? 10;
+  const percentage = submission.percentage ?? (totalMarks > 0 ? Math.round(((score * 100.0) / totalMarks) * 100) / 100 : 0);
+  const passedTests = submission.passedTests ?? 0;
+  const totalTests = submission.totalTests ?? 0;
+  const failedTests = Math.max(0, totalTests - passedTests);
 
   return (
     <div className="max-w-4xl mx-auto px-4 py-8 space-y-6 font-sans">
@@ -141,69 +145,190 @@ export default function SubmissionResultPage() {
       </div>
 
       {/* Verdict Panel Card */}
-      <div className={`p-6 rounded-2xl border ${verdictColor} backdrop-blur-md flex flex-col md:flex-row md:items-center justify-between gap-6`}>
+      <div className={`p-6 rounded-2xl border ${verdictColor} backdrop-blur-md flex flex-col md:flex-row md:items-center justify-between gap-6 shadow-xl`}>
         <div className="flex items-center gap-4">
           <VerdictIcon className="w-12 h-12" />
           <div>
-            <div className="text-[10px] text-gray-400 font-bold uppercase tracking-wider">Submission Verdict</div>
+            <div className="text-[10px] text-gray-400 font-bold uppercase tracking-wider">Submission Status & Overall Result</div>
             <h1 className="text-2xl font-black tracking-tight">{verdictText}</h1>
           </div>
         </div>
         <div className="flex flex-col gap-1 text-left md:text-right">
-          <span className="text-xs text-white font-bold">{submission.questionName}</span>
-          <span className="text-[10px] text-gray-400 uppercase font-bold tracking-wider">{submission.subjectName}</span>
+          <span className="text-sm text-white font-bold">{submission.questionName}</span>
+          <div className="flex items-center gap-2 md:justify-end text-[10px] text-gray-400 uppercase font-bold tracking-wider">
+            <span>Subject: <strong className="text-gray-200">{submission.subjectName}</strong></span>
+            <span>•</span>
+            <span>Lang: <strong className="text-indigo-400 uppercase">{submission.language}</strong></span>
+          </div>
         </div>
       </div>
 
-      {/* Grid Stats Block */}
-      <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
-        {/* Overall Status (PASS/FAIL) */}
-        <div className="bg-[#11131c] border border-white/5 p-4 rounded-xl space-y-1.5">
+      {/* Module 5 Overview Metrics Grid */}
+      <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-6 gap-3">
+        {/* Overall Status */}
+        <div className="bg-[#11131c] border border-white/5 p-4 rounded-xl space-y-1">
           <span className="text-[10px] text-gray-500 uppercase font-bold tracking-wider">Overall Result</span>
-          <div className={`text-lg font-black tracking-wider uppercase ${isAccepted ? 'text-emerald-400' : 'text-red-400'}`}>
-            {isAccepted ? 'PASS' : 'FAIL'}
+          <div className={`text-lg font-black tracking-wider uppercase ${isPass ? 'text-emerald-400' : 'text-red-400'}`}>
+            {isPass ? 'PASS' : 'FAIL'}
           </div>
         </div>
 
-        {/* Test Cases Count */}
-        <div className="bg-[#11131c] border border-white/5 p-4 rounded-xl space-y-1.5">
-          <span className="text-[10px] text-gray-500 uppercase font-bold tracking-wider">Test Cases Passed</span>
-          <div className="text-lg font-extrabold text-white font-mono">
-            {submission.passedTests} / {submission.totalTests}
+        {/* Final Score */}
+        <div className="bg-[#11131c] border border-white/5 p-4 rounded-xl space-y-1">
+          <span className="text-[10px] text-gray-500 uppercase font-bold tracking-wider">Final Score</span>
+          <div className="text-lg font-black text-amber-300 font-mono">
+            {score} <span className="text-xs text-gray-500 font-semibold">/ {totalMarks}</span>
           </div>
         </div>
 
-        {/* Runtime */}
-        <div className="bg-[#11131c] border border-white/5 p-4 rounded-xl space-y-1.5">
-          <span className="text-[10px] text-gray-500 uppercase font-bold tracking-wider flex items-center gap-1">
-            <Clock className="w-3.5 h-3.5 text-gray-400" />
-            Execution Time
+        {/* Passing Marks */}
+        <div className="bg-[#11131c] border border-white/5 p-4 rounded-xl space-y-1">
+          <span className="text-[10px] text-gray-500 uppercase font-bold tracking-wider">Passing Marks</span>
+          <div className="text-lg font-black text-indigo-400 font-mono">
+            {passingMarks}
+          </div>
+        </div>
+
+        {/* Percentage */}
+        <div className="bg-[#11131c] border border-white/5 p-4 rounded-xl space-y-1">
+          <span className="text-[10px] text-gray-500 uppercase font-bold tracking-wider">Percentage</span>
+          <div className="text-lg font-black text-white font-mono">
+            {percentage}%
+          </div>
+        </div>
+
+        {/* Passed Test Cases */}
+        <div className="bg-[#11131c] border border-white/5 p-4 rounded-xl space-y-1">
+          <span className="text-[10px] text-gray-500 uppercase font-bold tracking-wider">Passed Tests</span>
+          <div className="text-lg font-black text-emerald-400 font-mono">
+            {passedTests} / {totalTests}
+          </div>
+        </div>
+
+        {/* Failed Test Cases */}
+        <div className="bg-[#11131c] border border-white/5 p-4 rounded-xl space-y-1">
+          <span className="text-[10px] text-gray-500 uppercase font-bold tracking-wider">Failed Tests</span>
+          <div className="text-lg font-black text-red-400 font-mono">
+            {failedTests}
+          </div>
+        </div>
+      </div>
+
+      {/* Performance Stats */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <div className="bg-[#11131c] border border-white/5 p-4 rounded-xl flex items-center gap-3">
+          <div className="p-2.5 rounded-lg bg-indigo-500/10 text-indigo-400">
+            <Clock className="w-5 h-5" />
+          </div>
+          <div>
+            <div className="text-[10px] text-gray-500 font-bold uppercase tracking-wider">Execution Time</div>
+            <div className="text-sm font-bold text-white font-mono">{submission.runTimeMs !== null ? `${submission.runTimeMs} ms` : 'N/A'}</div>
+          </div>
+        </div>
+
+        <div className="bg-[#11131c] border border-white/5 p-4 rounded-xl flex items-center gap-3">
+          <div className="p-2.5 rounded-lg bg-purple-500/10 text-purple-400">
+            <Database className="w-5 h-5" />
+          </div>
+          <div>
+            <div className="text-[10px] text-gray-500 font-bold uppercase tracking-wider">Memory Used</div>
+            <div className="text-sm font-bold text-white font-mono">{submission.memoryUsedKb !== null ? `${submission.memoryUsedKb} KB` : 'N/A'}</div>
+          </div>
+        </div>
+
+        <div className="bg-[#11131c] border border-white/5 p-4 rounded-xl flex items-center gap-3">
+          <div className="p-2.5 rounded-lg bg-blue-500/10 text-blue-400">
+            <Calendar className="w-5 h-5" />
+          </div>
+          <div>
+            <div className="text-[10px] text-gray-500 font-bold uppercase tracking-wider">Submission Time</div>
+            <div className="text-xs font-semibold text-gray-300">{submission.createdAt ? new Date(submission.createdAt).toLocaleString() : 'N/A'}</div>
+          </div>
+        </div>
+      </div>
+
+      {/* Module 5 Detailed Test Case Summary Breakdown */}
+      {submission.testCaseResults && submission.testCaseResults.length > 0 && (
+        <div className="bg-[#11131c] border border-white/5 rounded-2xl p-6 space-y-4">
+          <div className="flex items-center justify-between">
+            <div>
+              <h3 className="text-sm font-bold text-white uppercase tracking-wide">Detailed Test Case Breakdown</h3>
+              <p className="text-[11px] text-gray-500">Individual status and marks allocated per test case.</p>
+            </div>
+            <div className="text-xs font-mono font-bold text-amber-300 bg-amber-500/10 border border-amber-500/20 px-3 py-1 rounded-full">
+              Score: {score} / {totalMarks}
+            </div>
+          </div>
+
+          <div className="overflow-x-auto">
+            <table className="w-full text-left text-xs">
+              <thead>
+                <tr className="border-b border-white/10 text-gray-400 uppercase font-bold text-[10px] tracking-wider">
+                  <th className="pb-3 px-3">Test Case</th>
+                  <th className="pb-3 px-3">Status</th>
+                  <th className="pb-3 px-3 text-right">Marks Awarded</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-white/5">
+                {submission.testCaseResults.map((tc: any, idx: number) => {
+                  const isTcPassed = tc.status === 'PASSED';
+                  const tcMaxMarks = tc.marks ?? 5;
+                  const tcAwarded = tc.marksAwarded ?? (isTcPassed ? tcMaxMarks : 0);
+
+                  return (
+                    <tr key={tc.id || idx} className="hover:bg-white/[0.02] transition-colors">
+                      <td className="py-3 px-3 font-semibold text-white">
+                        Test Case {idx + 1} {tc.isHidden ? '(Hidden)' : ''}
+                      </td>
+                      <td className="py-3 px-3">
+                        <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full font-bold text-[10px] ${
+                          isTcPassed ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20' : 'bg-red-500/10 text-red-400 border border-red-500/20'
+                        }`}>
+                          {isTcPassed ? (
+                            <>
+                              <CheckCircle2 className="w-3 h-3" />
+                              Passed
+                            </>
+                          ) : (
+                            <>
+                              <XCircle className="w-3 h-3" />
+                              {tc.status || 'Failed'}
+                            </>
+                          )}
+                        </span>
+                      </td>
+                      <td className="py-3 px-3 text-right font-mono font-bold">
+                        <span className={isTcPassed ? 'text-emerald-400' : 'text-gray-500'}>
+                          {tcAwarded}
+                        </span>
+                        <span className="text-gray-600 font-normal"> / {tcMaxMarks} Marks</span>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
+      {/* Module 5 Summary Box */}
+      <div className="bg-gradient-to-r from-[#11131c] via-[#161926] to-[#11131c] border border-white/10 p-6 rounded-2xl flex flex-col md:flex-row md:items-center justify-between gap-4 shadow-lg">
+        <div className="space-y-1">
+          <div className="text-[10px] text-gray-400 uppercase font-bold tracking-wider">Evaluation Summary</div>
+          <div className="text-xl font-bold text-white flex items-center gap-3">
+            <span>Final Score: <strong className="text-amber-300 font-mono">{score} / {totalMarks}</strong></span>
+            <span>•</span>
+            <span>Passing Marks: <strong className="text-indigo-400 font-mono">{passingMarks}</strong></span>
+          </div>
+        </div>
+        <div className="flex items-center gap-3">
+          <span className="text-xs text-gray-400 font-medium">Final Decision:</span>
+          <span className={`px-4 py-1.5 rounded-xl font-black text-xs uppercase tracking-wider shadow-md ${
+            isPass ? 'bg-emerald-500/20 border border-emerald-400/40 text-emerald-300' : 'bg-red-500/20 border border-red-400/40 text-red-300'
+          }`}>
+            {isPass ? 'PASS' : 'FAIL'}
           </span>
-          <div className="text-lg font-extrabold text-white font-mono">
-            {submission.runTimeMs !== null ? `${submission.runTimeMs} ms` : 'N/A'}
-          </div>
-        </div>
-
-        {/* Memory */}
-        <div className="bg-[#11131c] border border-white/5 p-4 rounded-xl space-y-1.5">
-          <span className="text-[10px] text-gray-500 uppercase font-bold tracking-wider flex items-center gap-1">
-            <Database className="w-3.5 h-3.5 text-gray-400" />
-            Memory Used
-          </span>
-          <div className="text-lg font-extrabold text-white font-mono">
-            {submission.memoryUsedKb !== null ? `${submission.memoryUsedKb} KB` : 'N/A'}
-          </div>
-        </div>
-
-        {/* Time Submitted */}
-        <div className="bg-[#11131c] border border-white/5 p-4 rounded-xl space-y-1.5">
-          <span className="text-[10px] text-gray-500 uppercase font-bold tracking-wider flex items-center gap-1">
-            <Calendar className="w-3.5 h-3.5 text-gray-400" />
-            Submitted At
-          </span>
-          <div className="text-xs font-semibold text-gray-300 leading-normal">
-            {submission.createdAt ? new Date(submission.createdAt).toLocaleString() : 'N/A'}
-          </div>
         </div>
       </div>
 
@@ -274,7 +399,7 @@ export default function SubmissionResultPage() {
 
       {/* Action Buttons */}
       <div className="flex items-center gap-4 pt-4 border-t border-white/5">
-        {!isAccepted ? (
+        {!isPass ? (
           <button
             onClick={handleAnotherAttempt}
             disabled={actionLoading}

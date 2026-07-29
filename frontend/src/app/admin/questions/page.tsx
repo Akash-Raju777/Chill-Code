@@ -14,6 +14,7 @@ interface TestCase {
   inputData: string;
   expectedOutput: string;
   isHidden: boolean;
+  marks: number;
 }
 
 interface Question {
@@ -27,6 +28,8 @@ interface Question {
   outputFormat?: string;
   allowedLanguages: string;
   tags?: string;
+  totalMarks?: number;
+  passingMarks?: number;
   testCases: TestCase[];
 }
 
@@ -55,6 +58,7 @@ export default function QuestionManagement() {
   const [constraints, setConstraints] = useState('');
   const [inputFormat, setInputFormat] = useState('');
   const [outputFormat, setOutputFormat] = useState('');
+  const [passingMarks, setPassingMarks] = useState<number>(10);
 
   const [allowedLangs, setAllowedLangs] = useState({
     java: true,
@@ -65,8 +69,11 @@ export default function QuestionManagement() {
   });
   const [tags, setTags] = useState('');
   const [testCases, setTestCases] = useState<TestCase[]>([
-    { inputData: '', expectedOutput: '', isHidden: false },
+    { inputData: '', expectedOutput: '', isHidden: false, marks: 5 },
   ]);
+
+  // Compute Total Marks automatically by summing all test case marks
+  const computedTotalMarks = testCases.reduce((sum, tc) => sum + (Number(tc.marks) || 0), 0);
 
   const loadInitialData = async () => {
     try {
@@ -112,10 +119,11 @@ export default function QuestionManagement() {
     setConstraints('');
     setInputFormat('');
     setOutputFormat('');
+    setPassingMarks(10);
 
     setAllowedLangs({ java: true, python: true, cpp: false, c: false, javascript: false });
     setTags('');
-    setTestCases([{ inputData: '', expectedOutput: '', isHidden: false }]);
+    setTestCases([{ inputData: '', expectedOutput: '', isHidden: false, marks: 5 }]);
     setFormSubjectId(selectedSubjectId);
     setShowForm(true);
   };
@@ -129,7 +137,13 @@ export default function QuestionManagement() {
     setInputFormat(q.inputFormat || '');
     setOutputFormat(q.outputFormat || '');
     setTags(q.tags || '');
-    setTestCases(q.testCases || []);
+    setPassingMarks(q.passingMarks || 10);
+    setTestCases(
+      q.testCases?.map((tc) => ({
+        ...tc,
+        marks: tc.marks ?? 5,
+      })) || [{ inputData: '', expectedOutput: '', isHidden: false, marks: 5 }]
+    );
     
     // Allowed languages parsing
     const langs = q.allowedLanguages ? q.allowedLanguages.split(',').map(l => l.trim().toLowerCase()) : [];
@@ -146,7 +160,7 @@ export default function QuestionManagement() {
   };
 
   const handleAddTestCase = () => {
-    setTestCases([...testCases, { inputData: '', expectedOutput: '', isHidden: true }]);
+    setTestCases([...testCases, { inputData: '', expectedOutput: '', isHidden: true, marks: 5 }]);
   };
 
   const handleRemoveTestCase = (index: number) => {
@@ -163,9 +177,19 @@ export default function QuestionManagement() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (saving) return; // Prevent double clicks
+    if (saving) return;
     if (!formSubjectId) {
       setError('Please select a subject before saving a question.');
+      return;
+    }
+
+    // MODULE 2 Validation Rules
+    if (passingMarks < 0) {
+      setError('Passing Marks cannot be negative.');
+      return;
+    }
+    if (passingMarks > computedTotalMarks) {
+      setError(`Passing Marks (${passingMarks}) cannot exceed Total Marks (${computedTotalMarks}).`);
       return;
     }
 
@@ -185,6 +209,8 @@ export default function QuestionManagement() {
       inputFormat,
       outputFormat,
 
+      totalMarks: computedTotalMarks,
+      passingMarks: Number(passingMarks),
       allowedLanguages: langsStr,
       tags,
       testCases,
@@ -480,7 +506,10 @@ export default function QuestionManagement() {
           {/* Testcases panel */}
           <div className="border-t border-white/5 pt-6 space-y-4">
             <div className="flex justify-between items-center">
-              <label className="block text-xs font-semibold text-gray-400 uppercase">Verification Test Cases</label>
+              <div>
+                <label className="block text-xs font-semibold text-gray-400 uppercase">Verification Test Cases & Marks Allocation</label>
+                <p className="text-[11px] text-gray-500">Configure individual test cases with their designated marks.</p>
+              </div>
               <button
                 type="button"
                 onClick={handleAddTestCase}
@@ -495,7 +524,7 @@ export default function QuestionManagement() {
               {testCases.map((tc, index) => (
                 <div key={index} className="flex flex-col md:flex-row gap-4 p-4 rounded-xl bg-white/5 border border-white/5 relative items-end">
                   <div className="flex-1 space-y-1">
-                    <label className="block text-[10px] font-semibold text-gray-500 uppercase">Standard Input (stdin)</label>
+                    <label className="block text-[10px] font-semibold text-gray-500 uppercase">Test Case {index + 1} - Standard Input (stdin)</label>
                     <textarea
                       placeholder="Input data feed (leave blank if no input)"
                       className="w-full glass-input p-2 rounded-lg text-xs h-16 font-mono"
@@ -511,6 +540,17 @@ export default function QuestionManagement() {
                       className="w-full glass-input p-2 rounded-lg text-xs h-16 font-mono"
                       value={tc.expectedOutput}
                       onChange={(e) => handleTestCaseChange(index, 'expectedOutput', e.target.value)}
+                    />
+                  </div>
+                  <div className="w-full md:w-28 space-y-1">
+                    <label className="block text-[10px] font-semibold text-indigo-400 uppercase">Marks</label>
+                    <input
+                      type="number"
+                      min="1"
+                      required
+                      value={tc.marks ?? 5}
+                      onChange={(e) => handleTestCaseChange(index, 'marks', Math.max(0, parseInt(e.target.value) || 0))}
+                      className="w-full glass-input p-2 rounded-lg text-xs font-mono text-center font-bold text-indigo-300"
                     />
                   </div>
                   <div className="flex items-center gap-4 justify-between w-full md:w-auto md:h-16 pb-2">
@@ -535,6 +575,58 @@ export default function QuestionManagement() {
                   </div>
                 </div>
               ))}
+            </div>
+          </div>
+
+          {/* Module 1 & 2: Marks Summary & Passing Marks Configuration */}
+          <div className="border-t border-white/5 pt-6 grid grid-cols-1 md:grid-cols-2 gap-6 bg-white/[0.02] p-5 rounded-2xl border">
+            <div>
+              <div className="flex justify-between items-center mb-1">
+                <label className="block text-xs font-bold text-gray-300 uppercase">Total Marks</label>
+                <span className="text-[10px] text-indigo-400 font-semibold bg-indigo-500/10 px-2 py-0.5 rounded-full border border-indigo-500/20">
+                  Auto-Calculated
+                </span>
+              </div>
+              <input
+                type="number"
+                disabled
+                readOnly
+                value={computedTotalMarks}
+                className="w-full glass-input p-3 rounded-xl text-sm font-bold text-white bg-white/5 border border-white/10 cursor-not-allowed font-mono opacity-80"
+              />
+              <p className="text-[11px] text-gray-500 mt-1">Automatically computed by summing all test case marks.</p>
+            </div>
+
+            <div>
+              <label className="block text-xs font-bold text-gray-300 uppercase mb-1">Passing Marks</label>
+              <input
+                type="number"
+                min="0"
+                max={computedTotalMarks}
+                required
+                value={passingMarks}
+                onChange={(e) => setPassingMarks(parseInt(e.target.value) || 0)}
+                className={`w-full glass-input p-3 rounded-xl text-sm font-bold font-mono ${
+                  passingMarks > computedTotalMarks || passingMarks < 0 
+                    ? 'border-red-500 text-red-400 bg-red-500/10' 
+                    : 'text-emerald-400'
+                }`}
+              />
+              {passingMarks > computedTotalMarks && (
+                <p className="text-[11px] text-red-400 font-semibold mt-1 flex items-center gap-1">
+                  <AlertCircle className="w-3 h-3" />
+                  Passing Marks cannot exceed Total Marks ({computedTotalMarks}).
+                </p>
+              )}
+              {passingMarks < 0 && (
+                <p className="text-[11px] text-red-400 font-semibold mt-1 flex items-center gap-1">
+                  <AlertCircle className="w-3 h-3" />
+                  Passing Marks cannot be negative.
+                </p>
+              )}
+              {passingMarks >= 0 && passingMarks <= computedTotalMarks && (
+                <p className="text-[11px] text-gray-500 mt-1">Student must score at least this mark to PASS.</p>
+              )}
             </div>
           </div>
 

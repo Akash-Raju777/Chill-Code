@@ -151,6 +151,9 @@ public class CodeExecutionService {
                 tcResult.setTestCaseId(tc.getId());
                 tcResult.setInputData(tc.getInputData());
                 tcResult.setExpectedOutput(tc.getExpectedOutput());
+                int tcMaxMarks = tc.getMarks() != null ? tc.getMarks() : 5;
+                tcResult.setMarks(tcMaxMarks);
+                tcResult.setMarksAwarded(0);
 
                 try {
                     JsonNode res = executeOnJudge0(request.getCode(), languageId, tc.getInputData(), null);
@@ -174,6 +177,7 @@ public class CodeExecutionService {
 
                     if (statusId == 6) { // Compilation Error
                         tcResult.setStatus("COMPILATION_ERROR");
+                        tcResult.setMarksAwarded(0);
                         resultDto.setCompileError(compileOutput);
                         tcResult.setMessage("Compilation Error:\n" + compileOutput);
                         tcResult.setActualOutput("Compilation Error:\n" + compileOutput);
@@ -183,6 +187,7 @@ public class CodeExecutionService {
                         break; // Stop execution immediately!
                     } else if (statusId == 5) { // TLE
                         tcResult.setStatus("TLE");
+                        tcResult.setMarksAwarded(0);
                         tcResult.setMessage("Time Limit Exceeded");
                         tcResult.setActualOutput("Time Limit Exceeded");
                         overallVerdict = updateVerdict(overallVerdict, "TIME_LIMIT_EXCEEDED");
@@ -192,6 +197,7 @@ public class CodeExecutionService {
                         }
                     } else if (statusId == 8) { // MLE
                         tcResult.setStatus("MLE");
+                        tcResult.setMarksAwarded(0);
                         tcResult.setMessage("Memory Limit Exceeded");
                         tcResult.setActualOutput("Memory Limit Exceeded");
                         overallVerdict = updateVerdict(overallVerdict, "MEMORY_LIMIT_EXCEEDED");
@@ -201,6 +207,7 @@ public class CodeExecutionService {
                         }
                     } else if (statusId == 7 || statusId == 9 || statusId == 10 || statusId == 11 || statusId == 12) { // Runtime Error
                         tcResult.setStatus("RTE");
+                        tcResult.setMarksAwarded(0);
                         tcResult.setMessage("Runtime Error:\n" + stderr);
                         tcResult.setActualOutput("Runtime Error:\n" + stderr);
                         overallVerdict = updateVerdict(overallVerdict, "RUNTIME_ERROR");
@@ -217,10 +224,12 @@ public class CodeExecutionService {
                         tcResult.setActualOutput(stdout);
                         if (match) {
                             tcResult.setStatus("PASSED");
+                            tcResult.setMarksAwarded(tcMaxMarks);
                             tcResult.setMessage("Test Case Passed");
                             passedCount++;
                         } else {
                             tcResult.setStatus("FAILED");
+                            tcResult.setMarksAwarded(0);
                             if (tc.getIsHidden() != null && tc.getIsHidden()) {
                                 tcResult.setMessage("Output doesn't match expected output. (Hidden testcase failed)");
                             } else {
@@ -239,6 +248,7 @@ public class CodeExecutionService {
                     }
                 } catch (Exception e) {
                     tcResult.setStatus("FAILED");
+                    tcResult.setMarksAwarded(0);
                     tcResult.setMessage("Execution error: " + e.getMessage());
                     tcResult.setActualOutput("Execution error: " + e.getMessage());
                     overallVerdict = updateVerdict(overallVerdict, "RUNTIME_ERROR");
@@ -270,17 +280,45 @@ public class CodeExecutionService {
             resultDto.setAiExplanation(explanation);
         }
 
-        // Calculate score
+        // MODULE 3 & 4: Calculate score, total marks, passing marks, percentage & overallResult
         int finalScore = 0;
-        if ("ACCEPTED".equals(overallVerdict)) {
-            finalScore = 10;
+        if (resultDto.getTestCaseResults() != null) {
+            for (TestCaseResultDto tcRes : resultDto.getTestCaseResults()) {
+                if (tcRes.getMarksAwarded() != null) {
+                    finalScore += tcRes.getMarksAwarded();
+                }
+            }
         }
+
+        int qTotalMarks = (question != null && question.getTotalMarks() != null) ? question.getTotalMarks() : 20;
+        int qPassingMarks = (question != null && question.getPassingMarks() != null) ? question.getPassingMarks() : 10;
+        
+        // Safety recalculation of total marks from test cases if question.totalMarks wasn't initialized
+        if (testCases != null && !testCases.isEmpty()) {
+            int tcSum = testCases.stream().mapToInt(tc -> tc.getMarks() != null ? tc.getMarks() : 5).sum();
+            if (tcSum > 0) {
+                qTotalMarks = tcSum;
+            }
+        }
+
+        double percentage = qTotalMarks > 0 ? Math.round(((double) finalScore * 100.0 / qTotalMarks) * 100.0) / 100.0 : 0.0;
+        String overallResult = finalScore >= qPassingMarks ? "PASS" : "FAIL";
+
+        resultDto.setScore(finalScore);
+        resultDto.setTotalMarks(qTotalMarks);
+        resultDto.setPassingMarks(qPassingMarks);
+        resultDto.setPercentage(percentage);
+        resultDto.setOverallResult(overallResult);
 
         // ONLY save state and update database for SUBMIT runs (runOnly == false)
         if (!runOnly) {
             // Save submission and individual test case runs
             Submission sub = saveSubmissionRecord(studentTest, question, request, resultDto);
             sub.setScore(finalScore);
+            sub.setTotalMarks(qTotalMarks);
+            sub.setPassingMarks(qPassingMarks);
+            sub.setPercentage(percentage);
+            sub.setOverallResult(overallResult);
             submissionRepository.save(sub);
             resultDto.setSubmissionId(sub.getId());
 
@@ -966,6 +1004,11 @@ public class CodeExecutionService {
                 .status(result.getStatus())
                 .runTimeMs(result.getRunTimeMs())
                 .memoryUsedKb(result.getMemoryUsedKb())
+                .score(result.getScore())
+                .totalMarks(result.getTotalMarks())
+                .passingMarks(result.getPassingMarks())
+                .percentage(result.getPercentage())
+                .overallResult(result.getOverallResult())
                 .compileError(result.getCompileError())
                 .stdout(result.getStdout())
                 .stderr(result.getStderr())
@@ -989,6 +1032,7 @@ public class CodeExecutionService {
                             .status(tcRes.getStatus())
                             .runTimeMs(tcRes.getRunTimeMs())
                             .memoryUsedKb(tcRes.getMemoryUsedKb())
+                            .marksAwarded(tcRes.getMarksAwarded() != null ? tcRes.getMarksAwarded() : 0)
                             .message(tcRes.getMessage())
                             .build();
                     submissionTestCaseRepository.save(subTc);

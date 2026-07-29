@@ -79,6 +79,13 @@ public class SubmissionController {
         response.setJudge0Status(result.getJudge0Status());
         response.setTestCaseResults(result.getTestCaseResults());
         response.setSubmissionId(result.getSubmissionId());
+
+        // Evaluation metrics
+        response.setScore(result.getScore());
+        response.setTotalMarks(result.getTotalMarks());
+        response.setPassingMarks(result.getPassingMarks());
+        response.setPercentage(result.getPercentage());
+        response.setOverallResult(result.getOverallResult());
         return ResponseEntity.ok(response);
     }
 
@@ -108,6 +115,11 @@ public class SubmissionController {
             map.put("failedTestCaseNumber", sub.getFailedTestCaseNumber());
             map.put("passedTests", sub.getPassedTests());
             map.put("totalTests", sub.getTotalTests());
+            map.put("score", sub.getScore());
+            map.put("totalMarks", sub.getTotalMarks());
+            map.put("passingMarks", sub.getPassingMarks());
+            map.put("percentage", sub.getPercentage());
+            map.put("overallResult", sub.getOverallResult() != null ? sub.getOverallResult() : ("ACCEPTED".equals(sub.getStatus()) ? "PASS" : "FAIL"));
             map.put("createdAt", sub.getCreatedAt());
             
             if (sub.getQuestion() != null) {
@@ -164,6 +176,44 @@ public class SubmissionController {
         res.put("totalTests", sub.getTotalTests());
         res.put("judge0Token", sub.getJudge0Token());
         res.put("createdAt", sub.getCreatedAt());
+        
+        // Detailed evaluation metrics
+        int qTotal = sub.getTotalMarks() != null && sub.getTotalMarks() > 0 ? sub.getTotalMarks() : 
+                     (sub.getQuestion() != null && sub.getQuestion().getTotalMarks() != null ? sub.getQuestion().getTotalMarks() : 20);
+        int qPassing = sub.getPassingMarks() != null && sub.getPassingMarks() > 0 ? sub.getPassingMarks() :
+                       (sub.getQuestion() != null && sub.getQuestion().getPassingMarks() != null ? sub.getQuestion().getPassingMarks() : 10);
+        int obtainedScore = sub.getScore() != null ? sub.getScore() : 0;
+        double pct = sub.getPercentage() != null ? sub.getPercentage() : (qTotal > 0 ? Math.round(((double) obtainedScore * 100.0 / qTotal) * 100.0) / 100.0 : 0.0);
+        String overall = sub.getOverallResult() != null ? sub.getOverallResult() : (obtainedScore >= qPassing ? "PASS" : "FAIL");
+
+        res.put("score", obtainedScore);
+        res.put("totalMarks", qTotal);
+        res.put("passingMarks", qPassing);
+        res.put("percentage", pct);
+        res.put("overallResult", overall);
+
+        // Build detailed test case breakdown list
+        List<java.util.Map<String, Object>> tcDetails = new java.util.ArrayList<>();
+        if (sub.getSubmissionTestCases() != null && !sub.getSubmissionTestCases().isEmpty()) {
+            for (com.chillcode.assessment.entity.SubmissionTestCase stc : sub.getSubmissionTestCases()) {
+                java.util.Map<String, Object> tcMap = new java.util.HashMap<>();
+                tcMap.put("id", stc.getId());
+                tcMap.put("status", stc.getStatus());
+                tcMap.put("runTimeMs", stc.getRunTimeMs());
+                tcMap.put("memoryUsedKb", stc.getMemoryUsedKb());
+                tcMap.put("message", stc.getMessage());
+                tcMap.put("marksAwarded", stc.getMarksAwarded() != null ? stc.getMarksAwarded() : 0);
+                if (stc.getTestCase() != null) {
+                    tcMap.put("testCaseId", stc.getTestCase().getId());
+                    tcMap.put("inputData", stc.getTestCase().getInputData());
+                    tcMap.put("expectedOutput", stc.getTestCase().getExpectedOutput());
+                    tcMap.put("isHidden", stc.getTestCase().getIsHidden());
+                    tcMap.put("marks", stc.getTestCase().getMarks() != null ? stc.getTestCase().getMarks() : 5);
+                }
+                tcDetails.add(tcMap);
+            }
+        }
+        res.put("testCaseResults", tcDetails);
         
         if (sub.getQuestion() != null) {
             res.put("questionId", sub.getQuestion().getId());

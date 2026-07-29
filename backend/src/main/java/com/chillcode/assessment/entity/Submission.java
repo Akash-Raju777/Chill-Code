@@ -51,6 +51,18 @@ public class Submission {
 
     private Integer score = 0;
 
+    @Column(name = "total_marks")
+    private Integer totalMarks = 0;
+
+    @Column(name = "passing_marks")
+    private Integer passingMarks = 0;
+
+    @Column(name = "percentage")
+    private Double percentage = 0.0;
+
+    @Column(name = "overall_result", length = 20)
+    private String overallResult; // 'PASS' or 'FAIL'
+
     @Column(name = "compile_error", columnDefinition = "TEXT")
     private String compileError;
 

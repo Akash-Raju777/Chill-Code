@@ -16,4 +16,6 @@ public class TestCaseResultDto {
     private String inputData;
     private String expectedOutput;
     private String actualOutput;
+    private Integer marks;
+    private Integer marksAwarded;
 }

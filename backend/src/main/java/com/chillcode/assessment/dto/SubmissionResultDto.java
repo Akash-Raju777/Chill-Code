@@ -27,6 +27,13 @@ public class SubmissionResultDto {
     private Integer failedTestCaseNumber;
     private String judge0Status;
     private Long submissionId;
+
+    // Evaluation metrics
+    private Integer score;
+    private Integer totalMarks;
+    private Integer passingMarks;
+    private Double percentage;
+    private String overallResult; // 'PASS' or 'FAIL'
 }
 
 

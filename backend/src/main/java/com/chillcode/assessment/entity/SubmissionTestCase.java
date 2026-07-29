@@ -41,6 +41,9 @@ public class SubmissionTestCase {
     @Column(name = "memory_used_kb")
     private Integer memoryUsedKb = 0;
 
+    @Column(name = "marks_awarded")
+    private Integer marksAwarded = 0;
+
     @Column(length = 255)
     private String message;
 }

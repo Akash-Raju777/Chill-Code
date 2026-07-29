@@ -35,6 +35,8 @@ import {
 } from 'lucide-react';
 
 import Link from 'next/link';
+import GloryCelebrationModal from '../../../../components/GloryCelebrationModal';
+import FailResultModal from '../../../../components/FailResultModal';
 
 export default function CodingWorkspace() {
   const params = useParams();
@@ -91,6 +93,13 @@ export default function CodingWorkspace() {
   const [consoleTab, setConsoleTab] = useState<'TESTCASE' | 'RESULT'>('TESTCASE');
   const [securityShieldEnabled, setSecurityShieldEnabled] = useState(false);
   const [submittingExam, setSubmittingExam] = useState(false);
+
+  // Module 6 & 7 Modal & Evaluation Stage States
+  const [evaluationStage, setEvaluationStage] = useState<'IDLE' | 'EVALUATING' | 'RUNNING_TESTS' | 'CALCULATING_SCORE' | 'CONFIRMED'>('IDLE');
+  const [showGloryModal, setShowGloryModal] = useState(false);
+  const [showFailModal, setShowFailModal] = useState(false);
+  const [submissionResponse, setSubmissionResponse] = useState<any>(null);
+
   const isSecurityStatusActive = user?.status === 'ACTIVE' && securityShieldEnabled;
 
   const setUser = useAuthStore((s) => s.setUser);
@@ -522,6 +531,7 @@ export default function CodingWorkspace() {
     setExecResult(null);
     setConsoleOpen(true);
     setConsoleTab('RESULT');
+    setEvaluationStage('EVALUATING');
 
     const payload = {
       code: codes[currentQuestion.id],
@@ -532,24 +542,33 @@ export default function CodingWorkspace() {
     };
 
     try {
+      await new Promise((r) => setTimeout(r, 400));
+      setEvaluationStage('RUNNING_TESTS');
+
       const response = await apiCall(`/api/student/question/${currentQuestion.id}/submit`, {
         method: 'POST',
         body: JSON.stringify(payload),
       });
-      setExecResult(response);
-      fetchSubmissionsHistory();
       
+      setExecResult(response);
+      setSubmissionResponse(response);
+      fetchSubmissionsHistory();
+
+      setEvaluationStage('CALCULATING_SCORE');
+      await new Promise((r) => setTimeout(r, 400));
+      setEvaluationStage('CONFIRMED');
+
       if (response && response.submissionId) {
-        clearTestSession();
-        resetWarnings();
-        if (document.fullscreenElement) {
-          try {
-            document.exitFullscreen();
-          } catch (e) {}
+        // MODULE 6 & 7: Check Pass/Fail decision to launch appropriate animation experience
+        const isPass = response.overallResult === 'PASS' || response.status === 'ACCEPTED';
+        if (isPass) {
+          setShowGloryModal(true);
+        } else {
+          setShowFailModal(true);
         }
-        router.push(`/student/results/submission/${response.submissionId}`);
       }
     } catch (err: any) {
+      setEvaluationStage('IDLE');
       setExecResult({
         status: 'RUNTIME_ERROR',
         compilerOutput: null,
@@ -558,6 +577,19 @@ export default function CodingWorkspace() {
       });
     } finally {
       setExecuting(false);
+    }
+  };
+
+  const handleAnimationComplete = () => {
+    if (submissionResponse && submissionResponse.submissionId) {
+      clearTestSession();
+      resetWarnings();
+      if (document.fullscreenElement) {
+        try {
+          document.exitFullscreen();
+        } catch (e) {}
+      }
+      router.push(`/student/results/submission/${submissionResponse.submissionId}`);
     }
   };
 
@@ -1278,6 +1310,30 @@ export default function CodingWorkspace() {
             </button>
           </div>
         </div>
+      )}
+
+      {/* MODULE 6: Glory Victory Celebration Modal */}
+      {showGloryModal && submissionResponse && (
+        <GloryCelebrationModal
+          score={submissionResponse.score ?? 0}
+          totalMarks={submissionResponse.totalMarks ?? 20}
+          passingMarks={submissionResponse.passingMarks ?? 10}
+          percentage={submissionResponse.percentage ?? 0}
+          questionName={currentQuestion?.title || 'Coding Challenge'}
+          onComplete={handleAnimationComplete}
+        />
+      )}
+
+      {/* MODULE 7: Fail Result Animation Modal */}
+      {showFailModal && submissionResponse && (
+        <FailResultModal
+          score={submissionResponse.score ?? 0}
+          totalMarks={submissionResponse.totalMarks ?? 20}
+          passingMarks={submissionResponse.passingMarks ?? 10}
+          percentage={submissionResponse.percentage ?? 0}
+          questionName={currentQuestion?.title || 'Coding Challenge'}
+          onComplete={handleAnimationComplete}
+        />
       )}
     </div>
   );
