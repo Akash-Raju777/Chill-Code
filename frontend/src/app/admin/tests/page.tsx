@@ -47,6 +47,7 @@ export default function TestManagement() {
   const [autoSubmit, setAutoSubmit] = useState(true);
   const [negativeMarking, setNegativeMarking] = useState(false);
   const [securityShieldEnabled, setSecurityShieldEnabled] = useState(true);
+  const [testCode, setTestCode] = useState('');
 
   const fetchInitialData = async (isInitial = false) => {
     if (isInitial || tests.length === 0) {
@@ -107,6 +108,7 @@ export default function TestManagement() {
     const payload = {
       subjectId: selectedSubjectId,
       name,
+      testCode: testCode.trim().toUpperCase() || undefined,
       durationMinutes,
       startTime,
       endTime,
@@ -125,6 +127,7 @@ export default function TestManagement() {
         body: JSON.stringify(payload),
       });
       setName('');
+      setTestCode('');
       setInstructions('');
       setShowAddForm(false);
       fetchInitialData();
@@ -189,17 +192,36 @@ export default function TestManagement() {
                 </div>
               </div>
 
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-xs font-semibold text-gray-400 uppercase mb-1">Duration (Min)</label>
+                  <label className="block text-xs font-semibold text-gray-400 uppercase mb-1">Test ID (Unique)</label>
                   <input
-                    type="number"
-                    required
+                    type="text"
+                    placeholder="e.g. JAVA-1, HTML-2, PYTHON-3"
+                    className="w-full glass-input p-3 rounded-xl text-sm font-mono tracking-wider"
+                    value={testCode}
+                    onChange={(e) => setTestCode(e.target.value.toUpperCase())}
+                    maxLength={20}
+                  />
+                  <p className="text-[10px] text-gray-500 mt-1">Leave blank to auto-generate. Must be unique.</p>
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold text-gray-400 uppercase mb-1">Duration</label>
+                  <select
                     className="w-full glass-input p-3 rounded-xl text-sm"
                     value={durationMinutes}
                     onChange={(e) => setDurationMinutes(Number(e.target.value))}
-                  />
+                  >
+                    <option value={15}>15 Minutes</option>
+                    <option value={30}>30 Minutes</option>
+                    <option value={45}>45 Minutes</option>
+                    <option value={60}>60 Minutes (1 Hour)</option>
+                    <option value={90}>90 Minutes (1.5 Hours)</option>
+                    <option value={120}>120 Minutes (2 Hours)</option>
+                  </select>
                 </div>
+              </div>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
                   <label className="block text-xs font-semibold text-gray-400 uppercase mb-1">Start Window</label>
                   <input

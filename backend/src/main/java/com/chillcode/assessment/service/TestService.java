@@ -79,6 +79,14 @@ public class TestService {
             questions.addAll(questionRepository.findAllById(dto.getQuestionIds()));
         }
 
+        // Validate unique testCode if provided
+        if (dto.getTestCode() != null && !dto.getTestCode().trim().isEmpty()) {
+            String normalizedCode = dto.getTestCode().trim().toUpperCase();
+            if (testRepository.existsByTestCode(normalizedCode)) {
+                throw new RuntimeException("Test ID '" + normalizedCode + "' already exists. Please choose a unique Test ID.");
+            }
+        }
+
         Test test = Test.builder()
                 .subject(subject)
                 .name(dto.getName())
@@ -93,6 +101,11 @@ public class TestService {
                 .securityShieldEnabled(dto.getSecurityShieldEnabled() != null ? dto.getSecurityShieldEnabled() : false)
                 .questions(questions)
                 .build();
+
+        // Set provided testCode (will be normalized)
+        if (dto.getTestCode() != null && !dto.getTestCode().trim().isEmpty()) {
+            test.setTestCode(dto.getTestCode().trim().toUpperCase());
+        }
 
         Test savedTest = testRepository.save(test);
 
@@ -235,10 +248,49 @@ public class TestService {
         }
 
         int score = st.getScore() != null ? st.getScore() : 0;
-        int maxMarks = st.getTest().getMaxMarks() != null ? st.getTest().getMaxMarks() : 100;
-        int passingThreshold = maxMarks / 2;
 
-        if (score >= passingThreshold) {
+        // Determine pass/fail using actual question passing marks from submissions
+        // Sum the passingMarks across all active submissions for this student test
+        List<Submission> activeSubmissions = submissionRepository.findByStudentTestId(st.getId()).stream()
+                .filter(sub -> sub.getActive() == null || Boolean.TRUE.equals(sub.getActive()))
+                .collect(Collectors.toList());
+
+        int totalPassingMarks = 0;
+        int totalEarnedScore = 0;
+        int totalTestCasesPassed = 0;
+        int totalTestCasesCount = 0;
+
+        for (Submission sub : activeSubmissions) {
+            if (sub.getPassingMarks() != null && sub.getPassingMarks() > 0) {
+                totalPassingMarks += sub.getPassingMarks();
+            }
+            if (sub.getScore() != null) {
+                totalEarnedScore += sub.getScore();
+            }
+            if (sub.getPassedTests() != null) {
+                totalTestCasesPassed += sub.getPassedTests();
+            }
+            if (sub.getTotalTests() != null) {
+                totalTestCasesCount += sub.getTotalTests();
+            }
+        }
+
+        // If no per-question passingMarks set, fallback to 50% of maxMarks
+        if (totalPassingMarks == 0) {
+            int maxMarks = st.getTest().getMaxMarks() != null ? st.getTest().getMaxMarks() : 100;
+            totalPassingMarks = maxMarks / 2;
+        }
+
+        // Use the actual accumulated score if available
+        if (totalEarnedScore > 0 && score == 0) {
+            score = totalEarnedScore;
+            st.setScore(score);
+        }
+
+        st.setTestCasesPassed(totalTestCasesPassed);
+        st.setTotalTestCases(totalTestCasesCount);
+
+        if (score >= totalPassingMarks) {
             st.setStatus("COMPLETED");
             st.setPassFailStatus("PASS");
         } else {

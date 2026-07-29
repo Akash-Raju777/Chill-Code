@@ -93,6 +93,7 @@ export default function CodingWorkspace() {
   const [consoleTab, setConsoleTab] = useState<'TESTCASE' | 'RESULT'>('TESTCASE');
   const [securityShieldEnabled, setSecurityShieldEnabled] = useState(false);
   const [submittingExam, setSubmittingExam] = useState(false);
+  const [showExternalPasteWarning, setShowExternalPasteWarning] = useState(false);
 
   // Module 6 & 7 Modal & Evaluation Stage States
   const [evaluationStage, setEvaluationStage] = useState<'IDLE' | 'EVALUATING' | 'RUNNING_TESTS' | 'CALCULATING_SCORE' | 'CONFIRMED'>('IDLE');
@@ -253,10 +254,34 @@ export default function CodingWorkspace() {
     if (!mounted || isViewMode) return;
     if (isSecurityStatusActive && typeof window !== 'undefined') {
       if (!document.fullscreenElement) {
-        setFullscreenRequired(true);
+        // Auto-enter fullscreen when secure session starts
+        document.documentElement.requestFullscreen().catch(() => {
+          setFullscreenRequired(true);
+        });
       }
     }
   }, [mounted, isSecurityStatusActive, isViewMode]);
+
+  // Prevent accidental navigation / refresh during active secure session
+  useEffect(() => {
+    if (!mounted || !isSessionActive || !isSecurityStatusActive || isViewMode) return;
+    const handleBeforeUnload = (e: BeforeUnloadEvent) => {
+      e.preventDefault();
+      e.returnValue = 'Your exam is in progress. Are you sure you want to leave?';
+      return e.returnValue;
+    };
+    window.addEventListener('beforeunload', handleBeforeUnload);
+    // Push a dummy state so browser back navigates to this page
+    history.pushState(null, '', window.location.href);
+    const handlePopState = () => {
+      history.pushState(null, '', window.location.href);
+    };
+    window.addEventListener('popstate', handlePopState);
+    return () => {
+      window.removeEventListener('beforeunload', handleBeforeUnload);
+      window.removeEventListener('popstate', handlePopState);
+    };
+  }, [mounted, isSessionActive, isSecurityStatusActive, isViewMode]);
 
   // Set up Timer interval (without subscribing to time changes here to avoid re-renders)
   useEffect(() => {
@@ -425,6 +450,13 @@ export default function CodingWorkspace() {
 
   const handleWarningTrigger = async (type: string, reason: string) => {
     if (!isSessionActive || isTestSuspended) return;
+
+    // External paste: show local toast only, no server call (no points deduction)
+    if (type === 'EXTERNAL_PASTE') {
+      setShowExternalPasteWarning(true);
+      setTimeout(() => setShowExternalPasteWarning(false), 4000);
+      return;
+    }
 
     // Rate-limiting check: ignore warnings within 2 seconds of each other to prevent auto-repeat triggers
     const nowTime = Date.now();
@@ -938,6 +970,14 @@ export default function CodingWorkspace() {
 
   return (
     <div className={`fixed inset-0 bg-[#0f1015] text-[#c5c6c7] flex flex-col z-40 font-sans ${isViewMode || !isSecurityStatusActive ? '' : 'select-none'}`}>
+      {/* External Paste Warning Toast */}
+      {showExternalPasteWarning && (
+        <div className="fixed top-4 left-1/2 -translate-x-1/2 z-[9999] bg-red-900/95 border border-red-500/60 text-white px-5 py-3 rounded-xl shadow-2xl flex items-center gap-3 text-sm font-semibold animate-bounce" role="alert">
+          <span className="text-lg">🚫</span>
+          <span>External paste is not allowed during secure assessments.</span>
+        </div>
+      )}
+
       {/* 1. Header Navigation Bar (Matches CodeJudge Pro visual frame) */}
       <header className="h-14 bg-[#11131c] border-b border-white/5 flex justify-between items-center px-6 relative z-50">
         <div className="flex items-center gap-6">

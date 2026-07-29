@@ -6,26 +6,40 @@ interface SecurityConfig {
   isSessionActive: boolean;
 }
 
+/**
+ * Secure exam monitoring hook.
+ *
+ * Tab Detection: Uses ONLY the Visibility API (document.visibilitychange).
+ * This fires when the user *actually* switches tabs or minimises the window,
+ * but NOT when opening DevTools, clicking inside the page, scrolling, or
+ * moving the mouse.
+ *
+ * Copy/Paste Protection:
+ * - Tracks text copied from within the editor session in internalClipboardRef.
+ * - Allows internal copy/paste freely (code the student wrote).
+ * - Blocks paste of content that was NOT copied inside this session (external).
+ * - Shows a warning on external paste attempt.
+ *
+ * Fullscreen Enforcement:
+ * - Detects fullscreen exit via fullscreenchange API.
+ * - Raises FULLSCREEN_EXIT warning which triggers the overlay in the parent.
+ */
 export function useExamSecurity({ testId, onWarning, isSessionActive }: SecurityConfig) {
   const onWarningRef = useRef(onWarning);
   onWarningRef.current = onWarning;
 
+  // Tracks text copied from within this editor session
+  const internalClipboardRef = useRef<string>('');
+
   useEffect(() => {
     if (!isSessionActive) return;
 
-    // 1. Keyboard Shortcuts Blocker
+    // ─── 1. Keyboard Shortcuts Blocker ────────────────────────────────────
     const handleKeyDown = (e: KeyboardEvent) => {
       const isCtrl = e.ctrlKey || e.metaKey;
       const keyLower = e.key.toLowerCase();
 
-      // Copy, Paste, Cut
-      if (isCtrl && ['c', 'v', 'x'].includes(keyLower)) {
-        e.preventDefault();
-        onWarningRef.current('KEYBOARD_SHORTCUT', `Attempted keyboard copy/paste/cut (${e.key.toUpperCase()})`);
-        return;
-      }
-
-      // Print (Ctrl+P) and Save (Ctrl+S)
+      // Print (Ctrl+P) and Save (Ctrl+S) — not exam-relevant
       if (isCtrl && ['p', 's'].includes(keyLower)) {
         e.preventDefault();
         onWarningRef.current('KEYBOARD_SHORTCUT', `Attempted print or save page shortcuts (Ctrl+${e.key.toUpperCase()})`);
@@ -33,8 +47,9 @@ export function useExamSecurity({ testId, onWarning, isSessionActive }: Security
       }
 
       // Developer tools (F12, Ctrl+Shift+I, Ctrl+Shift+J, Ctrl+Shift+C, Ctrl+U)
-      const isDevToolsKeys = e.key === 'F12' || 
-        (isCtrl && e.shiftKey && ['i', 'j', 'c'].includes(keyLower)) || 
+      const isDevToolsKeys =
+        e.key === 'F12' ||
+        (isCtrl && e.shiftKey && ['i', 'j', 'c'].includes(keyLower)) ||
         (isCtrl && keyLower === 'u');
 
       if (isDevToolsKeys) {
@@ -44,44 +59,68 @@ export function useExamSecurity({ testId, onWarning, isSessionActive }: Security
       }
     };
 
-    // 2. Right-Click Context Menu blocker
+    // ─── 2. Right-Click Context Menu blocker ──────────────────────────────
     const handleContextMenu = (e: MouseEvent) => {
       e.preventDefault();
       onWarningRef.current('RIGHT_CLICK', 'Attempted to right-click inside the examination window');
     };
 
-    // 3. Tab Switching / Minimize Visibility Tracker
+    // ─── 3. Tab Switching — ONLY via Visibility API ───────────────────────
+    // This is the CORRECT way: visibilitychange fires only when the user
+    // actually navigates away from the tab (not DevTools, not blur events).
     const handleVisibilityChange = () => {
       if (document.hidden) {
         onWarningRef.current('TAB_SWITCH', 'Switched browser tab or minimized window');
       }
     };
 
-    // 4. Lost Focus / Window Blur Tracker
-    const handleWindowBlur = () => {
-      onWarningRef.current('WINDOW_BLUR', 'Lost focus on the active exam window');
+    // ─── 4. Smart Clipboard: Track internal copies, block external pastes ─
+    const handleCopy = (e: ClipboardEvent) => {
+      // Allow the copy to proceed naturally, but record what was copied
+      const selection = window.getSelection();
+      if (selection) {
+        internalClipboardRef.current = selection.toString();
+      }
     };
 
-    // 5. Text / Clipboard Actions blocker
-    const handleClipboard = (e: ClipboardEvent) => {
-      e.preventDefault();
-      onWarningRef.current('CLIPBOARD_ACTION', `Clipboard action blocked (${e.type.toUpperCase()})`);
+    const handleCut = (e: ClipboardEvent) => {
+      // Allow cut to proceed naturally, record the cut content
+      const selection = window.getSelection();
+      if (selection) {
+        internalClipboardRef.current = selection.toString();
+      }
     };
 
-    // 6. Drag & Drop blocker
+    const handlePaste = async (e: ClipboardEvent) => {
+      // Read clipboard text without consuming the event
+      const clipboardText = e.clipboardData?.getData('text') ?? '';
+
+      if (clipboardText && clipboardText.trim().length > 0) {
+        // Allow if the content was copied from within this session
+        if (clipboardText === internalClipboardRef.current) {
+          return; // Internal paste — allow naturally
+        }
+        // Block external paste
+        e.preventDefault();
+        e.stopPropagation();
+        onWarningRef.current('EXTERNAL_PASTE', 'Attempted to paste content from outside the assessment editor');
+      }
+    };
+
+    // ─── 5. Drag & Drop blocker ───────────────────────────────────────────
     const handleDragDrop = (e: DragEvent) => {
       e.preventDefault();
       onWarningRef.current('DRAG_DROP', 'Drag and drop actions are disabled during the secure exam');
     };
 
-    // 7. Fullscreen Exit Tracker
+    // ─── 6. Fullscreen Exit Tracker ───────────────────────────────────────
     const handleFullscreenChange = () => {
       if (!document.fullscreenElement) {
         onWarningRef.current('FULLSCREEN_EXIT', 'Exited secure full-screen assessment view');
       }
     };
 
-    // 8. Split Screen / Resize Tracker
+    // ─── 7. Viewport Resize / Split Screen Tracker ────────────────────────
     let lastWidth = window.innerWidth;
     let lastHeight = window.innerHeight;
     const handleResize = () => {
@@ -89,35 +128,39 @@ export function useExamSecurity({ testId, onWarning, isSessionActive }: Security
       const currentHeight = window.innerHeight;
 
       if (currentWidth < lastWidth - 100 || currentHeight < lastHeight - 100) {
-        onWarningRef.current('VIEWPORT_RESIZE', `Suspicious window resizing or split-screen action detected (${currentWidth}x${currentHeight})`);
+        onWarningRef.current(
+          'VIEWPORT_RESIZE',
+          `Suspicious window resizing or split-screen action detected (${currentWidth}x${currentHeight})`
+        );
       }
 
       lastWidth = currentWidth;
       lastHeight = currentHeight;
     };
 
-    // Register all event listeners in capture phase
+    // ─── Register all listeners ───────────────────────────────────────────
     window.addEventListener('keydown', handleKeyDown, true);
     window.addEventListener('contextmenu', handleContextMenu, true);
     document.addEventListener('visibilitychange', handleVisibilityChange, true);
-    window.addEventListener('blur', handleWindowBlur, true);
-    document.addEventListener('copy', handleClipboard, true);
-    document.addEventListener('cut', handleClipboard, true);
-    document.addEventListener('paste', handleClipboard, true);
+
+    // NOTE: copy & cut are captured globally but NOT prevented — we just record them
+    document.addEventListener('copy', handleCopy, true);
+    document.addEventListener('cut', handleCut, true);
+    // Paste IS intercepted to block external content
+    document.addEventListener('paste', handlePaste, true);
+
     document.addEventListener('dragstart', handleDragDrop, true);
     document.addEventListener('drop', handleDragDrop, true);
     document.addEventListener('fullscreenchange', handleFullscreenChange, true);
     window.addEventListener('resize', handleResize, true);
 
-    // Clean up event listeners on unmount
     return () => {
       window.removeEventListener('keydown', handleKeyDown, true);
       window.removeEventListener('contextmenu', handleContextMenu, true);
       document.removeEventListener('visibilitychange', handleVisibilityChange, true);
-      window.removeEventListener('blur', handleWindowBlur, true);
-      document.removeEventListener('copy', handleClipboard, true);
-      document.removeEventListener('cut', handleClipboard, true);
-      document.removeEventListener('paste', handleClipboard, true);
+      document.removeEventListener('copy', handleCopy, true);
+      document.removeEventListener('cut', handleCut, true);
+      document.removeEventListener('paste', handlePaste, true);
       document.removeEventListener('dragstart', handleDragDrop, true);
       document.removeEventListener('drop', handleDragDrop, true);
       document.removeEventListener('fullscreenchange', handleFullscreenChange, true);

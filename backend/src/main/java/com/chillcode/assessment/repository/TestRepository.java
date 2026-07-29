@@ -9,6 +9,10 @@ import java.util.List;
 public interface TestRepository extends JpaRepository<Test, Long> {
     List<Test> findBySubjectId(Long subjectId);
 
+    boolean existsByTestCode(String testCode);
+
+    java.util.Optional<Test> findByTestCode(String testCode);
+
     @org.springframework.data.jpa.repository.Query("SELECT COUNT(t) FROM Test t WHERE t.startTime < :now AND t.endTime > :now")
     long countActiveTests(@org.springframework.data.repository.query.Param("now") java.time.LocalDateTime now);
 }

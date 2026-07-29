@@ -46,4 +46,15 @@ public class SubjectController {
     public ResponseEntity<com.chillcode.assessment.dto.SubjectStatsDto> getSubjectStats(@PathVariable("id") Long id) {
         return ResponseEntity.ok(subjectService.getSubjectStats(id));
     }
+
+    @GetMapping("/admin/subjects/{id}/export")
+    @PreAuthorize("hasRole('ADMIN')")
+    public ResponseEntity<byte[]> exportSubjectReport(@PathVariable("id") Long id) {
+        byte[] excelBytes = subjectService.generateSubjectExcelReport(id);
+        org.springframework.http.HttpHeaders headers = new org.springframework.http.HttpHeaders();
+        headers.setContentType(org.springframework.http.MediaType.parseMediaType("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"));
+        headers.setContentDispositionFormData("attachment", "subject-report-" + id + ".xlsx");
+        headers.setContentLength(excelBytes.length);
+        return new ResponseEntity<>(excelBytes, headers, org.springframework.http.HttpStatus.OK);
+    }
 }

@@ -2,7 +2,7 @@
 
 import React, { useEffect, useState } from 'react';
 import { apiCall } from '../../../utils/api';
-import { BookOpen, Plus, Trash2, Tag, Loader2 } from 'lucide-react';
+import { BookOpen, Plus, Trash2, Tag, Loader2, Download } from 'lucide-react';
 
 interface Subject {
   id: number;
@@ -36,6 +36,28 @@ export default function SubjectManagement() {
       console.error(e);
     } finally {
       setStatsLoading(false);
+    }
+  };
+
+  const handleDownloadReport = async (subjectId: number, subjectName: string) => {
+    try {
+      const API_URL = process.env.NEXT_PUBLIC_API_URL || '';
+      const token = typeof window !== 'undefined' ? localStorage.getItem('auth_token') : null;
+      const response = await fetch(`${API_URL}/api/admin/subjects/${subjectId}/export`, {
+        headers: { Authorization: token ? `Bearer ${token}` : '' },
+      });
+      if (!response.ok) throw new Error('Failed to download report');
+      const blob = await response.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `${subjectName.replace(/\s+/g, '-')}-report.xlsx`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+    } catch (e: any) {
+      alert(e.message || 'Failed to download report');
     }
   };
 
@@ -239,6 +261,13 @@ export default function SubjectManagement() {
                 className="px-4 py-2 border border-white/5 rounded-xl text-xs font-semibold hover:bg-white/5 text-gray-400 hover:text-white"
               >
                 Close Report
+              </button>
+              <button
+                onClick={() => handleDownloadReport(selectedSubject.id, selectedSubject.name)}
+                className="flex items-center gap-2 px-4 py-2 bg-emerald-600 hover:bg-emerald-500 rounded-xl text-xs font-semibold text-white transition-all"
+              >
+                <Download className="w-3.5 h-3.5" />
+                Download Excel
               </button>
             </div>
 
