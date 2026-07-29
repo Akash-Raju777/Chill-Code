@@ -65,13 +65,16 @@ export function useExamSecurity({ testId, onWarning, isSessionActive }: Security
       onWarningRef.current('RIGHT_CLICK', 'Attempted to right-click inside the examination window');
     };
 
-    // ─── 3. Tab Switching — ONLY via Visibility API ───────────────────────
-    // This is the CORRECT way: visibilitychange fires only when the user
-    // actually navigates away from the tab (not DevTools, not blur events).
+    // ─── 3. Tab Switching & Focus Loss — Visibility & Blur API ──────────────
     const handleVisibilityChange = () => {
       if (document.hidden) {
         onWarningRef.current('TAB_SWITCH', 'Switched browser tab or minimized window');
       }
+    };
+
+    const handleBlur = () => {
+      // Blur fires instantly on Alt+Tab or clicking outside the window
+      onWarningRef.current('WINDOW_BLUR', 'Switched to another application or lost window focus (Alt+Tab)');
     };
 
     // ─── 4. Smart Clipboard: Track internal copies, block external pastes ─
@@ -152,6 +155,7 @@ export function useExamSecurity({ testId, onWarning, isSessionActive }: Security
     window.addEventListener('keydown', handleKeyDown, true);
     window.addEventListener('contextmenu', handleContextMenu, true);
     document.addEventListener('visibilitychange', handleVisibilityChange, true);
+    window.addEventListener('blur', handleBlur, true);
 
     // NOTE: copy & cut are captured globally but NOT prevented — we just record them
     document.addEventListener('copy', handleCopy, true);
@@ -168,6 +172,7 @@ export function useExamSecurity({ testId, onWarning, isSessionActive }: Security
       window.removeEventListener('keydown', handleKeyDown, true);
       window.removeEventListener('contextmenu', handleContextMenu, true);
       document.removeEventListener('visibilitychange', handleVisibilityChange, true);
+      window.removeEventListener('blur', handleBlur, true);
       document.removeEventListener('copy', handleCopy, true);
       document.removeEventListener('cut', handleCut, true);
       document.removeEventListener('paste', handlePaste, true);

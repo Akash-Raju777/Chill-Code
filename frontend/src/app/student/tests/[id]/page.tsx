@@ -451,16 +451,11 @@ export default function CodingWorkspace() {
   const handleWarningTrigger = async (type: string, reason: string) => {
     if (!isSessionActive || isTestSuspended) return;
 
-    // External paste: show local toast only, no server call (no points deduction)
-    if (type === 'EXTERNAL_PASTE') {
-      setShowExternalPasteWarning(true);
-      setTimeout(() => setShowExternalPasteWarning(false), 4000);
-      return;
-    }
+    // No local-only intercept for EXTERNAL_PASTE; it is now a formal warning.
 
-    // Rate-limiting check: ignore warnings within 500ms of each other to prevent auto-repeat triggers
+    // Rate-limiting check: ignore warnings within 100ms of each other to prevent auto-repeat triggers
     const nowTime = Date.now();
-    if (nowTime - lastWarningTimeRef.current < 500) {
+    if (nowTime - lastWarningTimeRef.current < 100) {
       console.log('Ignored duplicate/rapid warning trigger:', type, reason);
       return;
     }
@@ -470,12 +465,13 @@ export default function CodingWorkspace() {
       setFullscreenRequired(true);
     }
 
+    // INSTANT UI UPDATE - Don't wait for backend API to finish before showing warning
+    incrementWarnings(reason);
+
     try {
       const st = await apiCall(`/api/student/tests/${testId}/warning?type=${type}&reason=${encodeURIComponent(reason)}${currentQuestion ? `&questionId=${currentQuestion.id}` : ''}`, {
         method: 'POST',
       });
-      
-      incrementWarnings(reason);
 
       if (st.isSuspended) {
         suspendTest();
