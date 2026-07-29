@@ -104,6 +104,14 @@ export default function TestManagement() {
       setError('Please select at least one question for this test.');
       return;
     }
+    if (testCode.trim()) {
+      const formattedCode = testCode.trim().toUpperCase();
+      const codeExists = tests.some((t) => t.testCode?.toUpperCase() === formattedCode);
+      if (codeExists) {
+        setError(`Test ID '${formattedCode}' already exists. Please specify a unique Test ID.`);
+        return;
+      }
+    }
 
     const payload = {
       subjectId: selectedSubjectId,

@@ -2,7 +2,7 @@
 
 import React, { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { apiCall } from '../../../utils/api';
+import { apiCall, formatISTDateTime } from '../../../utils/api';
 import { 
   ClipboardCheck, 
   Loader2, 
@@ -36,14 +36,7 @@ interface SubmissionResult {
 }
 
 const formatDate = (dateStr: string) => {
-  if (!dateStr) return 'N/A';
-  try {
-    const d = new Date(dateStr);
-    if (isNaN(d.getTime())) return 'N/A';
-    return d.toLocaleString();
-  } catch (e) {
-    return 'N/A';
-  }
+  return formatISTDateTime(dateStr);
 };
 
 export default function StudentResults() {

@@ -495,6 +495,7 @@ export default function CodingWorkspace() {
 
   const handleToggleFullscreen = async () => {
     try {
+      lastWarningTimeRef.current = Date.now();
       if (document.fullscreenElement) {
         await document.exitFullscreen();
       } else {

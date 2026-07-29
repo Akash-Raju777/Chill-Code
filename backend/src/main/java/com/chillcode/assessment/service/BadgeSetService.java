@@ -54,6 +54,11 @@ public class BadgeSetService {
         Subject subject = test.getSubject();
         String testCode = test.getTestCode() != null ? test.getTestCode() : "TEST-" + test.getId();
 
+        List<BadgeSet> existingSets = badgeSetRepository.findByTestId(test.getId());
+        if (existingSets != null && !existingSets.isEmpty()) {
+            throw new RuntimeException("A Badge Set for Test ID '" + testCode + "' already exists! Each Test ID can only have one Badge Set.");
+        }
+
         BadgeSet set = BadgeSet.builder()
                 .name(dto.getName() != null ? dto.getName() : test.getName() + " Badge Set")
                 .test(test)

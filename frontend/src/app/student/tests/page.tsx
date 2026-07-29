@@ -179,6 +179,9 @@ export default function TestsWorkspace() {
       await apiCall(`/api/student/tests/${testId}/request-reattempt?questionId=${questionId}`, {
         method: 'POST',
       });
+      setStudentTests((prev) =>
+        prev.map((t) => (t.test.id === testId ? { ...t, reattemptStatus: `PENDING:${questionId}` } : t))
+      );
       alert('Your reattempt request has been submitted to the admin successfully.');
       fetchTests(false);
     } catch (err: any) {
@@ -481,7 +484,7 @@ export default function TestsWorkspace() {
                                 : 'bg-indigo-500/10 hover:bg-indigo-500/25 border border-indigo-500/20 text-indigo-400'
                             }`}
                           >
-                            {isReattemptPending ? 'Pending Approval' : 'Another Attempt'}
+                            {isReattemptPending ? 'Pending' : 'Another Attempt'}
                           </button>
                         );
                       })()}

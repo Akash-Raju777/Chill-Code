@@ -138,3 +138,42 @@ export const fetchSubjectLeaderboard = (subjectId: number) => apiCall(`/api/stud
 export const fetchTopSubjectRankings = (subjectId: number, limit = 10) => apiCall(`/api/student/leaderboard/top/${subjectId}?limit=${limit}`);
 export const fetchOverallLeaderboard = (timeFilter = 'ALL', departmentFilter = 'ALL') => apiCall(`/api/student/leaderboard/overall?timeFilter=${timeFilter}&departmentFilter=${departmentFilter}`);
 export const fetchStudentLeaderboardSummary = () => apiCall('/api/student/leaderboard/summary');
+
+/**
+ * Format ISO/UTC date-time strings to Indian Standard Time (IST - Asia/Kolkata).
+ */
+export function formatISTDateTime(dateInput: string | Date | number | null | undefined): string {
+  if (!dateInput) return 'N/A';
+  let dateStr = String(dateInput);
+  if (typeof dateInput === 'string' && !dateInput.endsWith('Z') && !dateInput.includes('+') && !dateInput.includes('-0') && !dateInput.includes('+0')) {
+    dateStr = dateInput + 'Z';
+  }
+  const d = new Date(dateStr);
+  if (isNaN(d.getTime())) return 'N/A';
+  return d.toLocaleString('en-IN', {
+    timeZone: 'Asia/Kolkata',
+    year: 'numeric',
+    month: 'short',
+    day: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+    hour12: true,
+  });
+}
+
+export function formatISTDate(dateInput: string | Date | number | null | undefined): string {
+  if (!dateInput) return 'N/A';
+  let dateStr = String(dateInput);
+  if (typeof dateInput === 'string' && !dateInput.endsWith('Z') && !dateInput.includes('+') && !dateInput.includes('-0') && !dateInput.includes('+0')) {
+    dateStr = dateInput + 'Z';
+  }
+  const d = new Date(dateStr);
+  if (isNaN(d.getTime())) return 'N/A';
+  return d.toLocaleDateString('en-IN', {
+    timeZone: 'Asia/Kolkata',
+    year: 'numeric',
+    month: 'short',
+    day: 'numeric',
+  });
+}

@@ -75,8 +75,11 @@ export function useExamSecurity({ testId, onWarning, isSessionActive, internalCl
     };
 
     const handleBlur = () => {
-      // Blur fires instantly on Alt+Tab or clicking outside the window
-      onWarningRef.current('WINDOW_BLUR', 'Switched to another application or lost window focus (Alt+Tab)');
+      // Blur fires instantly on Alt+Tab or clicking outside the window.
+      // Only fire if student was inside fullscreen (to avoid duplicate triggers on exit overlay)
+      if (document.fullscreenElement && !document.hidden) {
+        onWarningRef.current('WINDOW_BLUR', 'Switched to another application or lost window focus (Alt+Tab)');
+      }
     };
 
     // ─── 4. Smart Clipboard: block external pastes ────────────────────────
@@ -117,6 +120,9 @@ export function useExamSecurity({ testId, onWarning, isSessionActive, internalCl
     let lastWidth = window.innerWidth;
     let lastHeight = window.innerHeight;
     const handleResize = () => {
+      // Only check resize if currently in fullscreen (exiting fullscreen changes size, which is covered by FULLSCREEN_EXIT)
+      if (!document.fullscreenElement) return;
+
       const currentWidth = window.innerWidth;
       const currentHeight = window.innerHeight;
 
