@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useEffect, useState } from 'react';
-import { apiCall } from '../../../utils/api';
+import { apiCall, formatISTDate, formatISTDateTime } from '../../../utils/api';
 import { useRouter } from 'next/navigation';
 import { useAuthStore } from '../../../store/authStore';
 import { useTestStore } from '../../../store/testStore';
@@ -349,14 +349,14 @@ export default function TestsWorkspace() {
 
                 let lastAttemptStr = "No attempt yet";
                 if (q.lastAttemptAt) {
-                  lastAttemptStr = new Date(q.lastAttemptAt).toLocaleDateString();
+                  lastAttemptStr = formatISTDate(q.lastAttemptAt);
                 } else if (associatedTest && isStarted) {
                   lastAttemptStr = "Active Session";
                 }
 
                 let solvedTimeStr = "-";
                 if (isSolved && q.lastAttemptAt) {
-                  solvedTimeStr = new Date(q.lastAttemptAt).toLocaleString();
+                  solvedTimeStr = formatISTDateTime(q.lastAttemptAt);
                 }
 
                 return (

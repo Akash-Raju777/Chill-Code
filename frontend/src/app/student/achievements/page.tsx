@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useEffect, useState } from 'react';
-import { apiCall } from '../../../utils/api';
+import { apiCall, formatISTDate } from '../../../utils/api';
 import { Award, ShieldCheck, Calendar, Trophy, CheckCircle2, Loader2, Sparkles, BookOpen, Hash } from 'lucide-react';
 
 interface StudentAchievement {
@@ -130,7 +130,7 @@ export default function StudentAchievementsPage() {
                   Awarded for securing <span className="font-bold text-amber-400">Rank {lmb.awardedRank}</span> in <span className="font-bold text-white">{lmb.testName}</span> ({lmb.subject}).
                 </div>
                 <div className="flex items-center justify-between text-[11px] text-gray-500 pt-2 border-t border-white/5">
-                  <span>Awarded: {new Date(lmb.awardedDate).toLocaleDateString()}</span>
+                  <span>Awarded: {formatISTDate(lmb.awardedDate)}</span>
                   <span className="font-mono text-emerald-400">{lmb.testCode}</span>
                 </div>
               </div>
@@ -151,7 +151,7 @@ export default function StudentAchievementsPage() {
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
           {achievements.map((item) => {
-            const dateStr = item.awardedAt ? new Date(item.awardedAt).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' }) : 'N/A';
+            const dateStr = formatISTDate(item.awardedAt);
 
             return (
               <div 

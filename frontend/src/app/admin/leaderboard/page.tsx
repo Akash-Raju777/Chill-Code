@@ -4,7 +4,8 @@ import React, { useEffect, useState } from 'react';
 import { 
   fetchOverallLeaderboard, 
   fetchSubjectLeaderboard, 
-  apiCall 
+  apiCall,
+  formatISTDate
 } from '../../../utils/api';
 import { 
   Trophy, 
@@ -310,7 +311,7 @@ export default function AdminLeaderboardPage() {
                     <div className="text-2xl">🥇</div>
                     <div>
                       <div className="text-white font-bold text-xs">{a.badgeName}</div>
-                      <div className="text-[10px] text-gray-400">{a.testName} ({a.subjectName}) - {new Date(a.awardedAt).toLocaleDateString()}</div>
+                      <div className="text-[10px] text-gray-400">{a.testName} ({a.subjectName}) - {formatISTDate(a.awardedAt)}</div>
                     </div>
                   </div>
                 ))}

@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useEffect, useState } from 'react';
-import { apiCall } from '../../../utils/api';
+import { apiCall, formatISTDateTime } from '../../../utils/api';
 import { 
   Users, 
   BookOpen, 
@@ -304,7 +304,7 @@ export default function AdminDashboard() {
                   <div className="flex-1">
                     <div className="flex justify-between items-center">
                       <span className="font-medium text-white">{act.user}</span>
-                      <span className="text-xs text-gray-500">{new Date(act.time).toLocaleTimeString()}</span>
+                      <span className="text-xs text-gray-500">{formatISTDateTime(act.time)}</span>
                     </div>
                     <p className="text-gray-400 text-xs mt-1">{act.details}</p>
                     

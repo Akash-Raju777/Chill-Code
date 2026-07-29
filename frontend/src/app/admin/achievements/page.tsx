@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import { fetchAllStudentAchievements, fetchAllBadges } from '@/utils/api';
+import { fetchAllStudentAchievements, fetchAllBadges, formatISTDate } from '@/utils/api';
 import { Award, Users, Calendar, Sparkles, Search, Coffee, Terminal, Code2, Flame, Globe } from 'lucide-react';
 
 interface StudentBadge {
@@ -137,7 +137,7 @@ export default function AdminAchievementsOverviewPage() {
                       </span>
                     </td>
                     <td className="px-6 py-4 text-xs text-slate-400 font-mono">
-                      {new Date(a.earnedAt).toLocaleDateString()}
+                      {formatISTDate(a.earnedAt)}
                     </td>
                     <td className="px-6 py-4 text-xs text-slate-400">
                       {a.sourceTestName || 'System Evaluation'}

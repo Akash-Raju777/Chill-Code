@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useEffect, useState } from 'react';
-import { apiCall } from '../../../utils/api';
+import { apiCall, formatISTDateTime } from '../../../utils/api';
 import { Bell, Loader2, Calendar, AlertTriangle, ShieldCheck, MailOpen } from 'lucide-react';
 
 interface Notification {
@@ -108,7 +108,7 @@ export default function StudentNotifications() {
                   <p className="text-xs text-gray-400 leading-relaxed max-w-2xl">{n.message}</p>
                   <div className="flex items-center gap-1.5 text-[10px] text-gray-500 pt-2 font-mono">
                     <Calendar className="w-3.5 h-3.5" />
-                    {new Date(n.createdAt).toLocaleString()}
+                    {formatISTDateTime(n.createdAt)}
                   </div>
                 </div>
               </div>

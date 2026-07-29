@@ -2,7 +2,7 @@
 
 import React, { useEffect, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
-import { apiCall } from '../../../../../utils/api';
+import { apiCall, formatISTDateTime } from '../../../../../utils/api';
 import { 
   CheckCircle2, 
   XCircle, 
@@ -242,7 +242,7 @@ export default function SubmissionResultPage() {
           </div>
           <div>
             <div className="text-[10px] text-gray-500 font-bold uppercase tracking-wider">Submission Time</div>
-            <div className="text-xs font-semibold text-gray-300">{submission.createdAt ? new Date(submission.createdAt).toLocaleString() : 'N/A'}</div>
+            <div className="text-xs font-semibold text-gray-300">{submission.createdAt ? formatISTDateTime(submission.createdAt) : 'N/A'}</div>
           </div>
         </div>
       </div>

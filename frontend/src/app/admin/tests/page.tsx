@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useEffect, useState } from 'react';
-import { apiCall } from '../../../utils/api';
+import { apiCall, formatISTDateTime } from '../../../utils/api';
 import { Plus, Timer, Calendar, CheckSquare, Loader2, Award, Clipboard } from 'lucide-react';
 
 interface Subject {
@@ -370,13 +370,13 @@ export default function TestManagement() {
                 <div className="flex justify-between items-center text-xs text-gray-500">
                   <span className="flex items-center gap-1">
                     <Calendar className="w-3.5 h-3.5" />
-                    Start: {new Date(t.startTime).toLocaleString()}
+                    Start: {formatISTDateTime(t.startTime)}
                   </span>
                 </div>
                 <div className="flex justify-between items-center text-xs text-gray-500">
                   <span className="flex items-center gap-1">
                     <Calendar className="w-3.5 h-3.5" />
-                    End: {new Date(t.endTime).toLocaleString()}
+                    End: {formatISTDateTime(t.endTime)}
                   </span>
                   <span className="font-semibold text-white">Max Marks: {t.maxMarks}</span>
                 </div>
