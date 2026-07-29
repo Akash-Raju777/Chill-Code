@@ -96,6 +96,17 @@ export default function CodingWorkspace() {
   const [securityShieldEnabled, setSecurityShieldEnabled] = useState(false);
   const [submittingExam, setSubmittingExam] = useState(false);
   const [showExternalPasteWarning, setShowExternalPasteWarning] = useState(false);
+  const [confirmDialog, setConfirmDialog] = useState<{
+    isOpen: boolean;
+    title: string;
+    message: string;
+    onConfirm: () => void | Promise<void>;
+  }>({
+    isOpen: false,
+    title: '',
+    message: '',
+    onConfirm: () => {},
+  });
 
   // Module 6 & 7 Modal & Evaluation Stage States
   const [evaluationStage, setEvaluationStage] = useState<'IDLE' | 'EVALUATING' | 'RUNNING_TESTS' | 'CALCULATING_SCORE' | 'CONFIRMED'>('IDLE');
@@ -416,39 +427,45 @@ export default function CodingWorkspace() {
     }
   };
 
-  const handleManualSubmitExam = async () => {
-    if (!confirm('Are you sure you want to finish and submit your exam?')) return;
-    setSubmittingExam(true);
-    try {
-      const questionCodes: Record<string, { code: string; language: string }> = {};
-      Object.keys(codes).forEach((qId) => {
-        questionCodes[qId] = {
-          code: codes[Number(qId)],
-          language: languages[Number(qId)] || 'java',
-        };
-      });
+  const handleManualSubmitExam = () => {
+    setConfirmDialog({
+      isOpen: true,
+      title: 'Submit Exam',
+      message: 'Are you sure you want to finish and submit your exam?',
+      onConfirm: async () => {
+        setSubmittingExam(true);
+        try {
+          const questionCodes: Record<string, { code: string; language: string }> = {};
+          Object.keys(codes).forEach((qId) => {
+            questionCodes[qId] = {
+              code: codes[Number(qId)] ?? '',
+              language: languages[Number(qId)] || 'java',
+            };
+          });
 
-      await apiCall(`/api/student/tests/${testId}/submit`, {
-        method: 'POST',
-        body: JSON.stringify(questionCodes),
-      });
-      if (user?.id) {
-        Object.keys(codes).forEach((qId) => {
-          localStorage.removeItem(`chillcode_code_backup_${user.id}_${qId}`);
-        });
+          await apiCall(`/api/student/tests/${testId}/submit`, {
+            method: 'POST',
+            body: JSON.stringify(questionCodes),
+          });
+          if (user?.id) {
+            Object.keys(codes).forEach((qId) => {
+              localStorage.removeItem(`chillcode_code_backup_${user.id}_${qId}`);
+            });
+          }
+          clearTestSession();
+          resetWarnings();
+          if (document.fullscreenElement) {
+            try { await document.exitFullscreen(); } catch (_) {}
+          }
+          toast.success('Exam submitted successfully!');
+          router.push('/student/results');
+        } catch (e: any) {
+          toast.error(e.message || 'Failed to submit exam. Please try again.');
+        } finally {
+          setSubmittingExam(false);
+        }
       }
-      clearTestSession();
-      resetWarnings();
-      if (document.fullscreenElement) {
-        document.exitFullscreen();
-      }
-      toast.success('Exam submitted successfully!');
-      router.push('/student/results');
-    } catch (e) {
-      toast.error('Failed to submit exam. Please try again.');
-    } finally {
-      setSubmittingExam(false);
-    }
+    });
   };
 
   const handleWarningTrigger = async (type: string, reason: string) => {
@@ -629,9 +646,15 @@ export default function CodingWorkspace() {
   // Reset boilerplate code
   const handleResetCode = () => {
     if (!currentQuestion) return;
-    if (confirm('Are you sure you want to reset your code to the default template?')) {
-      updateLanguage(currentQuestion.id, languages[currentQuestion.id] || 'java');
-    }
+    setConfirmDialog({
+      isOpen: true,
+      title: 'Reset Code',
+      message: 'Are you sure you want to reset your code to the default template?',
+      onConfirm: () => {
+        updateCode(currentQuestion.id, '');
+        toast.info('Code reset to default template.');
+      }
+    });
   };
 
   // Suspension Screen
@@ -1390,6 +1413,35 @@ export default function CodingWorkspace() {
           questionName={currentQuestion?.title || 'Coding Challenge'}
           onComplete={handleAnimationComplete}
         />
+      )}
+
+      {/* Custom Confirm Dialog Modal */}
+      {confirmDialog.isOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-fadeIn">
+          <div className="bg-[#11131c] border border-white/10 rounded-2xl max-w-md w-full p-6 space-y-6 shadow-2xl">
+            <div className="space-y-2">
+              <h3 className="text-base font-bold text-white tracking-wide">{confirmDialog.title}</h3>
+              <p className="text-xs text-gray-400 leading-relaxed">{confirmDialog.message}</p>
+            </div>
+            <div className="flex justify-end gap-3 pt-2">
+              <button
+                onClick={() => setConfirmDialog(prev => ({ ...prev, isOpen: false }))}
+                className="px-4 py-2 rounded-xl text-xs font-bold text-gray-400 hover:text-white bg-white/5 hover:bg-white/10 border border-white/5 transition-all select-none"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={async () => {
+                  setConfirmDialog(prev => ({ ...prev, isOpen: false }));
+                  await confirmDialog.onConfirm();
+                }}
+                className="px-4 py-2 rounded-xl text-xs font-bold text-white bg-indigo-600 hover:bg-indigo-500 shadow-lg shadow-indigo-600/20 transition-all select-none"
+              >
+                Confirm
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );

@@ -242,7 +242,8 @@ public class TestService {
     @Transactional
     public StudentTest submitTest(Long testId, Long studentId, boolean isAutoSubmitted) {
         StudentTest st = studentTestRepository.findByStudentIdAndTestId(studentId, testId)
-                .orElseThrow(() -> new RuntimeException("Student-Test mapping not found."));
+                .orElseGet(() -> studentTestRepository.findById(testId)
+                        .orElseThrow(() -> new RuntimeException("Student-Test mapping not found.")));
 
         if ("COMPLETED".equals(st.getStatus())) {
             return st; // already completed & passed
@@ -571,7 +572,8 @@ public class TestService {
     @Transactional
     public com.chillcode.assessment.dto.StudentTestDto submitTestDto(Long testId, Long studentId, java.util.Map<String, java.util.Map<String, String>> questionCodes) {
         StudentTest st = studentTestRepository.findByStudentIdAndTestId(studentId, testId)
-                .orElseThrow(() -> new RuntimeException("Student-Test mapping not found."));
+                .orElseGet(() -> studentTestRepository.findById(testId)
+                        .orElseThrow(() -> new RuntimeException("Student-Test mapping not found.")));
 
         // Save final draft codes as submissions and evaluate them first
         if (questionCodes != null) {
