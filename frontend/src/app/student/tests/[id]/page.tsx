@@ -458,9 +458,9 @@ export default function CodingWorkspace() {
       return;
     }
 
-    // Rate-limiting check: ignore warnings within 2 seconds of each other to prevent auto-repeat triggers
+    // Rate-limiting check: ignore warnings within 500ms of each other to prevent auto-repeat triggers
     const nowTime = Date.now();
-    if (nowTime - lastWarningTimeRef.current < 2000) {
+    if (nowTime - lastWarningTimeRef.current < 500) {
       console.log('Ignored duplicate/rapid warning trigger:', type, reason);
       return;
     }

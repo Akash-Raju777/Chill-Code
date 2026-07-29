@@ -28,7 +28,11 @@ interface SubmissionResult {
   createdAt: string;
   passedTests: number;
   totalTests: number;
-  attempts?: number;
+  attempts: number;
+  score?: number;
+  passingMarks?: number;
+  percentage?: number;
+  overallResult?: string; // 'PASS' or 'FAIL'
 }
 
 const formatDate = (dateStr: string) => {
@@ -139,7 +143,7 @@ export default function StudentResults() {
       ) : (
         <div className="space-y-4">
           {submissions.map((item) => {
-            const isAccepted = item.status === 'ACCEPTED';
+            const isAccepted = item.overallResult === 'PASS' || item.status === 'ACCEPTED';
             let verdictText = isAccepted ? "PASS" : "FAIL";
             let badgeStyle = isAccepted 
               ? "bg-emerald-500/10 text-emerald-400 border border-emerald-500/20"

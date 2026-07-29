@@ -75,31 +75,40 @@ export function useExamSecurity({ testId, onWarning, isSessionActive }: Security
     };
 
     // ─── 4. Smart Clipboard: Track internal copies, block external pastes ─
+    const getCopiedText = (): string => {
+      let text = window.getSelection()?.toString() || '';
+      if (!text && document.activeElement?.tagName === 'TEXTAREA') {
+        const ta = document.activeElement as HTMLTextAreaElement;
+        text = ta.value.substring(ta.selectionStart, ta.selectionEnd) || ta.value;
+      }
+      return text;
+    };
+
     const handleCopy = (e: ClipboardEvent) => {
-      // Allow the copy to proceed naturally, but record what was copied
-      const selection = window.getSelection();
-      if (selection) {
-        internalClipboardRef.current = selection.toString();
+      const text = getCopiedText();
+      if (text) {
+        internalClipboardRef.current = text;
       }
     };
 
     const handleCut = (e: ClipboardEvent) => {
-      // Allow cut to proceed naturally, record the cut content
-      const selection = window.getSelection();
-      if (selection) {
-        internalClipboardRef.current = selection.toString();
+      const text = getCopiedText();
+      if (text) {
+        internalClipboardRef.current = text;
       }
     };
 
     const handlePaste = async (e: ClipboardEvent) => {
-      // Read clipboard text without consuming the event
       const clipboardText = e.clipboardData?.getData('text') ?? '';
 
       if (clipboardText && clipboardText.trim().length > 0) {
-        // Allow if the content was copied from within this session
-        if (clipboardText === internalClipboardRef.current) {
+        // Normalize whitespace for comparison to avoid minor formatting mismatches
+        const normalize = (s: string) => s.replace(/\s+/g, ' ').trim();
+        
+        if (normalize(clipboardText) === normalize(internalClipboardRef.current)) {
           return; // Internal paste — allow naturally
         }
+        
         // Block external paste
         e.preventDefault();
         e.stopPropagation();
@@ -110,6 +119,7 @@ export function useExamSecurity({ testId, onWarning, isSessionActive }: Security
     // ─── 5. Drag & Drop blocker ───────────────────────────────────────────
     const handleDragDrop = (e: DragEvent) => {
       e.preventDefault();
+      e.stopPropagation();
       onWarningRef.current('DRAG_DROP', 'Drag and drop actions are disabled during the secure exam');
     };
 
