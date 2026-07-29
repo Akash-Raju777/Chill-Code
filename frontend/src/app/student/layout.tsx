@@ -21,6 +21,8 @@ import Link from 'next/link';
 
 import { useTestStore } from '../../store/testStore';
 import { apiCall } from '../../utils/api';
+import { useBackendStore } from '../../store/backendStore';
+import BackendStatusBanner from '../../components/BackendStatusBanner';
 
 export default function StudentLayout({ children }: { children: React.ReactNode }) {
   const router = useRouter();
@@ -40,14 +42,17 @@ export default function StudentLayout({ children }: { children: React.ReactNode 
     setMounted(true);
 
     const syncProfile = () => {
+      // Pause aggressive polling if backend is known to be offline
+      if (useBackendStore.getState().isOffline) return;
+
       apiCall('/api/student/profile')
         .then((data) => {
           if (data) {
             setUser(data);
           }
         })
-        .catch((err) => {
-          console.error('Failed to sync student status', err);
+        .catch(() => {
+          // Handled gracefully in apiCall & backendStore
         });
     };
 
@@ -185,6 +190,7 @@ export default function StudentLayout({ children }: { children: React.ReactNode 
 
       {/* Main Panel */}
       <div className="flex-grow flex flex-col min-w-0 md:pl-64">
+        <BackendStatusBanner />
         <header className="glass-panel border-x-0 border-t-0 py-4 px-6 md:px-8 flex justify-between items-center">
           <button className="md:hidden text-gray-400 hover:text-white mr-4" onClick={() => setSidebarOpen(true)}>
             <Menu className="w-6 h-6" />

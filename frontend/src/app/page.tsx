@@ -5,6 +5,7 @@ import { useAuthStore } from '../store/authStore';
 import { apiCall } from '../utils/api';
 import { useRouter } from 'next/navigation';
 import { BookOpen, User as UserIcon, Lock, Code2, Mail, Phone } from 'lucide-react';
+import BackendStatusBanner from '../components/BackendStatusBanner';
 
 export default function LoginPage() {
   const router = useRouter();
@@ -144,7 +145,10 @@ export default function LoginPage() {
   };
 
   return (
-    <main className="min-h-screen flex items-center justify-center bg-[#0b0c10] p-4 relative overflow-hidden">
+    <main className="min-h-screen flex flex-col items-center justify-center bg-[#0b0c10] p-4 relative overflow-hidden">
+      <div className="w-full fixed top-0 left-0 right-0 z-50">
+        <BackendStatusBanner />
+      </div>
       {/* Background glowing decorations */}
       <div className="absolute top-[-20%] left-[-10%] w-[500px] h-[500px] bg-indigo-950/20 rounded-full blur-[120px]" />
       <div className="absolute bottom-[-20%] right-[-10%] w-[500px] h-[500px] bg-purple-950/20 rounded-full blur-[120px]" />

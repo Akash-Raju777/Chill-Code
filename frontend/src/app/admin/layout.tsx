@@ -20,6 +20,7 @@ import {
   MessageSquare
 } from 'lucide-react';
 import Link from 'next/link';
+import BackendStatusBanner from '../../components/BackendStatusBanner';
 
 export default function AdminLayout({ children }: { children: React.ReactNode }) {
   const router = useRouter();
@@ -125,6 +126,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
 
       {/* Main Content Pane */}
       <div className="flex-1 flex flex-col min-w-0">
+        <BackendStatusBanner />
         {/* Top Navbar */}
         <header className="glass-panel border-x-0 border-t-0 py-4 px-6 md:px-8 flex justify-between items-center">
           <button className="md:hidden text-gray-400 hover:text-white" onClick={() => setSidebarOpen(true)}>

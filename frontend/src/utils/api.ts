@@ -1,4 +1,5 @@
 import { useAuthStore } from '../store/authStore';
+import { useBackendStore } from '../store/backendStore';
 
 /**
  * Centralized API Base URL Configuration.
@@ -45,18 +46,25 @@ export async function apiCall(endpoint: string, options: RequestInit = {}) {
       ...options,
       headers,
     });
+    // Successful response clears backend offline status
+    useBackendStore.getState().setOffline(false);
   } catch (err: any) {
-    console.error(`[API Network Error] Failed to connect to ${fullUrl}:`, err);
-
     const isLocal = BASE_URL.includes('localhost') || BASE_URL.includes('127.0.0.1');
+    useBackendStore.getState().setOffline(true, BASE_URL);
+
+    if (process.env.NODE_ENV === 'development') {
+      console.warn(`[Backend Connection Warning] Failed to connect to ${fullUrl}.`);
+    } else {
+      console.error(`[API Network Error] Failed to connect to ${fullUrl}:`, err);
+    }
 
     if (isLocal) {
       throw new Error(
-        `Backend server is not running.\n\nPlease start the Spring Boot backend before using the application. (Cannot connect to ${BASE_URL})`
+        `Backend server is not running. Please start the Spring Boot backend on ${BASE_URL} before using the application.`
       );
     } else {
       throw new Error(
-        `Unable to connect to backend server (${BASE_URL}). Please check your connection or try again later.`
+        `Unable to connect to cloud backend (${BASE_URL}). Please check your connection or try again later.`
       );
     }
   }
