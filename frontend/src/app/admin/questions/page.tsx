@@ -30,6 +30,8 @@ interface Question {
   tags?: string;
   totalMarks?: number;
   passingMarks?: number;
+  questionCode?: string;
+  timer?: number;
   testCases: TestCase[];
 }
 
@@ -59,6 +61,8 @@ export default function QuestionManagement() {
   const [inputFormat, setInputFormat] = useState('');
   const [outputFormat, setOutputFormat] = useState('');
   const [passingMarks, setPassingMarks] = useState<number>(10);
+  const [questionCode, setQuestionCode] = useState('');
+  const [timer, setTimer] = useState<number | ''>('');
 
   const [allowedLangs, setAllowedLangs] = useState({
     java: true,
@@ -120,6 +124,8 @@ export default function QuestionManagement() {
     setInputFormat('');
     setOutputFormat('');
     setPassingMarks(10);
+    setQuestionCode('');
+    setTimer('');
 
     setAllowedLangs({ java: true, python: true, cpp: false, c: false, javascript: false });
     setTags('');
@@ -137,6 +143,8 @@ export default function QuestionManagement() {
     setInputFormat(q.inputFormat || '');
     setOutputFormat(q.outputFormat || '');
     setTags(q.tags || '');
+    setQuestionCode(q.questionCode || '');
+    setTimer(q.timer || '');
     setPassingMarks(q.passingMarks || 10);
     setTestCases(
       q.testCases?.map((tc) => ({
@@ -211,6 +219,8 @@ export default function QuestionManagement() {
 
       totalMarks: computedTotalMarks,
       passingMarks: Number(passingMarks),
+      questionCode: questionCode.trim() || undefined,
+      timer: timer === '' ? undefined : Number(timer),
       allowedLanguages: langsStr,
       tags,
       testCases,
@@ -469,8 +479,29 @@ export default function QuestionManagement() {
           </div>
 
           {/* Configuration constraints */}
-          <div className="grid grid-cols-2 md:grid-cols-3 gap-4 border-t border-white/5 pt-6">
-            <div className="col-span-2 md:col-span-3">
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4 border-t border-white/5 pt-6">
+            <div>
+              <label className="block text-xs font-semibold text-gray-400 uppercase mb-1">Question ID (Unique)</label>
+              <input
+                type="text"
+                placeholder="e.g. JAVA-1"
+                className="w-full glass-input p-3 rounded-xl text-sm font-mono tracking-wider"
+                value={questionCode}
+                onChange={(e) => setQuestionCode(e.target.value.toUpperCase())}
+                maxLength={20}
+              />
+            </div>
+            <div>
+              <label className="block text-xs font-semibold text-gray-400 uppercase mb-1">Timer (Min)</label>
+              <input
+                type="number"
+                placeholder="Optional"
+                className="w-full glass-input p-3 rounded-xl text-sm"
+                value={timer}
+                onChange={(e) => setTimer(e.target.value === '' ? '' : Number(e.target.value))}
+              />
+            </div>
+            <div className="col-span-2 md:col-span-2">
               <label className="block text-xs font-semibold text-gray-400 uppercase mb-1">Tags</label>
               <input
                 type="text"

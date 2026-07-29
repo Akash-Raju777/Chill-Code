@@ -43,6 +43,12 @@ public class Question {
     @Column(name = "output_format", columnDefinition = "TEXT")
     private String outputFormat;
 
+    @Column(name = "question_code", unique = true, length = 50)
+    private String questionCode; // e.g., HTML-1, JAVA-2
+
+    @Column(name = "timer")
+    private Integer timer; // Timer in minutes for this question
+
     @Column(name = "allowed_languages", columnDefinition = "TEXT")
     private String allowedLanguages; // Comma-separated: java,python,cpp,c,javascript
 

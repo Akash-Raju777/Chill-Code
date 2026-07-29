@@ -136,6 +136,13 @@ public class QuestionService {
                 .orElseThrow(() -> new RuntimeException("Subject not found with id: " + questionDto.getSubjectId()));
 
         // Idempotency protection to prevent duplicate creations
+        if (questionDto.getQuestionCode() != null && !questionDto.getQuestionCode().trim().isEmpty()) {
+            java.util.Optional<Question> existingCodeOpt = questionRepository.findByQuestionCode(questionDto.getQuestionCode().trim().toUpperCase());
+            if (existingCodeOpt.isPresent()) {
+                throw new RuntimeException("Question ID '" + questionDto.getQuestionCode().trim().toUpperCase() + "' already exists. Please choose a unique Question ID.");
+            }
+        }
+        
         java.util.Optional<Question> existingOpt = questionRepository.findBySubjectIdAndTitle(subject.getId(), questionDto.getTitle());
         if (existingOpt.isPresent()) {
             log.warn("Idempotency Block: Question with title '{}' already exists under subject ID: {}", questionDto.getTitle(), subject.getId());
@@ -168,6 +175,8 @@ public class QuestionService {
                 .constraints(questionDto.getConstraints())
                 .inputFormat(questionDto.getInputFormat())
                 .outputFormat(questionDto.getOutputFormat())
+                .questionCode(questionDto.getQuestionCode() != null ? questionDto.getQuestionCode().trim().toUpperCase() : null)
+                .timer(questionDto.getTimer())
                 .allowedLanguages(questionDto.getAllowedLanguages())
                 .tags(questionDto.getTags())
                 .totalMarks(computedTotalMarks)
@@ -215,6 +224,14 @@ public class QuestionService {
         Subject subject = subjectRepository.findById(questionDto.getSubjectId())
                 .orElseThrow(() -> new RuntimeException("Subject not found with id: " + questionDto.getSubjectId()));
 
+        if (questionDto.getQuestionCode() != null && !questionDto.getQuestionCode().trim().isEmpty()) {
+            String newCode = questionDto.getQuestionCode().trim().toUpperCase();
+            java.util.Optional<Question> existingCodeOpt = questionRepository.findByQuestionCode(newCode);
+            if (existingCodeOpt.isPresent() && !existingCodeOpt.get().getId().equals(id)) {
+                throw new RuntimeException("Question ID '" + newCode + "' already exists. Please choose a unique Question ID.");
+            }
+        }
+
         // Module 1 & 2: Calculate total marks from test cases and validate passing marks
         int computedTotalMarks = 0;
         if (questionDto.getTestCases() != null && !questionDto.getTestCases().isEmpty()) {
@@ -240,6 +257,8 @@ public class QuestionService {
         question.setConstraints(questionDto.getConstraints());
         question.setInputFormat(questionDto.getInputFormat());
         question.setOutputFormat(questionDto.getOutputFormat());
+        question.setQuestionCode(questionDto.getQuestionCode() != null ? questionDto.getQuestionCode().trim().toUpperCase() : null);
+        question.setTimer(questionDto.getTimer());
         question.setAllowedLanguages(questionDto.getAllowedLanguages());
         question.setTags(questionDto.getTags());
         question.setTotalMarks(computedTotalMarks);
@@ -357,6 +376,8 @@ public class QuestionService {
                 .constraints(question.getConstraints())
                 .inputFormat(question.getInputFormat())
                 .outputFormat(question.getOutputFormat())
+                .questionCode(question.getQuestionCode())
+                .timer(question.getTimer())
                 .allowedLanguages(question.getAllowedLanguages())
                 .tags(question.getTags())
                 .totalMarks(question.getTotalMarks() != null ? question.getTotalMarks() : 20)
