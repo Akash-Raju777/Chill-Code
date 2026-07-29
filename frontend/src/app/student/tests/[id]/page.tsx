@@ -454,9 +454,9 @@ export default function CodingWorkspace() {
 
     // No local-only intercept for EXTERNAL_PASTE; it is now a formal warning.
 
-    // Rate-limiting check: ignore warnings within 100ms of each other to prevent auto-repeat triggers
+    // Rate-limiting check: ignore warnings within 2000ms of each other to prevent auto-repeat triggers from a single action (e.g., blur + visibilitychange firing slightly apart)
     const nowTime = Date.now();
-    if (nowTime - lastWarningTimeRef.current < 100) {
+    if (nowTime - lastWarningTimeRef.current < 2000) {
       console.log('Ignored duplicate/rapid warning trigger:', type, reason);
       return;
     }
