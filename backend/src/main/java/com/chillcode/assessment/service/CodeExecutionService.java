@@ -398,14 +398,14 @@ public class CodeExecutionService {
             status.setLastAttemptAt(LocalDateTime.now());
             status.setLastSubmissionId(submission.getId());
 
-            if ("ACCEPTED".equals(submission.getStatus())) {
+            if ("ACCEPTED".equals(submission.getStatus()) || "PASS".equals(submission.getOverallResult())) {
                 status.setStatus("COMPLETED");
                 if (status.getCompletedAt() == null) {
                     status.setCompletedAt(LocalDateTime.now());
                 }
             } else {
                 if (!"COMPLETED".equals(status.getStatus())) {
-                    status.setStatus("IN_PROGRESS");
+                    status.setStatus("FAILED");
                 }
             }
         }

@@ -87,7 +87,13 @@ public class QuestionService {
             for (StudentQuestionStatus sqs : completedStatuses) {
                 solved.add(sqs.getQuestionId());
             }
-        } catch (Exception ignored) {}
+            List<Long> solvedFromSubmissions = submissionRepository.findSolvedQuestionIdsByStudentId(student.getId());
+            if (solvedFromSubmissions != null) {
+                solved.addAll(solvedFromSubmissions);
+            }
+        } catch (Exception e) {
+            log.warn("Error fetching solved question IDs: {}", e.getMessage());
+        }
         return solved;
     }
 
@@ -383,14 +389,21 @@ public class QuestionService {
                 if (identifier != null && !"anonymousUser".equals(identifier)) {
                     java.util.Optional<com.chillcode.assessment.entity.User> userOpt = userRepository.findByIdentifier(identifier);
                     if (userOpt.isPresent()) {
-                        List<StudentQuestionStatus> completedStatuses = studentQuestionStatusRepository.findByStudentIdAndStatus(userOpt.get().getId(), "COMPLETED");
+                        Long studentId = userOpt.get().getId();
+                        List<StudentQuestionStatus> completedStatuses = studentQuestionStatusRepository.findByStudentIdAndStatus(studentId, "COMPLETED");
                         for (StudentQuestionStatus sqs : completedStatuses) {
                             solved.add(sqs.getQuestionId());
+                        }
+                        List<Long> solvedFromSubmissions = submissionRepository.findSolvedQuestionIdsByStudentId(studentId);
+                        if (solvedFromSubmissions != null) {
+                            solved.addAll(solvedFromSubmissions);
                         }
                     }
                 }
             }
-        } catch (Exception ignored) {}
+        } catch (Exception e) {
+            log.warn("Error resolving current student solved questions: {}", e.getMessage());
+        }
         return solved;
     }
 

@@ -267,7 +267,7 @@ export default function TestsWorkspace() {
 
     const matchesSubject = subjectFilter === 'ALL' || q.subjectId === subjectFilter;
 
-    const isSolved = q.status === 'COMPLETED';
+    const isSolved = q.status === 'COMPLETED' || q.overallResult === 'PASS' || q.isSolved === true;
     const matchesSolved = !hideSolved || !isSolved;
 
     return matchesSearch && matchesDifficulty && matchesSubject && matchesSolved;
@@ -286,20 +286,20 @@ export default function TestsWorkspace() {
     const matchesDifficulty = difficultyFilter === 'ALL' || q.difficulty === difficultyFilter;
     const matchesSubject = subjectFilter === 'ALL' || q.subjectId === subjectFilter;
 
-    const isSolved = q.status === 'COMPLETED';
+    const isSolved = q.status === 'COMPLETED' || q.overallResult === 'PASS' || q.isSolved === true;
 
     return matchesSearch && matchesDifficulty && matchesSubject && isSolved;
   });
 
   const notStartedQuestions = filteredQuestions.filter((q) => {
-    const isSolved = q.status === 'COMPLETED';
-    const hasAttempts = q.attemptCount > 0;
+    const isSolved = q.status === 'COMPLETED' || q.overallResult === 'PASS' || q.isSolved === true;
+    const hasAttempts = (q.attemptCount && q.attemptCount > 0) || q.status === 'IN_PROGRESS' || q.status === 'FAILED' || q.status === 'SUSPENDED';
     return !isSolved && !hasAttempts;
   });
 
   const inProgressQuestions = filteredQuestions.filter((q) => {
-    const isSolved = q.status === 'COMPLETED';
-    const hasAttempts = q.attemptCount > 0;
+    const isSolved = q.status === 'COMPLETED' || q.overallResult === 'PASS' || q.isSolved === true;
+    const hasAttempts = (q.attemptCount && q.attemptCount > 0) || q.status === 'IN_PROGRESS' || q.status === 'FAILED' || q.status === 'SUSPENDED';
     return !isSolved && hasAttempts;
   });
 
