@@ -101,7 +101,7 @@ export default function StudentLeaderboardPage() {
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-6">
           <div>
             <span className="text-[10px] font-black uppercase tracking-widest text-amber-400 bg-amber-500/10 px-3 py-1 rounded-full border border-amber-500/20 inline-block mb-2">
-              Chill-Code Hall of Fame
+              Chill Code Hall of Fame
             </span>
             <h1 className="text-3xl font-black text-white tracking-tight">Platform Leaderboard</h1>
             <p className="text-xs text-gray-400">Live rankings derived from test marks, test cases passed, and speed</p>

@@ -70,7 +70,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
           <div className="flex items-center gap-2">
             <Code2 className="w-6 h-6 text-indigo-400" />
             <span className="text-xl font-bold tracking-tight text-white">
-              Chill-<span className="gradient-text">Code</span>
+              Chill <span className="gradient-text">Code</span>
             </span>
           </div>
           <button className="md:hidden text-gray-400 hover:text-white" onClick={() => setSidebarOpen(false)}>

@@ -80,7 +80,7 @@ export default function StudentAchievementsPage() {
             </div>
             <h1 className="text-3xl font-black text-white tracking-tight">Earned Achievements</h1>
             <p className="text-xs text-gray-400 max-w-xl">
-              Official record of test honors, badges, and rankings awarded automatically by Chill-Code Platform.
+              Official record of test honors, badges, and rankings awarded automatically by Chill Code Platform.
             </p>
           </div>
 

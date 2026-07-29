@@ -159,7 +159,7 @@ export default function LoginPage() {
             <Code2 className="w-8 h-8" />
           </div>
           <h1 className="text-3xl font-extrabold tracking-tight text-white mb-2">
-            Chill-<span className="gradient-text">Code</span>
+            Chill <span className="gradient-text">Code</span>
           </h1>
           <p className="text-gray-400">AI Coding Assessment Platform</p>
         </div>
