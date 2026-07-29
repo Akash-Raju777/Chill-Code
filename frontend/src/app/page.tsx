@@ -155,8 +155,9 @@ export default function LoginPage() {
 
       <div className="w-full max-w-lg glass-panel glow-card p-8 rounded-2xl relative z-10">
         <div className="text-center mb-8">
-          <div className="inline-flex items-center justify-center p-3 bg-indigo-500/10 rounded-xl mb-3 text-indigo-400">
-            <Code2 className="w-8 h-8" />
+          <div className="inline-flex items-center justify-center p-3 bg-indigo-500/10 rounded-2xl mb-3 border border-indigo-500/20 shadow-lg">
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src="/logo.png" alt="Chill Code Logo" className="w-10 h-10 object-contain filter invert brightness-150 drop-shadow-[0_0_12px_rgba(124,58,237,0.5)]" />
           </div>
           <h1 className="text-3xl font-extrabold tracking-tight text-white mb-2">
             Chill <span className="gradient-text">Code</span>

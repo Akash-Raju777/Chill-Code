@@ -15,6 +15,9 @@ const geistMono = Geist_Mono({
 export const metadata: Metadata = {
   title: "Chill Code - AI Coding Assessment Platform",
   description: "AI Powered Coding Assessment and Evaluation Platform",
+  icons: {
+    icon: "/logo.png",
+  },
 };
 
 export default function RootLayout({

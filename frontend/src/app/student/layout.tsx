@@ -86,8 +86,9 @@ export default function StudentLayout({ children }: { children: React.ReactNode 
       }`}>
         <div className="space-y-8">
           <div className="flex justify-between items-center">
-            <Link href="/student/dashboard" className="flex items-center gap-2 text-indigo-400 font-bold text-xl tracking-wider">
-              <Code2 className="w-6 h-6" />
+            <Link href="/student/dashboard" className="flex items-center gap-2.5 text-indigo-400 font-bold text-xl tracking-wider">
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img src="/logo.png" alt="Chill Code Logo" className="w-7 h-7 object-contain filter invert brightness-150 drop-shadow-[0_0_8px_rgba(124,58,237,0.5)]" />
               Chill Code
             </Link>
             <button className="md:hidden text-gray-400 hover:text-white" onClick={() => setSidebarOpen(false)}>

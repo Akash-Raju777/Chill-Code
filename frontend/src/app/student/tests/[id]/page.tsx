@@ -943,6 +943,8 @@ export default function CodingWorkspace() {
         <div className="flex items-center gap-6">
           {/* Logo */}
           <div className="flex items-center gap-2">
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src="/logo.png" alt="Chill Code Logo" className="w-5 h-5 object-contain filter invert brightness-150 drop-shadow-[0_0_6px_rgba(139,92,246,0.5)]" />
             <span className="text-base font-extrabold text-white font-sans tracking-tight">
               Chill <span className="text-[#8b5cf6]">Code</span>
             </span>
