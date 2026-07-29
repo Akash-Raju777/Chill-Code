@@ -145,8 +145,11 @@ export const fetchStudentLeaderboardSummary = () => apiCall('/api/student/leader
 export function formatISTDateTime(dateInput: string | Date | number | null | undefined): string {
   if (!dateInput) return 'N/A';
   let dateStr = String(dateInput);
-  if (typeof dateInput === 'string' && !dateInput.endsWith('Z') && !dateInput.includes('+') && !dateInput.includes('-0') && !dateInput.includes('+0')) {
-    dateStr = dateInput + 'Z';
+  if (typeof dateInput === 'string') {
+    const hasTimezone = dateInput.endsWith('Z') || /[-+]\d{2}:?\d{2}$/.test(dateInput);
+    if (!hasTimezone) {
+      dateStr = dateInput + '+05:30';
+    }
   }
   const d = new Date(dateStr);
   if (isNaN(d.getTime())) return 'N/A';
@@ -165,8 +168,11 @@ export function formatISTDateTime(dateInput: string | Date | number | null | und
 export function formatISTDate(dateInput: string | Date | number | null | undefined): string {
   if (!dateInput) return 'N/A';
   let dateStr = String(dateInput);
-  if (typeof dateInput === 'string' && !dateInput.endsWith('Z') && !dateInput.includes('+') && !dateInput.includes('-0') && !dateInput.includes('+0')) {
-    dateStr = dateInput + 'Z';
+  if (typeof dateInput === 'string') {
+    const hasTimezone = dateInput.endsWith('Z') || /[-+]\d{2}:?\d{2}$/.test(dateInput);
+    if (!hasTimezone) {
+      dateStr = dateInput + '+05:30';
+    }
   }
   const d = new Date(dateStr);
   if (isNaN(d.getTime())) return 'N/A';

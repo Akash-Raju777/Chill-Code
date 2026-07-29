@@ -13,6 +13,7 @@ public interface StudentQuestionStatusRepository extends JpaRepository<StudentQu
     List<StudentQuestionStatus> findByStudentId(Long studentId);
     List<StudentQuestionStatus> findByStudentIdAndStatus(Long studentId, String status);
     List<StudentQuestionStatus> findByQuestionId(Long questionId);
+    List<StudentQuestionStatus> findByStatus(String status);
 
     long countByStudentIdAndStatus(Long studentId, String status);
 

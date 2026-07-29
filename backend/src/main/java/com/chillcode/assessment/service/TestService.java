@@ -8,6 +8,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
+import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Optional;
@@ -500,9 +501,15 @@ public class TestService {
             }
         }
         
+        List<StudentTest> existingStudentTests = studentTestRepository.findByStudentId(studentId);
+        java.util.Set<Long> assignedTestIds = existingStudentTests.stream()
+                .map(st -> st.getTest().getId())
+                .collect(Collectors.toSet());
+
         List<com.chillcode.assessment.entity.Test> allTests = testRepository.findAll();
+        boolean savedAny = false;
         for (com.chillcode.assessment.entity.Test test : allTests) {
-            if (studentTestRepository.findByStudentIdAndTestId(studentId, test.getId()).isEmpty()) {
+            if (!assignedTestIds.contains(test.getId())) {
                 com.chillcode.assessment.entity.StudentTest st = com.chillcode.assessment.entity.StudentTest.builder()
                         .student(student)
                         .test(test)
@@ -512,11 +519,12 @@ public class TestService {
                         .isSuspended(false)
                         .build();
                 studentTestRepository.save(st);
+                savedAny = true;
             }
         }
 
         // Auto-unsuspend practice tests / tests with security shield disabled
-        List<StudentTest> studentTests = studentTestRepository.findByStudentId(studentId);
+        List<StudentTest> studentTests = savedAny ? studentTestRepository.findByStudentId(studentId) : existingStudentTests;
         for (StudentTest st : studentTests) {
             if (Boolean.FALSE.equals(st.getTest().getSecurityShieldEnabled())) {
                 if (Boolean.TRUE.equals(st.getIsSuspended()) || "SUSPENDED".equals(st.getStatus())) {
@@ -625,60 +633,65 @@ public class TestService {
     public com.chillcode.assessment.dto.StudentTestDto requestReattempt(Long testId, Long studentId, Long questionId) {
         StudentTest st = studentTestRepository.findByStudentIdAndTestId(studentId, testId)
                 .orElseThrow(() -> new RuntimeException("Student test not found"));
-        st.setReattemptStatus("PENDING:" + questionId);
-        return convertToStudentTestDto(studentTestRepository.save(st));
+        
+        StudentQuestionStatus sqs = studentQuestionStatusRepository
+                .findByStudentIdAndQuestionId(studentId, questionId)
+                .orElseGet(() -> {
+                    StudentQuestionStatus newSqs = new StudentQuestionStatus();
+                    newSqs.setStudentId(studentId);
+                    newSqs.setQuestionId(questionId);
+                    newSqs.setAttemptCount(0);
+                    return newSqs;
+                });
+        sqs.setStatus("PENDING_REATTEMPT");
+        studentQuestionStatusRepository.save(sqs);
+
+        st.setReattemptStatus("PENDING");
+        studentTestRepository.save(st);
+
+        com.chillcode.assessment.dto.StudentTestDto dto = convertToStudentTestDto(st);
+        dto.setReattemptStatus("PENDING");
+        dto.setReattemptQuestionId(questionId);
+        questionRepository.findById(questionId).ifPresent(q -> dto.setReattemptQuestionTitle(q.getTitle()));
+        return dto;
     }
 
     @Transactional(readOnly = true)
     public List<com.chillcode.assessment.dto.StudentTestDto> getPendingReattempts() {
-        return studentTestRepository.findAll().stream()
-                .filter(st -> st.getReattemptStatus() != null && st.getReattemptStatus().startsWith("PENDING:"))
-                .map(this::convertToStudentTestDto)
-                .collect(Collectors.toList());
+        List<StudentQuestionStatus> pendingStatusList = studentQuestionStatusRepository.findByStatus("PENDING_REATTEMPT");
+        List<com.chillcode.assessment.dto.StudentTestDto> dtos = new ArrayList<>();
+        for (StudentQuestionStatus sqs : pendingStatusList) {
+            List<StudentTest> studentTests = studentTestRepository.findByStudentId(sqs.getStudentId());
+            for (StudentTest st : studentTests) {
+                if (st.getTest().getQuestions().stream().anyMatch(q -> q.getId().equals(sqs.getQuestionId()))) {
+                    com.chillcode.assessment.dto.StudentTestDto dto = convertToStudentTestDto(st);
+                    dto.setReattemptStatus("PENDING");
+                    dto.setReattemptQuestionId(sqs.getQuestionId());
+                    questionRepository.findById(sqs.getQuestionId()).ifPresent(q -> dto.setReattemptQuestionTitle(q.getTitle()));
+                    dtos.add(dto);
+                }
+            }
+        }
+        return dtos;
     }
 
     @Transactional
-    public com.chillcode.assessment.dto.StudentTestDto approveReattempt(Long studentTestId) {
+    public com.chillcode.assessment.dto.StudentTestDto approveReattempt(Long studentTestId, Long questionId) {
         StudentTest st = studentTestRepository.findById(studentTestId)
                 .orElseThrow(() -> new RuntimeException("Student test not found"));
         
-        Long questionId = null;
-        String rStatus = st.getReattemptStatus();
-        if (rStatus != null && rStatus.contains(":")) {
-            String[] parts = rStatus.split(":");
-            if (parts.length == 2) {
-                try {
-                    questionId = Long.parseLong(parts[1]);
-                } catch (Exception ignored) {}
-            }
-        }
-
         st.setStatus("STARTED");
         st.setIsSuspended(false);
-        st.setReattemptStatus(null);
         st.setWarningsCount(0);
         st.setStartedAt(LocalDateTime.now());
         st.setSubmittedAt(null);
-        
+
         List<Warning> warnings = warningRepository.findByStudentTestId(st.getId());
         if (warnings != null && !warnings.isEmpty()) {
             warningRepository.deleteAll(warnings);
         }
-        
+
         if (questionId != null) {
-            List<Submission> submissions = submissionRepository.findByStudentTestId(st.getId());
-            if (submissions != null && !submissions.isEmpty()) {
-                final Long targetQId = questionId;
-                List<Submission> toDeactivate = submissions.stream()
-                        .filter(sub -> sub.getQuestion().getId().equals(targetQId))
-                        .collect(Collectors.toList());
-                for (Submission sub : toDeactivate) {
-                    sub.setActive(false);
-                }
-                submissionRepository.saveAll(toDeactivate);
-            }
-            
-            // Reset question completion status
             StudentQuestionStatus sqs = studentQuestionStatusRepository
                     .findByStudentIdAndQuestionId(st.getStudent().getId(), questionId)
                     .orElse(null);
@@ -687,16 +700,83 @@ public class TestService {
                 sqs.setCompletedAt(null);
                 studentQuestionStatusRepository.save(sqs);
             }
+
+            List<Submission> submissions = submissionRepository.findByStudentTestId(st.getId());
+            if (submissions != null && !submissions.isEmpty()) {
+                List<Submission> toDeactivate = submissions.stream()
+                        .filter(sub -> sub.getQuestion().getId().equals(questionId))
+                        .collect(Collectors.toList());
+                for (Submission sub : toDeactivate) {
+                    sub.setActive(false);
+                }
+                submissionRepository.saveAll(toDeactivate);
+            }
         }
 
-        return convertToStudentTestDto(studentTestRepository.save(st));
+        boolean hasMorePending = false;
+        List<StudentQuestionStatus> allStatus = studentQuestionStatusRepository.findByStudentId(st.getStudent().getId());
+        for (StudentQuestionStatus status : allStatus) {
+            if ("PENDING_REATTEMPT".equals(status.getStatus())) {
+                if (st.getTest().getQuestions().stream().anyMatch(q -> q.getId().equals(status.getQuestionId()))) {
+                    hasMorePending = true;
+                    break;
+                }
+            }
+        }
+
+        if (!hasMorePending) {
+            st.setReattemptStatus(null);
+        }
+        
+        studentTestRepository.save(st);
+
+        com.chillcode.assessment.dto.StudentTestDto dto = convertToStudentTestDto(st);
+        if (hasMorePending) {
+            dto.setReattemptStatus("PENDING");
+        } else {
+            dto.setReattemptStatus(null);
+        }
+        return dto;
     }
 
     @Transactional
-    public com.chillcode.assessment.dto.StudentTestDto rejectReattempt(Long studentTestId) {
+    public com.chillcode.assessment.dto.StudentTestDto rejectReattempt(Long studentTestId, Long questionId) {
         StudentTest st = studentTestRepository.findById(studentTestId)
                 .orElseThrow(() -> new RuntimeException("Student test not found"));
-        st.setReattemptStatus("REJECTED");
-        return convertToStudentTestDto(studentTestRepository.save(st));
+        
+        if (questionId != null) {
+            StudentQuestionStatus sqs = studentQuestionStatusRepository
+                    .findByStudentIdAndQuestionId(st.getStudent().getId(), questionId)
+                    .orElse(null);
+            if (sqs != null) {
+                sqs.setStatus("FAILED");
+                studentQuestionStatusRepository.save(sqs);
+            }
+        }
+
+        boolean hasMorePending = false;
+        List<StudentQuestionStatus> allStatus = studentQuestionStatusRepository.findByStudentId(st.getStudent().getId());
+        for (StudentQuestionStatus status : allStatus) {
+            if ("PENDING_REATTEMPT".equals(status.getStatus())) {
+                if (st.getTest().getQuestions().stream().anyMatch(q -> q.getId().equals(status.getQuestionId()))) {
+                    hasMorePending = true;
+                    break;
+                }
+            }
+        }
+
+        if (!hasMorePending) {
+            st.setReattemptStatus("REJECTED");
+        }
+        
+        studentTestRepository.save(st);
+
+        com.chillcode.assessment.dto.StudentTestDto dto = convertToStudentTestDto(st);
+        if (hasMorePending) {
+            dto.setReattemptStatus("PENDING");
+        } else {
+            dto.setReattemptStatus("REJECTED");
+        }
+        return dto;
     }
 }

@@ -23,6 +23,8 @@ import { useTestStore } from '../../store/testStore';
 import { apiCall } from '../../utils/api';
 import { useBackendStore } from '../../store/backendStore';
 import BackendStatusBanner from '../../components/BackendStatusBanner';
+import ToastContainer from '../../components/ToastContainer';
+import { toast } from '../../store/toastStore';
 
 export default function StudentLayout({ children }: { children: React.ReactNode }) {
   const router = useRouter();
@@ -41,8 +43,15 @@ export default function StudentLayout({ children }: { children: React.ReactNode 
   useEffect(() => {
     setMounted(true);
 
+    if (typeof window !== 'undefined' && 'Notification' in window) {
+      if (Notification.permission === 'default') {
+        Notification.requestPermission();
+      }
+    }
+
+    const seenIds = new Set<number>();
+
     const syncProfile = () => {
-      // Pause aggressive polling if backend is known to be offline
       if (useBackendStore.getState().isOffline) return;
 
       apiCall('/api/student/profile')
@@ -51,16 +60,52 @@ export default function StudentLayout({ children }: { children: React.ReactNode 
             setUser(data);
           }
         })
-        .catch(() => {
-          // Handled gracefully in apiCall & backendStore
-        });
+        .catch(() => {});
+    };
+
+    const syncNotifications = () => {
+      if (useBackendStore.getState().isOffline) return;
+
+      apiCall('/api/student/notifications')
+        .then((data: any[]) => {
+          if (!data || !Array.isArray(data)) return;
+          
+          const isFirstLoad = seenIds.size === 0;
+          
+          data.forEach((n) => {
+            if (isFirstLoad) {
+              seenIds.add(n.id);
+            } else if (!n.isRead && !seenIds.has(n.id)) {
+              seenIds.add(n.id);
+              
+              toast.info(`New Broadcast: ${n.title}`);
+
+              if (typeof window !== 'undefined' && 'Notification' in window && Notification.permission === 'granted') {
+                try {
+                  new Notification(n.title, {
+                    body: n.message,
+                    icon: '/logo.png'
+                  });
+                } catch (err) {
+                  console.error('Failed to trigger browser notification:', err);
+                }
+              }
+            }
+          });
+        })
+        .catch(() => {});
     };
 
     syncProfile();
+    syncNotifications();
 
-    // Poll status every 5 seconds
-    const interval = setInterval(syncProfile, 5000);
-    return () => clearInterval(interval);
+    const intervalProfile = setInterval(syncProfile, 5000);
+    const intervalNotifications = setInterval(syncNotifications, 5000);
+
+    return () => {
+      clearInterval(intervalProfile);
+      clearInterval(intervalNotifications);
+    };
   }, [setUser]);
 
   useEffect(() => {
@@ -225,6 +270,7 @@ export default function StudentLayout({ children }: { children: React.ReactNode 
           {children}
         </main>
       </div>
+      <ToastContainer />
     </div>
   );
 }

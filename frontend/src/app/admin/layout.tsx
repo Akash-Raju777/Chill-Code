@@ -21,6 +21,7 @@ import {
 } from 'lucide-react';
 import Link from 'next/link';
 import BackendStatusBanner from '../../components/BackendStatusBanner';
+import ToastContainer from '../../components/ToastContainer';
 
 export default function AdminLayout({ children }: { children: React.ReactNode }) {
   const router = useRouter();
@@ -149,6 +150,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
           {children}
         </main>
       </div>
+      <ToastContainer />
     </div>
   );
 }

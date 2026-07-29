@@ -102,8 +102,19 @@ public class QuestionService {
         com.chillcode.assessment.entity.User student = getCurrentUserEntity();
         java.util.Map<Long, StudentQuestionStatus> statusMap = getStatusMapForStudent(student);
         java.util.Set<Long> solvedSet = getSolvedQuestionIdsForStudent(student);
+
+        java.util.Map<Long, com.chillcode.assessment.entity.Submission> latestSubmissionMap = new java.util.HashMap<>();
+        if (student != null) {
+            List<com.chillcode.assessment.entity.Submission> allSubs = submissionRepository.findAllByStudentIdOrderByCreatedAtDesc(student.getId());
+            for (com.chillcode.assessment.entity.Submission sub : allSubs) {
+                if (sub.getQuestion() != null) {
+                    latestSubmissionMap.putIfAbsent(sub.getQuestion().getId(), sub);
+                }
+            }
+        }
+
         return questionRepository.findAll().stream()
-                .map(q -> convertToDto(q, statusMap, java.util.Collections.emptyList(), solvedSet))
+                .map(q -> convertToDto(q, statusMap, java.util.Collections.emptyList(), solvedSet, latestSubmissionMap))
                 .collect(Collectors.toList());
     }
 
@@ -115,8 +126,19 @@ public class QuestionService {
         List<TestCase> subjectTestCases = testCaseRepository.findByQuestionSubjectId(subjectId);
         java.util.Map<Long, List<TestCase>> testCasesMap = subjectTestCases.stream()
                 .collect(Collectors.groupingBy(tc -> tc.getQuestion().getId()));
+
+        java.util.Map<Long, com.chillcode.assessment.entity.Submission> latestSubmissionMap = new java.util.HashMap<>();
+        if (student != null) {
+            List<com.chillcode.assessment.entity.Submission> allSubs = submissionRepository.findAllByStudentIdOrderByCreatedAtDesc(student.getId());
+            for (com.chillcode.assessment.entity.Submission sub : allSubs) {
+                if (sub.getQuestion() != null) {
+                    latestSubmissionMap.putIfAbsent(sub.getQuestion().getId(), sub);
+                }
+            }
+        }
+
         return questionRepository.findBySubjectId(subjectId).stream()
-                .map(q -> convertToDto(q, statusMap, testCasesMap.getOrDefault(q.getId(), java.util.Collections.emptyList()), solvedSet))
+                .map(q -> convertToDto(q, statusMap, testCasesMap.getOrDefault(q.getId(), java.util.Collections.emptyList()), solvedSet, latestSubmissionMap))
                 .collect(Collectors.toList());
     }
 
@@ -126,7 +148,18 @@ public class QuestionService {
                 .orElseThrow(() -> new RuntimeException("Question not found with id: " + id));
         com.chillcode.assessment.entity.User student = getCurrentUserEntity();
         java.util.Map<Long, StudentQuestionStatus> statusMap = getStatusMapForStudent(student);
-        return convertToDto(question, statusMap, testCaseRepository.findByQuestionId(question.getId()), getSolvedQuestionIdsForStudent(student));
+
+        java.util.Map<Long, com.chillcode.assessment.entity.Submission> latestSubmissionMap = new java.util.HashMap<>();
+        if (student != null) {
+            List<com.chillcode.assessment.entity.Submission> allSubs = submissionRepository.findAllByStudentIdOrderByCreatedAtDesc(student.getId());
+            for (com.chillcode.assessment.entity.Submission sub : allSubs) {
+                if (sub.getQuestion() != null) {
+                    latestSubmissionMap.putIfAbsent(sub.getQuestion().getId(), sub);
+                }
+            }
+        }
+
+        return convertToDto(question, statusMap, testCaseRepository.findByQuestionId(question.getId()), getSolvedQuestionIdsForStudent(student), latestSubmissionMap);
     }
 
     @Transactional
@@ -448,5 +481,17 @@ public class QuestionService {
             log.warn("Failed to fetch student status map: {}", e.getMessage());
         }
         return java.util.Collections.emptyMap();
+    }
+
+    private QuestionDto convertToDto(Question question, java.util.Map<Long, StudentQuestionStatus> statusMap, List<TestCase> testCases, java.util.Set<Long> solvedQuestionIds, java.util.Map<Long, com.chillcode.assessment.entity.Submission> latestSubmissionMap) {
+        QuestionDto dto = convertToDto(question, statusMap, testCases, solvedQuestionIds);
+        if (latestSubmissionMap != null && latestSubmissionMap.containsKey(question.getId())) {
+            com.chillcode.assessment.entity.Submission sub = latestSubmissionMap.get(question.getId());
+            if (sub != null) {
+                dto.setScore(sub.getScore());
+                dto.setOverallResult(sub.getOverallResult());
+            }
+        }
+        return dto;
     }
 }

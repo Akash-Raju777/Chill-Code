@@ -2,6 +2,7 @@
 
 import React, { useEffect, useState } from 'react';
 import { apiCall, fetchBadgeSets, createBadgeSet, updateBadgeSet, deleteBadgeSet, toggleBadgeSetStatus } from '../../../utils/api';
+import { toast } from '../../../store/toastStore';
 import { 
   Award, 
   Plus, 
@@ -91,7 +92,7 @@ export default function AdminBadgeSetsPage() {
         id: t.id,
         testCode: t.testCode || `TEST-${t.id}`,
         name: t.name,
-        subjectId: t.subjectId,
+        subjectId: t.subject?.id || t.subjectId,
         subjectName: t.subjectName || t.subject?.name || 'General'
       }));
       setTests(formattedTests);
@@ -168,7 +169,7 @@ export default function AdminBadgeSetsPage() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!selectedTestId) {
-      alert('Please select a Test ID.');
+      toast.warning('Please select a Test ID.');
       return;
     }
 
@@ -192,8 +193,9 @@ export default function AdminBadgeSetsPage() {
       }
       setIsModalOpen(false);
       loadData();
+      toast.success('Badge set saved successfully!');
     } catch (err: any) {
-      alert(err.message || 'Failed to save badge set.');
+      toast.error(err.message || 'Failed to save badge set.');
     }
   };
 
@@ -202,8 +204,9 @@ export default function AdminBadgeSetsPage() {
     try {
       await deleteBadgeSet(id);
       loadData();
+      toast.success('Badge set deleted successfully.');
     } catch (err: any) {
-      alert(err.message || 'Failed to delete badge set.');
+      toast.error(err.message || 'Failed to delete badge set.');
     }
   };
 
@@ -212,8 +215,9 @@ export default function AdminBadgeSetsPage() {
     try {
       await toggleBadgeSetStatus(id, nextStatus);
       loadData();
+      toast.success(`Badge set status updated to ${nextStatus}.`);
     } catch (err: any) {
-      alert(err.message || 'Failed to update status.');
+      toast.error(err.message || 'Failed to update status.');
     }
   };
 
@@ -362,7 +366,7 @@ export default function AdminBadgeSetsPage() {
                     const isAlreadyConfigured = badgeSets.some((bs) => bs.testId === t.id && (!editingSet || editingSet.id !== bs.id));
                     return (
                       <option key={t.id} value={t.id} disabled={isAlreadyConfigured}>
-                        Test ID: {t.testCode} - {t.name} ({t.subjectName}) {isAlreadyConfigured ? ' (Already Configured)' : ''}
+                        {t.testCode} - {t.name} {isAlreadyConfigured ? ' (Already Configured)' : ''}
                       </option>
                     );
                   })}

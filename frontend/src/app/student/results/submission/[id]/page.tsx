@@ -3,6 +3,7 @@
 import React, { useEffect, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { apiCall, formatISTDateTime } from '../../../../../utils/api';
+import { toast } from '../../../../../store/toastStore';
 import { 
   CheckCircle2, 
   XCircle, 
@@ -29,19 +30,43 @@ export default function SubmissionResultPage() {
   useEffect(() => {
     if (!submissionId) return;
 
-    const fetchSubmissionDetails = async () => {
-      setLoading(true);
+    let intervalId: any = null;
+
+    const fetchSubmissionDetails = async (showSpinner: boolean = true) => {
+      if (showSpinner) setLoading(true);
       try {
         const data = await apiCall(`/api/student/submissions/${submissionId}`);
         setSubmission(data);
+        if (data && data.status === 'PENDING') {
+          if (!intervalId) {
+            intervalId = setInterval(() => {
+              fetchSubmissionDetails(false);
+            }, 1000);
+          }
+        } else {
+          if (intervalId) {
+            clearInterval(intervalId);
+            intervalId = null;
+          }
+          setLoading(false);
+        }
       } catch (err: any) {
         setError(err.message || 'Failed to fetch submission details.');
-      } finally {
         setLoading(false);
+        if (intervalId) {
+          clearInterval(intervalId);
+          intervalId = null;
+        }
       }
     };
 
-    fetchSubmissionDetails();
+    fetchSubmissionDetails(true);
+
+    return () => {
+      if (intervalId) {
+        clearInterval(intervalId);
+      }
+    };
   }, [submissionId]);
 
   const handleAnotherAttempt = async () => {
@@ -61,7 +86,7 @@ export default function SubmissionResultPage() {
         router.refresh();
       }
     } catch (err: any) {
-      alert(err.message || 'Failed to reset question attempt.');
+      toast.error(err.message || 'Failed to reset question attempt.');
     } finally {
       setActionLoading(false);
     }

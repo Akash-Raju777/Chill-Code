@@ -33,4 +33,6 @@ public class QuestionDto {
     private String status; // 'COMPLETED', 'NOT_COMPLETED'
     private Integer attemptCount;
     private String lastAttemptAt;
+    private Integer score;
+    private String overallResult;
 }

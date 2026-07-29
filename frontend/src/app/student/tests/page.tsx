@@ -6,6 +6,7 @@ import { useRouter } from 'next/navigation';
 import { useAuthStore } from '../../../store/authStore';
 import { useTestStore } from '../../../store/testStore';
 import { useSecurityStore } from '../../../store/securityStore';
+import { toast } from '../../../store/toastStore';
 import { 
   CheckCircle2, 
   Circle, 
@@ -61,6 +62,7 @@ export default function TestsWorkspace() {
   const [selectedTest, setSelectedTest] = useState<StudentTest | null>(null);
   const [selectedQuestion, setSelectedQuestion] = useState<any>(null);
   const [showConfirmModal, setShowConfirmModal] = useState(false);
+  const [startingTest, setStartingTest] = useState(false);
 
 
   // Search & Filter state variables
@@ -179,13 +181,16 @@ export default function TestsWorkspace() {
       await apiCall(`/api/student/tests/${testId}/request-reattempt?questionId=${questionId}`, {
         method: 'POST',
       });
-      setStudentTests((prev) =>
-        prev.map((t) => (t.test.id === testId ? { ...t, reattemptStatus: `PENDING:${questionId}` } : t))
+      setQuestionsList((prev) =>
+        prev.map((q) => (q.id === questionId ? { ...q, status: 'PENDING_REATTEMPT' } : q))
       );
-      alert('Your reattempt request has been submitted to the admin successfully.');
+      setStudentTests((prev) =>
+        prev.map((t) => (t.test.id === testId ? { ...t, reattemptStatus: 'PENDING', reattemptQuestionId: questionId } : t))
+      );
+      toast.success('Your reattempt request has been submitted to the admin successfully.');
       fetchTests(false);
     } catch (err: any) {
-      alert(err.message || 'Failed to submit reattempt request.');
+      toast.error(err.message || 'Failed to submit reattempt request.');
     }
   };
 
@@ -202,13 +207,15 @@ export default function TestsWorkspace() {
             : q
         )
       );
+      toast.success('Attempt reset successfully. You can now write the test again.');
     } catch (err: any) {
-      alert(err.message || 'Failed to request another attempt.');
+      toast.error(err.message || 'Failed to request another attempt.');
     }
   };
 
   const confirmStart = async () => {
     if (!selectedTest || !selectedQuestion) return;
+    setStartingTest(true);
     try {
       // Sync profile immediately to get the latest student status (e.g. NO_SECURITY)
       const updatedProfile = await apiCall('/api/student/profile');
@@ -249,8 +256,10 @@ export default function TestsWorkspace() {
       setShowConfirmModal(false);
       router.push(`/student/tests/${selectedTest.test.id}?question=${selectedQuestion.id}`);
     } catch (err: any) {
-      setError(err.message || 'Failed to start test session.');
+      toast.error(err.message || 'Failed to start test session.');
       setShowConfirmModal(false);
+    } finally {
+      setStartingTest(false);
     }
   };
 
@@ -276,34 +285,28 @@ export default function TestsWorkspace() {
     return matchesSearch && matchesDifficulty && matchesSubject && matchesSolved;
   });
 
-  const completedQuestions = questionsList.filter((q) => {
-    const title = q.title || '';
-    const subject = subjects.find((s) => s.id === q.subjectId);
-    const subjectName = subject ? subject.name : '';
-    const tags = q.tags || '';
-
-    const matchesSearch = title.toLowerCase().includes(searchQuery.toLowerCase()) || 
-      subjectName.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      tags.toLowerCase().includes(searchQuery.toLowerCase());
-
-    const matchesDifficulty = difficultyFilter === 'ALL' || q.difficulty === difficultyFilter;
-    const matchesSubject = subjectFilter === 'ALL' || q.subjectId === subjectFilter;
-
-    const isSolved = q.status === 'COMPLETED' || q.overallResult === 'PASS' || q.isSolved === true;
-
-    return matchesSearch && matchesDifficulty && matchesSubject && isSolved;
+  const completedQuestions = filteredQuestions.filter((q) => {
+    const hasPassed = (q.score !== undefined && q.score !== null ? q.score : 0) >= (q.passingMarks || 10);
+    const isPassStatus = q.overallResult === 'PASS' || q.status === 'COMPLETED';
+    return hasPassed && isPassStatus;
   });
 
   const notStartedQuestions = filteredQuestions.filter((q) => {
-    const isSolved = q.status === 'COMPLETED' || q.overallResult === 'PASS' || q.isSolved === true;
-    const hasAttempts = (q.attemptCount && q.attemptCount > 0) || q.status === 'IN_PROGRESS' || q.status === 'FAILED' || q.status === 'SUSPENDED';
-    return !isSolved && !hasAttempts;
+    const hasPassed = (q.score !== undefined && q.score !== null ? q.score : 0) >= (q.passingMarks || 10);
+    const isPassStatus = q.overallResult === 'PASS' || q.status === 'COMPLETED';
+    const isSolved = hasPassed && isPassStatus;
+
+    const hasAttempted = (q.attemptCount && q.attemptCount > 0) || ['IN_PROGRESS', 'FAILED', 'SUSPENDED', 'PENDING', 'PENDING_REATTEMPT'].includes(q.status);
+    return !isSolved && (!hasAttempted || q.status === 'NOT_STARTED');
   });
 
   const inProgressQuestions = filteredQuestions.filter((q) => {
-    const isSolved = q.status === 'COMPLETED' || q.overallResult === 'PASS' || q.isSolved === true;
-    const hasAttempts = (q.attemptCount && q.attemptCount > 0) || q.status === 'IN_PROGRESS' || q.status === 'FAILED' || q.status === 'SUSPENDED';
-    return !isSolved && hasAttempts;
+    const hasPassed = (q.score !== undefined && q.score !== null ? q.score : 0) >= (q.passingMarks || 10);
+    const isPassStatus = q.overallResult === 'PASS' || q.status === 'COMPLETED';
+    const isSolved = hasPassed && isPassStatus;
+
+    const hasAttempted = (q.attemptCount && q.attemptCount > 0) || ['IN_PROGRESS', 'FAILED', 'SUSPENDED', 'PENDING', 'PENDING_REATTEMPT'].includes(q.status);
+    return !isSolved && hasAttempted && q.status !== 'NOT_STARTED';
   });
 
   const renderQuestionsTable = (list: any[], isCompletedTable: boolean) => {
@@ -366,8 +369,10 @@ export default function TestsWorkspace() {
                     onClick={() => {
                       if (isSolved) {
                         handleViewQuestionAttempt(q);
-                      } else if (!isSuspended) {
-                        handleStartQuestionAttempt(q);
+                      } else if (q.status === 'NOT_STARTED' || !q.status) {
+                        if (!isSuspended) {
+                          handleStartQuestionAttempt(q);
+                        }
                       }
                     }}
                   >
@@ -468,7 +473,7 @@ export default function TestsWorkspace() {
                         </button>
                       ) : (() => {
                         const associatedTest = getAssociatedTest(q.subjectId);
-                        const isReattemptPending = associatedTest?.reattemptStatus === `PENDING:${q.id}`;
+                        const isReattemptPending = q.status === 'PENDING_REATTEMPT';
                         return (
                           <button
                             onClick={(e) => {
@@ -699,9 +704,11 @@ export default function TestsWorkspace() {
                 </button>
                 <button
                   onClick={confirmStart}
-                  className="px-5 py-2.5 rounded-xl bg-[#7c3aed] hover:bg-[#8b5cf6] text-white text-xs font-bold shadow-lg shadow-[#7c3aed]/10"
+                  disabled={startingTest}
+                  className="px-5 py-2.5 rounded-xl bg-[#7c3aed] hover:bg-[#8b5cf6] text-white text-xs font-bold shadow-lg shadow-[#7c3aed]/10 flex items-center gap-2 disabled:opacity-50 select-none"
                 >
-                  Agree & Start
+                  {startingTest && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
+                  {startingTest ? 'Initiating...' : 'Agree & Start'}
                 </button>
               </div>
             </div>

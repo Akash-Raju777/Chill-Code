@@ -7,6 +7,7 @@ import { useAuthStore } from '../../../../store/authStore';
 import { useSecurityStore } from '../../../../store/securityStore';
 import { useExamSecurity } from '../../../../hooks/useExamSecurity';
 import { apiCall } from '../../../../utils/api';
+import { toast } from '../../../../store/toastStore';
 import dynamic from 'next/dynamic';
 
 const Editor = dynamic(() => import('@monaco-editor/react'), {
@@ -307,13 +308,13 @@ export default function CodingWorkspace() {
         if (!state.isViewMode && state.isSessionActive) {
           if (seconds === 600 && !warnedTimesRef.current.has(600)) {
             warnedTimesRef.current.add(600);
-            alert('⚠️ Timer Warning: 10 minutes remaining in your test!');
+            toast.warning('Timer Warning: 10 minutes remaining in your test!');
           } else if (seconds === 300 && !warnedTimesRef.current.has(300)) {
             warnedTimesRef.current.add(300);
-            alert('⚠️ Timer Warning: 5 minutes remaining in your test!');
+            toast.warning('Timer Warning: 5 minutes remaining in your test!');
           } else if (seconds === 60 && !warnedTimesRef.current.has(60)) {
             warnedTimesRef.current.add(60);
-            alert('⚠️ Timer Warning: 1 minute remaining! Please finalize your code.');
+            toast.warning('Timer Warning: 1 minute remaining! Please finalize your code.');
           }
 
           if (seconds === 0 && prevState.timeLeftSeconds > 0) {
@@ -406,7 +407,7 @@ export default function CodingWorkspace() {
       if (document.fullscreenElement) {
         document.exitFullscreen();
       }
-      alert('Time is up! Your exam attempt has been auto-submitted.');
+      toast.warning('Time is up! Your exam attempt has been auto-submitted.');
       router.push('/student/results');
     } catch (e) {
       console.error('Auto submit failed', e);
@@ -441,9 +442,10 @@ export default function CodingWorkspace() {
       if (document.fullscreenElement) {
         document.exitFullscreen();
       }
+      toast.success('Exam submitted successfully!');
       router.push('/student/results');
     } catch (e) {
-      alert('Failed to submit exam. Please try again.');
+      toast.error('Failed to submit exam. Please try again.');
     } finally {
       setSubmittingExam(false);
     }
@@ -518,7 +520,7 @@ export default function CodingWorkspace() {
       if (sampleTestcases[2]) setCustomInput3(sampleTestcases[2].inputData || '');
       setConsoleOpen(true);
       setConsoleTab('TESTCASE');
-      alert('This question requires input. We have pre-populated the input methods with the sample inputs. Review them, then click "Compile & Run" again.');
+      toast.info('This question requires input. We have pre-populated the input methods with the sample inputs. Review them, then click "Compile & Run" again.');
       return;
     }
 

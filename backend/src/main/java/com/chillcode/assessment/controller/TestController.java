@@ -104,13 +104,17 @@ public class TestController {
 
     @PostMapping("/admin/tests/reattempt-requests/{studentTestId}/approve")
     @PreAuthorize("hasRole('ADMIN')")
-    public ResponseEntity<com.chillcode.assessment.dto.StudentTestDto> approveReattempt(@PathVariable("studentTestId") Long studentTestId) {
-        return ResponseEntity.ok(testService.approveReattempt(studentTestId));
+    public ResponseEntity<com.chillcode.assessment.dto.StudentTestDto> approveReattempt(
+            @PathVariable("studentTestId") Long studentTestId,
+            @RequestParam(value = "questionId", required = false) Long questionId) {
+        return ResponseEntity.ok(testService.approveReattempt(studentTestId, questionId));
     }
 
     @PostMapping("/admin/tests/reattempt-requests/{studentTestId}/reject")
     @PreAuthorize("hasRole('ADMIN')")
-    public ResponseEntity<com.chillcode.assessment.dto.StudentTestDto> rejectReattempt(@PathVariable("studentTestId") Long studentTestId) {
-        return ResponseEntity.ok(testService.rejectReattempt(studentTestId));
+    public ResponseEntity<com.chillcode.assessment.dto.StudentTestDto> rejectReattempt(
+            @PathVariable("studentTestId") Long studentTestId,
+            @RequestParam(value = "questionId", required = false) Long questionId) {
+        return ResponseEntity.ok(testService.rejectReattempt(studentTestId, questionId));
     }
 }

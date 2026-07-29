@@ -2,6 +2,7 @@
 
 import React, { useEffect, useState } from 'react';
 import { apiCall, formatISTDateTime } from '../../../utils/api';
+import { toast } from '../../../store/toastStore';
 import { 
   Users, 
   BookOpen, 
@@ -82,40 +83,42 @@ export default function AdminDashboard() {
       await apiCall(`/api/admin/student/forgive?registerNumber=${encodeURIComponent(studentKey)}`, {
         method: 'POST'
       });
-      alert(`Successfully reset security warning logs for ${displayName}. They can now continue their test.`);
+      toast.success(`Successfully reset security warning logs for ${displayName}. They can now continue their test.`);
       fetchMetrics();
     } catch (e: any) {
-      alert(e.message || 'Failed to forgive student.');
+      toast.error(e.message || 'Failed to forgive student.');
       fetchMetrics();
     }
   };
 
-  const handleApproveReattempt = async (studentTestId: number, testName: string) => {
+  const handleApproveReattempt = async (studentTestId: number, testName: string, questionId?: number) => {
     if (!confirm(`Are you sure you want to approve this reattempt request for "${testName}"? The student's attempt progress will be reset.`)) return;
-    setReattemptRequests(prev => prev.filter(req => req.id !== studentTestId));
+    setReattemptRequests(prev => prev.filter(req => !(req.id === studentTestId && req.reattemptQuestionId === questionId)));
     try {
-      await apiCall(`/api/admin/tests/reattempt-requests/${studentTestId}/approve`, {
+      const url = `/api/admin/tests/reattempt-requests/${studentTestId}/approve` + (questionId ? `?questionId=${questionId}` : '');
+      await apiCall(url, {
         method: 'POST',
       });
-      alert('Reattempt request approved successfully.');
+      toast.success('Reattempt request approved successfully.');
       fetchMetrics();
     } catch (e: any) {
-      alert(e.message || 'Failed to approve request.');
+      toast.error(e.message || 'Failed to approve request.');
       fetchMetrics();
     }
   };
 
-  const handleRejectReattempt = async (studentTestId: number, testName: string) => {
+  const handleRejectReattempt = async (studentTestId: number, testName: string, questionId?: number) => {
     if (!confirm(`Are you sure you want to reject this reattempt request for "${testName}"?`)) return;
-    setReattemptRequests(prev => prev.filter(req => req.id !== studentTestId));
+    setReattemptRequests(prev => prev.filter(req => !(req.id === studentTestId && req.reattemptQuestionId === questionId)));
     try {
-      await apiCall(`/api/admin/tests/reattempt-requests/${studentTestId}/reject`, {
+      const url = `/api/admin/tests/reattempt-requests/${studentTestId}/reject` + (questionId ? `?questionId=${questionId}` : '');
+      await apiCall(url, {
         method: 'POST',
       });
-      alert('Reattempt request rejected.');
+      toast.success('Reattempt request rejected.');
       fetchMetrics();
     } catch (e: any) {
-      alert(e.message || 'Failed to reject request.');
+      toast.error(e.message || 'Failed to reject request.');
       fetchMetrics();
     }
   };
@@ -272,13 +275,13 @@ export default function AdminDashboard() {
                     </div>
                     <div className="flex gap-2">
                       <button
-                        onClick={() => handleApproveReattempt(req.id, req.test.name)}
+                        onClick={() => handleApproveReattempt(req.id, req.test.name, req.reattemptQuestionId)}
                         className="px-2.5 py-1 text-[10px] bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400 border border-emerald-500/20 rounded-lg font-bold transition-all uppercase tracking-wider"
                       >
                         Approve
                       </button>
                       <button
-                        onClick={() => handleRejectReattempt(req.id, req.test.name)}
+                        onClick={() => handleRejectReattempt(req.id, req.test.name, req.reattemptQuestionId)}
                         className="px-2.5 py-1 text-[10px] bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 border border-rose-500/20 rounded-lg font-bold transition-all uppercase tracking-wider"
                       >
                         Reject

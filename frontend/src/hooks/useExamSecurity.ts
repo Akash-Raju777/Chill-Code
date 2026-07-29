@@ -36,6 +36,17 @@ export function useExamSecurity({ testId, onWarning, isSessionActive, internalCl
   useEffect(() => {
     if (!isSessionActive) return;
 
+    let lastWarningTime = 0;
+    const triggerWarning = (type: string, reason: string) => {
+      const now = Date.now();
+      if (now - lastWarningTime < 3000) {
+        console.log('Debounced duplicate/rapid warning in useExamSecurity:', type, reason);
+        return;
+      }
+      lastWarningTime = now;
+      onWarningRef.current(type, reason);
+    };
+
     // ─── 1. Keyboard Shortcuts Blocker ────────────────────────────────────
     const handleKeyDown = (e: KeyboardEvent) => {
       const isCtrl = e.ctrlKey || e.metaKey;
@@ -44,7 +55,7 @@ export function useExamSecurity({ testId, onWarning, isSessionActive, internalCl
       // Print (Ctrl+P) and Save (Ctrl+S) — not exam-relevant
       if (isCtrl && ['p', 's'].includes(keyLower)) {
         e.preventDefault();
-        onWarningRef.current('KEYBOARD_SHORTCUT', `Attempted print or save page shortcuts (Ctrl+${e.key.toUpperCase()})`);
+        triggerWarning('KEYBOARD_SHORTCUT', `Attempted print or save page shortcuts (Ctrl+${e.key.toUpperCase()})`);
         return;
       }
 
@@ -56,7 +67,7 @@ export function useExamSecurity({ testId, onWarning, isSessionActive, internalCl
 
       if (isDevToolsKeys) {
         e.preventDefault();
-        onWarningRef.current('DEV_TOOLS_OPEN', 'Attempted to open browser developer tools or view source');
+        triggerWarning('DEV_TOOLS_OPEN', 'Attempted to open browser developer tools or view source');
         return;
       }
     };
@@ -64,13 +75,13 @@ export function useExamSecurity({ testId, onWarning, isSessionActive, internalCl
     // ─── 2. Right-Click Context Menu blocker ──────────────────────────────
     const handleContextMenu = (e: MouseEvent) => {
       e.preventDefault();
-      onWarningRef.current('RIGHT_CLICK', 'Attempted to right-click inside the examination window');
+      triggerWarning('RIGHT_CLICK', 'Attempted to right-click inside the examination window');
     };
 
     // ─── 3. Tab Switching & Focus Loss — Visibility & Blur API ──────────────
     const handleVisibilityChange = () => {
       if (document.hidden) {
-        onWarningRef.current('TAB_SWITCH', 'Switched browser tab or minimized window');
+        triggerWarning('TAB_SWITCH', 'Switched browser tab or minimized window');
       }
     };
 
@@ -78,7 +89,7 @@ export function useExamSecurity({ testId, onWarning, isSessionActive, internalCl
       // Blur fires instantly on Alt+Tab or clicking outside the window.
       // Only fire if student was inside fullscreen (to avoid duplicate triggers on exit overlay)
       if (document.fullscreenElement && !document.hidden) {
-        onWarningRef.current('WINDOW_BLUR', 'Switched to another application or lost window focus (Alt+Tab)');
+        triggerWarning('WINDOW_BLUR', 'Switched to another application or lost window focus (Alt+Tab)');
       }
     };
 
@@ -98,7 +109,7 @@ export function useExamSecurity({ testId, onWarning, isSessionActive, internalCl
         // Block external paste
         e.preventDefault();
         e.stopPropagation();
-        onWarningRef.current('EXTERNAL_PASTE', 'Attempted to paste content from outside the assessment editor');
+        triggerWarning('EXTERNAL_PASTE', 'Attempted to paste content from outside the assessment editor');
       }
     };
 
@@ -106,13 +117,13 @@ export function useExamSecurity({ testId, onWarning, isSessionActive, internalCl
     const handleDragDrop = (e: DragEvent) => {
       e.preventDefault();
       e.stopPropagation();
-      onWarningRef.current('DRAG_DROP', 'Drag and drop actions are disabled during the secure exam');
+      triggerWarning('DRAG_DROP', 'Drag and drop actions are disabled during the secure exam');
     };
 
     // ─── 6. Fullscreen Exit Tracker ───────────────────────────────────────
     const handleFullscreenChange = () => {
       if (!document.fullscreenElement) {
-        onWarningRef.current('FULLSCREEN_EXIT', 'Exited secure full-screen assessment view');
+        triggerWarning('FULLSCREEN_EXIT', 'Exited secure full-screen assessment view');
       }
     };
 
@@ -127,7 +138,7 @@ export function useExamSecurity({ testId, onWarning, isSessionActive, internalCl
       const currentHeight = window.innerHeight;
 
       if (currentWidth < lastWidth - 100 || currentHeight < lastHeight - 100) {
-        onWarningRef.current(
+        triggerWarning(
           'VIEWPORT_RESIZE',
           `Suspicious window resizing or split-screen action detected (${currentWidth}x${currentHeight})`
         );

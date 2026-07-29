@@ -6,6 +6,8 @@ import { apiCall } from '../utils/api';
 import { useRouter } from 'next/navigation';
 import { BookOpen, User as UserIcon, Lock, Code2, Mail, Phone } from 'lucide-react';
 import BackendStatusBanner from '../components/BackendStatusBanner';
+import ToastContainer from '../components/ToastContainer';
+import { toast } from '../store/toastStore';
 
 export default function LoginPage() {
   const router = useRouter();
@@ -371,6 +373,7 @@ export default function LoginPage() {
           )}
         </div>
       </div>
+      <ToastContainer />
     </main>
   );
 }

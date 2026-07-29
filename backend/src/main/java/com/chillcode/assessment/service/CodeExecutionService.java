@@ -61,7 +61,7 @@ public class CodeExecutionService {
 
     private final HttpClient httpClient = HttpClient.newBuilder()
             .version(HttpClient.Version.HTTP_1_1)
-            .connectTimeout(java.time.Duration.ofMillis(300))
+            .connectTimeout(java.time.Duration.ofSeconds(10))
             .build();
 
     @Transactional
@@ -434,7 +434,7 @@ public class CodeExecutionService {
             HttpRequest httpRequest = HttpRequest.newBuilder()
                     .uri(URI.create(judge0ApiUrl + "/submissions?base64_encoded=true&wait=true"))
                     .header("Content-Type", "application/json")
-                    .timeout(java.time.Duration.ofMillis(300))
+                    .timeout(java.time.Duration.ofSeconds(10))
                     .POST(HttpRequest.BodyPublishers.ofString(jsonPayload))
                     .build();
                     
