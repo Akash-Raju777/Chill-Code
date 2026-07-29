@@ -43,12 +43,6 @@ export default function StudentLayout({ children }: { children: React.ReactNode 
   useEffect(() => {
     setMounted(true);
 
-    if (typeof window !== 'undefined' && 'Notification' in window) {
-      if (Notification.permission === 'default') {
-        Notification.requestPermission();
-      }
-    }
-
     const seenIds = new Set<number>();
 
     const syncProfile = () => {
@@ -78,18 +72,7 @@ export default function StudentLayout({ children }: { children: React.ReactNode 
             } else if (!n.isRead && !seenIds.has(n.id)) {
               seenIds.add(n.id);
               
-              toast.info(`New Broadcast: ${n.title}`);
-
-              if (typeof window !== 'undefined' && 'Notification' in window && Notification.permission === 'granted') {
-                try {
-                  new Notification(n.title, {
-                    body: n.message,
-                    icon: '/logo.png'
-                  });
-                } catch (err) {
-                  console.error('Failed to trigger browser notification:', err);
-                }
-              }
+              toast.info(`New Broadcast: ${n.title}\n\n${n.message}`);
             }
           });
         })

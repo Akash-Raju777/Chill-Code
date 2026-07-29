@@ -45,6 +45,17 @@ export default function AdminDashboard() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState('');
+  const [confirmDialog, setConfirmDialog] = useState<{
+    isOpen: boolean;
+    title: string;
+    message: string;
+    onConfirm: () => void | Promise<void>;
+  }>({
+    isOpen: false,
+    title: '',
+    message: '',
+    onConfirm: () => {},
+  });
   const fetchingRef = React.useRef(false);
 
   const fetchMetrics = async (isInitial = false) => {
@@ -71,56 +82,74 @@ export default function AdminDashboard() {
     }
   };
 
-  const handleForgive = async (studentKey: string, displayName: string) => {
-    if (!confirm(`Are you sure you want to forgive ${displayName} and reset their warning logs?`)) return;
-    if (data) {
-      setData({
-        ...data,
-        recentActivities: data.recentActivities.filter(act => (act.registerNumber || act.user) !== studentKey)
-      });
-    }
-    try {
-      await apiCall(`/api/admin/student/forgive?registerNumber=${encodeURIComponent(studentKey)}`, {
-        method: 'POST'
-      });
-      toast.success(`Successfully reset security warning logs for ${displayName}. They can now continue their test.`);
-      fetchMetrics();
-    } catch (e: any) {
-      toast.error(e.message || 'Failed to forgive student.');
-      fetchMetrics();
-    }
+  const handleForgive = (studentKey: string, displayName: string) => {
+    setConfirmDialog({
+      isOpen: true,
+      title: 'Forgive Student Warnings',
+      message: `Are you sure you want to forgive ${displayName} and reset their warning logs?`,
+      onConfirm: async () => {
+        if (data) {
+          setData({
+            ...data,
+            recentActivities: data.recentActivities.filter(act => (act.registerNumber || act.user) !== studentKey)
+          });
+        }
+        try {
+          await apiCall(`/api/admin/student/forgive?registerNumber=${encodeURIComponent(studentKey)}`, {
+            method: 'POST'
+          });
+          toast.success(`Successfully reset security warning logs for ${displayName}. They can now continue their test.`);
+          fetchMetrics();
+        } catch (e: any) {
+          toast.error(e.message || 'Failed to forgive student.');
+          fetchMetrics();
+        }
+      }
+    });
   };
 
-  const handleApproveReattempt = async (studentTestId: number, testName: string, questionId?: number) => {
-    if (!confirm(`Are you sure you want to approve this reattempt request for "${testName}"? The student's attempt progress will be reset.`)) return;
-    setReattemptRequests(prev => prev.filter(req => !(req.id === studentTestId && req.reattemptQuestionId === questionId)));
-    try {
-      const url = `/api/admin/tests/reattempt-requests/${studentTestId}/approve` + (questionId ? `?questionId=${questionId}` : '');
-      await apiCall(url, {
-        method: 'POST',
-      });
-      toast.success('Reattempt request approved successfully.');
-      fetchMetrics();
-    } catch (e: any) {
-      toast.error(e.message || 'Failed to approve request.');
-      fetchMetrics();
-    }
+  const handleApproveReattempt = (studentTestId: number, testName: string, questionId?: number) => {
+    setConfirmDialog({
+      isOpen: true,
+      title: 'Approve Reattempt Request',
+      message: `Are you sure you want to approve this reattempt request for "${testName}"? The student's attempt progress will be reset.`,
+      onConfirm: async () => {
+        setReattemptRequests(prev => prev.filter(req => !(req.id === studentTestId && req.reattemptQuestionId === questionId)));
+        try {
+          const url = `/api/admin/tests/reattempt-requests/${studentTestId}/approve` + (questionId ? `?questionId=${questionId}` : '');
+          await apiCall(url, {
+            method: 'POST',
+          });
+          toast.success('Reattempt request approved successfully.');
+          fetchMetrics();
+        } catch (e: any) {
+          toast.error(e.message || 'Failed to approve request.');
+          fetchMetrics();
+        }
+      }
+    });
   };
 
-  const handleRejectReattempt = async (studentTestId: number, testName: string, questionId?: number) => {
-    if (!confirm(`Are you sure you want to reject this reattempt request for "${testName}"?`)) return;
-    setReattemptRequests(prev => prev.filter(req => !(req.id === studentTestId && req.reattemptQuestionId === questionId)));
-    try {
-      const url = `/api/admin/tests/reattempt-requests/${studentTestId}/reject` + (questionId ? `?questionId=${questionId}` : '');
-      await apiCall(url, {
-        method: 'POST',
-      });
-      toast.success('Reattempt request rejected.');
-      fetchMetrics();
-    } catch (e: any) {
-      toast.error(e.message || 'Failed to reject request.');
-      fetchMetrics();
-    }
+  const handleRejectReattempt = (studentTestId: number, testName: string, questionId?: number) => {
+    setConfirmDialog({
+      isOpen: true,
+      title: 'Reject Reattempt Request',
+      message: `Are you sure you want to reject this reattempt request for "${testName}"?`,
+      onConfirm: async () => {
+        setReattemptRequests(prev => prev.filter(req => !(req.id === studentTestId && req.reattemptQuestionId === questionId)));
+        try {
+          const url = `/api/admin/tests/reattempt-requests/${studentTestId}/reject` + (questionId ? `?questionId=${questionId}` : '');
+          await apiCall(url, {
+            method: 'POST',
+          });
+          toast.success('Reattempt request rejected.');
+          fetchMetrics();
+        } catch (e: any) {
+          toast.error(e.message || 'Failed to reject request.');
+          fetchMetrics();
+        }
+      }
+    });
   };
 
   const fetchMetricsRef = React.useRef(fetchMetrics);
@@ -330,6 +359,34 @@ export default function AdminDashboard() {
           </div>
         </div>
       </div>
+      {/* Custom Confirm Dialog Modal */}
+      {confirmDialog.isOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-fadeIn">
+          <div className="bg-[#11131c] border border-white/10 rounded-2xl max-w-md w-full p-6 space-y-6 shadow-2xl">
+            <div className="space-y-2">
+              <h3 className="text-base font-bold text-white tracking-wide">{confirmDialog.title}</h3>
+              <p className="text-xs text-gray-400 leading-relaxed">{confirmDialog.message}</p>
+            </div>
+            <div className="flex justify-end gap-3 pt-2">
+              <button
+                onClick={() => setConfirmDialog(prev => ({ ...prev, isOpen: false }))}
+                className="px-4 py-2 rounded-xl text-xs font-bold text-gray-400 hover:text-white bg-white/5 hover:bg-white/10 border border-white/5 transition-all select-none"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={async () => {
+                  setConfirmDialog(prev => ({ ...prev, isOpen: false }));
+                  await confirmDialog.onConfirm();
+                }}
+                className="px-4 py-2 rounded-xl text-xs font-bold text-white bg-indigo-600 hover:bg-indigo-500 shadow-lg shadow-indigo-600/20 transition-all select-none"
+              >
+                Confirm
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

@@ -63,6 +63,17 @@ export default function TestsWorkspace() {
   const [selectedQuestion, setSelectedQuestion] = useState<any>(null);
   const [showConfirmModal, setShowConfirmModal] = useState(false);
   const [startingTest, setStartingTest] = useState(false);
+  const [confirmDialog, setConfirmDialog] = useState<{
+    isOpen: boolean;
+    title: string;
+    message: string;
+    onConfirm: () => void | Promise<void>;
+  }>({
+    isOpen: false,
+    title: '',
+    message: '',
+    onConfirm: () => {},
+  });
 
 
   // Search & Filter state variables
@@ -175,42 +186,56 @@ export default function TestsWorkspace() {
     }
   };
 
-  const handleRequestReattempt = async (testId: number, questionId: number) => {
-    if (!confirm('Are you sure you want to request another attempt from the admin? This will let you write this problem again once approved.')) return;
-    try {
-      await apiCall(`/api/student/tests/${testId}/request-reattempt?questionId=${questionId}`, {
-        method: 'POST',
-      });
-      setQuestionsList((prev) =>
-        prev.map((q) => (q.id === questionId ? { ...q, status: 'PENDING_REATTEMPT' } : q))
-      );
-      setStudentTests((prev) =>
-        prev.map((t) => (t.test.id === testId ? { ...t, reattemptStatus: 'PENDING', reattemptQuestionId: questionId } : t))
-      );
-      toast.success('Your reattempt request has been submitted to the admin successfully.');
-      fetchTests(false);
-    } catch (err: any) {
-      toast.error(err.message || 'Failed to submit reattempt request.');
-    }
+  const handleRequestReattempt = (testId: number, questionId: number) => {
+    setConfirmDialog({
+      isOpen: true,
+      title: 'Confirm Reattempt Request',
+      message: 'Are you sure you want to request another attempt from the admin? This will let you write this problem again once approved.',
+      onConfirm: async () => {
+        setQuestionsList((prev) =>
+          prev.map((q) => (q.id === questionId ? { ...q, status: 'PENDING_REATTEMPT' } : q))
+        );
+        setStudentTests((prev) =>
+          prev.map((t) => (t.test.id === testId ? { ...t, reattemptStatus: 'PENDING', reattemptQuestionId: questionId } : t))
+        );
+        try {
+          await apiCall(`/api/student/tests/${testId}/request-reattempt?questionId=${questionId}`, {
+            method: 'POST',
+          });
+          toast.success('Your reattempt request has been submitted to the admin successfully.');
+          fetchTests(false);
+        } catch (err: any) {
+          toast.error(err.message || 'Failed to submit reattempt request.');
+          fetchTests(false);
+        }
+      }
+    });
   };
 
-  const handleAnotherAttempt = async (questionId: number) => {
-    if (!confirm('Are you sure you want to attempt this question again? Only this question will be reset.')) return;
-    try {
-      await apiCall(`/api/student/question/${questionId}/another-attempt`, {
-        method: 'POST',
-      });
-      setQuestionsList((prev) =>
-        prev.map((q) =>
-          q.id === questionId
-            ? { ...q, status: 'NOT_STARTED' }
-            : q
-        )
-      );
-      toast.success('Attempt reset successfully. You can now write the test again.');
-    } catch (err: any) {
-      toast.error(err.message || 'Failed to request another attempt.');
-    }
+  const handleAnotherAttempt = (questionId: number) => {
+    setConfirmDialog({
+      isOpen: true,
+      title: 'Reset Question Attempt',
+      message: 'Are you sure you want to attempt this question again? Only this question will be reset.',
+      onConfirm: async () => {
+        try {
+          await apiCall(`/api/student/question/${questionId}/another-attempt`, {
+            method: 'POST',
+          });
+          setQuestionsList((prev) =>
+            prev.map((q) =>
+              q.id === questionId
+                ? { ...q, status: 'NOT_STARTED' }
+                : q
+            )
+          );
+          toast.success('Attempt reset successfully. You can now write the test again.');
+          fetchTests(false);
+        } catch (err: any) {
+          toast.error(err.message || 'Failed to reset attempt.');
+        }
+      }
+    });
   };
 
   const confirmStart = async () => {
@@ -715,6 +740,34 @@ export default function TestsWorkspace() {
           </div>
         );
       })()}
+      {/* Custom Confirm Dialog Modal */}
+      {confirmDialog.isOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-fadeIn">
+          <div className="bg-[#11131c] border border-white/10 rounded-2xl max-w-md w-full p-6 space-y-6 shadow-2xl">
+            <div className="space-y-2">
+              <h3 className="text-base font-bold text-white tracking-wide">{confirmDialog.title}</h3>
+              <p className="text-xs text-gray-400 leading-relaxed">{confirmDialog.message}</p>
+            </div>
+            <div className="flex justify-end gap-3 pt-2">
+              <button
+                onClick={() => setConfirmDialog(prev => ({ ...prev, isOpen: false }))}
+                className="px-4 py-2 rounded-xl text-xs font-bold text-gray-400 hover:text-white bg-white/5 hover:bg-white/10 border border-white/5 transition-all select-none"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={async () => {
+                  setConfirmDialog(prev => ({ ...prev, isOpen: false }));
+                  await confirmDialog.onConfirm();
+                }}
+                className="px-4 py-2 rounded-xl text-xs font-bold text-white bg-indigo-600 hover:bg-indigo-500 shadow-lg shadow-indigo-600/20 transition-all select-none"
+              >
+                Confirm
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
