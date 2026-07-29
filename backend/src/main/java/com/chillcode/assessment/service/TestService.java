@@ -466,11 +466,15 @@ public class TestService {
                 dto.setReattemptStatus(parts[0]);
                 try {
                     Long qId = Long.parseLong(parts[1]);
-                    dto.setReattemptQuestionId(qId);
                     questionRepository.findById(qId).ifPresent(q -> dto.setReattemptQuestionTitle(q.getTitle()));
                 } catch (Exception ignored) {}
             }
         }
+        dto.setPassFailStatus(st.getPassFailStatus() != null ? st.getPassFailStatus() : ("COMPLETED".equals(st.getStatus()) ? "PASS" : "FAIL"));
+        dto.setTestCasesPassed(st.getTestCasesPassed());
+        dto.setTotalTestCases(st.getTotalTestCases());
+        dto.setTimeTakenSeconds(st.getTimeTakenSeconds());
+        dto.setAutoSubmitted(st.getAutoSubmitted());
         return dto;
     }
 
