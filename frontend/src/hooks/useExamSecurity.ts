@@ -4,6 +4,7 @@ interface SecurityConfig {
   testId: number;
   onWarning: (type: string, reason: string) => void;
   isSessionActive: boolean;
+  internalClipboardRef?: React.MutableRefObject<string>;
 }
 
 /**
@@ -24,12 +25,13 @@ interface SecurityConfig {
  * - Detects fullscreen exit via fullscreenchange API.
  * - Raises FULLSCREEN_EXIT warning which triggers the overlay in the parent.
  */
-export function useExamSecurity({ testId, onWarning, isSessionActive }: SecurityConfig) {
+export function useExamSecurity({ testId, onWarning, isSessionActive, internalClipboardRef }: SecurityConfig) {
   const onWarningRef = useRef(onWarning);
   onWarningRef.current = onWarning;
 
-  // Tracks text copied from within this editor session
-  const internalClipboardRef = useRef<string>('');
+  // Fallback track text copied from within this editor session if parent doesn't provide it
+  const fallbackClipboardRef = useRef<string>('');
+  const activeClipboardRef = internalClipboardRef || fallbackClipboardRef;
 
   useEffect(() => {
     if (!isSessionActive) return;
@@ -77,30 +79,8 @@ export function useExamSecurity({ testId, onWarning, isSessionActive }: Security
       onWarningRef.current('WINDOW_BLUR', 'Switched to another application or lost window focus (Alt+Tab)');
     };
 
-    // ─── 4. Smart Clipboard: Track internal copies, block external pastes ─
-    const getCopiedText = (): string => {
-      let text = window.getSelection()?.toString() || '';
-      if (!text && document.activeElement?.tagName === 'TEXTAREA') {
-        const ta = document.activeElement as HTMLTextAreaElement;
-        text = ta.value.substring(ta.selectionStart, ta.selectionEnd) || ta.value;
-      }
-      return text;
-    };
-
-    const handleCopy = (e: ClipboardEvent) => {
-      const text = getCopiedText();
-      if (text) {
-        internalClipboardRef.current = text;
-      }
-    };
-
-    const handleCut = (e: ClipboardEvent) => {
-      const text = getCopiedText();
-      if (text) {
-        internalClipboardRef.current = text;
-      }
-    };
-
+    // ─── 4. Smart Clipboard: block external pastes ────────────────────────
+    // We rely on the parent component (e.g. Monaco Editor) to populate activeClipboardRef on copy/cut.
     const handlePaste = async (e: ClipboardEvent) => {
       const clipboardText = e.clipboardData?.getData('text') ?? '';
 
@@ -108,7 +88,7 @@ export function useExamSecurity({ testId, onWarning, isSessionActive }: Security
         // Normalize whitespace for comparison to avoid minor formatting mismatches
         const normalize = (s: string) => s.replace(/\s+/g, ' ').trim();
         
-        if (normalize(clipboardText) === normalize(internalClipboardRef.current)) {
+        if (normalize(clipboardText) === normalize(activeClipboardRef.current)) {
           return; // Internal paste — allow naturally
         }
         
@@ -157,9 +137,6 @@ export function useExamSecurity({ testId, onWarning, isSessionActive }: Security
     document.addEventListener('visibilitychange', handleVisibilityChange, true);
     window.addEventListener('blur', handleBlur, true);
 
-    // NOTE: copy & cut are captured globally but NOT prevented — we just record them
-    document.addEventListener('copy', handleCopy, true);
-    document.addEventListener('cut', handleCut, true);
     // Paste IS intercepted to block external content
     document.addEventListener('paste', handlePaste, true);
 
@@ -173,8 +150,6 @@ export function useExamSecurity({ testId, onWarning, isSessionActive }: Security
       window.removeEventListener('contextmenu', handleContextMenu, true);
       document.removeEventListener('visibilitychange', handleVisibilityChange, true);
       window.removeEventListener('blur', handleBlur, true);
-      document.removeEventListener('copy', handleCopy, true);
-      document.removeEventListener('cut', handleCut, true);
       document.removeEventListener('paste', handlePaste, true);
       document.removeEventListener('dragstart', handleDragDrop, true);
       document.removeEventListener('drop', handleDragDrop, true);

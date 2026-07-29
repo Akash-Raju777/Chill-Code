@@ -76,6 +76,7 @@ export default function CodingWorkspace() {
   } = useSecurityStore();
 
   const lastWarningTimeRef = useRef<number>(0);
+  const internalClipboardRef = useRef<string>('');
 
   // Page layout toggles
   const [mounted, setMounted] = useState(false);
@@ -485,10 +486,11 @@ export default function CodingWorkspace() {
     }
   };
 
-  useExamSecurity({
-    testId,
-    onWarning: handleWarningTrigger,
+  useExamSecurity({ 
+    testId, 
+    onWarning: handleWarningTrigger, 
     isSessionActive: isSessionActive && !isViewMode && isSecurityStatusActive && !isTestSuspended && !fullscreenRequired,
+    internalClipboardRef
   });
 
   const handleToggleFullscreen = async () => {
@@ -1192,7 +1194,20 @@ export default function CodingWorkspace() {
                 cursorBlinking: "smooth",
                 cursorSmoothCaretAnimation: "on"
               }}
-
+              onMount={(editor, monaco) => {
+                editor.onKeyDown((e: any) => {
+                  const isCtrlOrCmd = e.ctrlKey || e.metaKey;
+                  if (isCtrlOrCmd && (e.keyCode === monaco.KeyCode.KeyC || e.keyCode === monaco.KeyCode.KeyX)) {
+                    const selection = editor.getSelection();
+                    if (selection) {
+                      const text = editor.getModel()?.getValueInRange(selection);
+                      if (text) {
+                        internalClipboardRef.current = text;
+                      }
+                    }
+                  }
+                });
+              }}
             />
           </div>          {/* 3. Output Console Bottom Drawer */}
           <div className={`border-t border-white/5 bg-[#11131c] flex flex-col overflow-hidden transition-all duration-300 shrink-0 ${
