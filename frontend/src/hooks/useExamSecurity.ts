@@ -82,8 +82,7 @@ export function useExamSecurity({ testId, onWarning, isSessionActive, internalCl
 
     // ─── 2. Right-Click Context Menu blocker ──────────────────────────────
     const handleContextMenu = (e: MouseEvent) => {
-      e.preventDefault();
-      triggerWarning('RIGHT_CLICK', 'Attempted to right-click inside the examination window');
+      // Right click allowed for context menu without triggering security warning
     };
 
     // ─── 3. Tab Switching & Focus Loss — Visibility & Blur API ──────────────

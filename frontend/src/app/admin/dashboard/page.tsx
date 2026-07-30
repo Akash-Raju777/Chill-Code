@@ -114,7 +114,7 @@ export default function AdminDashboard() {
       title: 'Approve Reattempt Request',
       message: `Are you sure you want to approve this reattempt request for "${testName}"? The student's attempt progress will be reset.`,
       onConfirm: async () => {
-        setReattemptRequests(prev => prev.filter(req => !(req.id === studentTestId && req.reattemptQuestionId === questionId)));
+        setReattemptRequests(prev => prev.filter(req => !(req.id === studentTestId && (!questionId || req.reattemptQuestionId === questionId))));
         try {
           const url = `/api/admin/tests/reattempt-requests/${studentTestId}/approve` + (questionId ? `?questionId=${questionId}` : '');
           await apiCall(url, {
@@ -136,7 +136,7 @@ export default function AdminDashboard() {
       title: 'Reject Reattempt Request',
       message: `Are you sure you want to reject this reattempt request for "${testName}"?`,
       onConfirm: async () => {
-        setReattemptRequests(prev => prev.filter(req => !(req.id === studentTestId && req.reattemptQuestionId === questionId)));
+        setReattemptRequests(prev => prev.filter(req => !(req.id === studentTestId && (!questionId || req.reattemptQuestionId === questionId))));
         try {
           const url = `/api/admin/tests/reattempt-requests/${studentTestId}/reject` + (questionId ? `?questionId=${questionId}` : '');
           await apiCall(url, {

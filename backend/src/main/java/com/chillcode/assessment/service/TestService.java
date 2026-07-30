@@ -666,15 +666,21 @@ public class TestService {
     public List<com.chillcode.assessment.dto.StudentTestDto> getPendingReattempts() {
         List<StudentQuestionStatus> pendingStatusList = studentQuestionStatusRepository.findByStatus("PENDING_REATTEMPT");
         List<com.chillcode.assessment.dto.StudentTestDto> dtos = new ArrayList<>();
+        java.util.Set<String> processedKeys = new java.util.HashSet<>();
+
         for (StudentQuestionStatus sqs : pendingStatusList) {
             List<StudentTest> studentTests = studentTestRepository.findByStudentId(sqs.getStudentId());
             for (StudentTest st : studentTests) {
                 if (st.getTest().getQuestions().stream().anyMatch(q -> q.getId().equals(sqs.getQuestionId()))) {
-                    com.chillcode.assessment.dto.StudentTestDto dto = convertToStudentTestDto(st);
-                    dto.setReattemptStatus("PENDING");
-                    dto.setReattemptQuestionId(sqs.getQuestionId());
-                    questionRepository.findById(sqs.getQuestionId()).ifPresent(q -> dto.setReattemptQuestionTitle(q.getTitle()));
-                    dtos.add(dto);
+                    String key = st.getStudent().getId() + "_" + sqs.getQuestionId();
+                    if (!processedKeys.contains(key)) {
+                        processedKeys.add(key);
+                        com.chillcode.assessment.dto.StudentTestDto dto = convertToStudentTestDto(st);
+                        dto.setReattemptStatus("PENDING");
+                        dto.setReattemptQuestionId(sqs.getQuestionId());
+                        questionRepository.findById(sqs.getQuestionId()).ifPresent(q -> dto.setReattemptQuestionTitle(q.getTitle()));
+                        dtos.add(dto);
+                    }
                 }
             }
         }
@@ -717,6 +723,15 @@ public class TestService {
                 }
                 submissionRepository.saveAll(toDeactivate);
             }
+        } else {
+            List<StudentQuestionStatus> allStatus = studentQuestionStatusRepository.findByStudentId(st.getStudent().getId());
+            for (StudentQuestionStatus status : allStatus) {
+                if ("PENDING_REATTEMPT".equals(status.getStatus())) {
+                    status.setStatus("NOT_STARTED");
+                    status.setCompletedAt(null);
+                    studentQuestionStatusRepository.save(status);
+                }
+            }
         }
 
         boolean hasMorePending = false;
@@ -757,6 +772,14 @@ public class TestService {
             if (sqs != null) {
                 sqs.setStatus("FAILED");
                 studentQuestionStatusRepository.save(sqs);
+            }
+        } else {
+            List<StudentQuestionStatus> allStatus = studentQuestionStatusRepository.findByStudentId(st.getStudent().getId());
+            for (StudentQuestionStatus status : allStatus) {
+                if ("PENDING_REATTEMPT".equals(status.getStatus())) {
+                    status.setStatus("FAILED");
+                    studentQuestionStatusRepository.save(status);
+                }
             }
         }
 
