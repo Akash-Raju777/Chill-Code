@@ -362,11 +362,11 @@ export default function AdminBadgeSetsPage() {
                   className="w-full bg-[#181a25] border border-white/10 rounded-xl px-4 py-2.5 text-white font-mono focus:outline-none focus:border-amber-400"
                 >
                   <option value="">-- Choose Test ID --</option>
-                  {tests.filter((t) => !badgeSets.some((bs) => bs.testId === t.id && (!editingSet || editingSet.id !== bs.id))).length === 0 ? (
-                    <option value="" disabled>-- No Available Tests (All Configured) --</option>
+                  {tests.filter((t) => !t.name.toLowerCase().includes('practice arena') && !badgeSets.some((bs) => bs.testId === t.id && (!editingSet || editingSet.id !== bs.id))).length === 0 ? (
+                    <option value="" disabled>-- No Available Assessment Tests (Create a test in Test Management) --</option>
                   ) : (
                     tests
-                      .filter((t) => !badgeSets.some((bs) => bs.testId === t.id && (!editingSet || editingSet.id !== bs.id)))
+                      .filter((t) => !t.name.toLowerCase().includes('practice arena') && !badgeSets.some((bs) => bs.testId === t.id && (!editingSet || editingSet.id !== bs.id)))
                       .map((t) => (
                         <option key={t.id} value={t.id}>
                           {t.testCode} - {t.name} {t.subjectName ? `(${t.subjectName})` : ''}

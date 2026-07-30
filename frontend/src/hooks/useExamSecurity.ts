@@ -52,6 +52,14 @@ export function useExamSecurity({ testId, onWarning, isSessionActive, internalCl
       const isCtrl = e.ctrlKey || e.metaKey;
       const keyLower = e.key.toLowerCase();
 
+      // Windows + V (Clipboard History) Blocker
+      if (e.metaKey && (keyLower === 'v' || e.code === 'KeyV')) {
+        e.preventDefault();
+        e.stopPropagation();
+        triggerWarning('KEYBOARD_SHORTCUT', 'Attempted to open Windows Clipboard History (Win+V)');
+        return;
+      }
+
       // Print (Ctrl+P) and Save (Ctrl+S) — not exam-relevant
       if (isCtrl && ['p', 's'].includes(keyLower)) {
         e.preventDefault();

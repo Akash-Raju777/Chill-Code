@@ -1230,6 +1230,13 @@ export default function CodingWorkspace() {
               }}
               onMount={(editor, monaco) => {
                 editor.onKeyDown((e: any) => {
+                  // Block Windows + V (Clipboard History)
+                  if (e.metaKey && (e.keyCode === monaco.KeyCode.KeyV || e.code === 'KeyV')) {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    return;
+                  }
+
                   const isCtrlOrCmd = e.ctrlKey || e.metaKey;
                   if (isCtrlOrCmd && (e.keyCode === monaco.KeyCode.KeyC || e.keyCode === monaco.KeyCode.KeyX)) {
                     const selection = editor.getSelection();
@@ -1238,6 +1245,17 @@ export default function CodingWorkspace() {
                       if (text) {
                         internalClipboardRef.current = text;
                       }
+                    }
+                  }
+                });
+
+                // Record left-click mouse selection of written code into internal clipboard
+                editor.onDidChangeCursorSelection(() => {
+                  const selection = editor.getSelection();
+                  if (selection && !selection.isEmpty()) {
+                    const selectedText = editor.getModel()?.getValueInRange(selection);
+                    if (selectedText && selectedText.trim().length > 0) {
+                      internalClipboardRef.current = selectedText;
                     }
                   }
                 });
