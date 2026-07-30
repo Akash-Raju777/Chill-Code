@@ -13,6 +13,8 @@ interface Subject {
   status: string;
 }
 
+import { useAuthStore } from '../../../store/authStore';
+
 export default function SubjectManagement() {
   const [subjects, setSubjects] = useState<Subject[]>([]);
   const [loading, setLoading] = useState(true);
@@ -23,7 +25,7 @@ export default function SubjectManagement() {
   const [icon, setIcon] = useState('BookOpen');
   const [error, setError] = useState('');
   const [selectedSubject, setSelectedSubject] = useState<Subject | null>(null);
-  const [subjectStats, setSubjectStats] = useState<any | null>(null);
+  const [subjectStats, setSubjectStats] = useState<any>(null);
   const [statsLoading, setStatsLoading] = useState(false);
 
   const handleSelectSubject = async (sub: Subject) => {
@@ -41,17 +43,56 @@ export default function SubjectManagement() {
 
   const handleDownloadReport = async (subjectId: number, subjectName: string) => {
     try {
-      const API_URL = process.env.NEXT_PUBLIC_API_URL || '';
-      const token = typeof window !== 'undefined' ? localStorage.getItem('auth_token') : null;
+      const RAW_API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080';
+      const API_URL = RAW_API_URL.replace(/\/$/, '');
+      const token = useAuthStore.getState().token || (typeof window !== 'undefined' ? localStorage.getItem('token') || localStorage.getItem('auth_token') : null);
+      
       const response = await fetch(`${API_URL}/api/admin/subjects/${subjectId}/export`, {
         headers: { Authorization: token ? `Bearer ${token}` : '' },
       });
-      if (!response.ok) throw new Error('Failed to download report');
-      const blob = await response.blob();
+      
+      if (response.ok) {
+        const blob = await response.blob();
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `${subjectName.replace(/\s+/g, '-')}-report.xlsx`;
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        URL.revokeObjectURL(url);
+        return;
+      }
+    } catch (err) {
+      console.warn('Backend Excel export failed, falling back to client-side report generation:', err);
+    }
+
+    // Fallback: Client-side Excel CSV generation
+    try {
+      let registryData = subjectStats?.registry || [];
+      if (!registryData.length) {
+        const stats = await apiCall(`/api/admin/subjects/${subjectId}/stats`);
+        registryData = stats?.registry || [];
+      }
+      
+      let csvContent = `Student Name,Roll No,Question Name,Result\n`;
+      if (registryData.length > 0) {
+        registryData.forEach((item: any) => {
+          const sName = `"${(item.studentName || '').replace(/"/g, '""')}"`;
+          const roll = `"${(item.rollNo || '').replace(/"/g, '""')}"`;
+          const qName = `"${(item.questionName || '').replace(/"/g, '""')}"`;
+          const res = `"${(item.result || 'N/A').replace(/"/g, '""')}"`;
+          csvContent += `${sName},${roll},${qName},${res}\n`;
+        });
+      } else {
+        csvContent += `No Registry Data Available,,,,\n`;
+      }
+
+      const blob = new Blob(['\ufeff' + csvContent], { type: 'application/vnd.ms-excel;charset=utf-8;' });
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
-      a.download = `${subjectName.replace(/\s+/g, '-')}-report.xlsx`;
+      a.download = `${subjectName.replace(/\s+/g, '-')}-report.csv`;
       document.body.appendChild(a);
       a.click();
       a.remove();

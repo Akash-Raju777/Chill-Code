@@ -362,14 +362,17 @@ export default function AdminBadgeSetsPage() {
                   className="w-full bg-[#181a25] border border-white/10 rounded-xl px-4 py-2.5 text-white font-mono focus:outline-none focus:border-amber-400"
                 >
                   <option value="">-- Choose Test ID --</option>
-                  {tests.map((t) => {
-                    const isAlreadyConfigured = badgeSets.some((bs) => bs.testId === t.id && (!editingSet || editingSet.id !== bs.id));
-                    return (
-                      <option key={t.id} value={t.id} disabled={isAlreadyConfigured}>
-                        {t.testCode} - {t.name} {isAlreadyConfigured ? ' (Already Configured)' : ''}
-                      </option>
-                    );
-                  })}
+                  {tests.filter((t) => !badgeSets.some((bs) => bs.testId === t.id && (!editingSet || editingSet.id !== bs.id))).length === 0 ? (
+                    <option value="" disabled>-- No Available Tests (All Configured) --</option>
+                  ) : (
+                    tests
+                      .filter((t) => !badgeSets.some((bs) => bs.testId === t.id && (!editingSet || editingSet.id !== bs.id)))
+                      .map((t) => (
+                        <option key={t.id} value={t.id}>
+                          {t.testCode} - {t.name} {t.subjectName ? `(${t.subjectName})` : ''}
+                        </option>
+                      ))
+                  )}
                 </select>
               </div>
 
