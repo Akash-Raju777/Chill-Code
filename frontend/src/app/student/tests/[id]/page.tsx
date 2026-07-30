@@ -1260,14 +1260,10 @@ export default function CodingWorkspace() {
                   }
                 });
 
-                // Override Monaco's context menu Paste action so clicking "Paste" in the right-click menu works seamlessly!
-                editor.addAction({
-                  id: 'editor.action.clipboardPasteAction',
-                  label: 'Paste',
-                  keybindings: [monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyV],
-                  contextMenuGroupId: '9_cutcopypaste',
-                  contextMenuOrder: 3,
-                  run: async (ed) => {
+                // Override Monaco's existing single Paste context menu action so there is ONLY ONE "Paste" option!
+                const pasteAction = editor.getAction('editor.action.clipboardPasteAction');
+                if (pasteAction) {
+                  (pasteAction as any).run = async () => {
                     let textToPaste = internalClipboardRef.current;
                     if (!textToPaste && typeof navigator !== 'undefined' && navigator.clipboard && navigator.clipboard.readText) {
                       try {
@@ -1277,9 +1273,9 @@ export default function CodingWorkspace() {
                       }
                     }
                     if (textToPaste) {
-                      const selection = ed.getSelection();
+                      const selection = editor.getSelection();
                       if (selection) {
-                        ed.executeEdits('context-paste', [
+                        editor.executeEdits('context-paste', [
                           {
                             range: selection,
                             text: textToPaste,
@@ -1288,8 +1284,8 @@ export default function CodingWorkspace() {
                         ]);
                       }
                     }
-                  },
-                });
+                  };
+                }
               }}
             />
           </div>          {/* 3. Output Console Bottom Drawer */}

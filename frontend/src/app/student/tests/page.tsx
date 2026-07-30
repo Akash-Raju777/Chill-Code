@@ -83,9 +83,23 @@ export default function TestsWorkspace() {
   const [hideSolved, setHideSolved] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const fetchingRef = React.useRef(false);
+  const pendingReattemptQuestionIdsRef = React.useRef<Set<number>>(new Set());
 
   const { startTestSession } = useTestStore();
   const { resetWarnings } = useSecurityStore();
+
+  const applyPendingReattempts = (questions: any[]) => {
+    return (questions || []).map((q: any) => {
+      if (pendingReattemptQuestionIdsRef.current.has(q.id)) {
+        if (q.status === 'NOT_STARTED') {
+          pendingReattemptQuestionIdsRef.current.delete(q.id);
+          return q;
+        }
+        return { ...q, status: 'PENDING_REATTEMPT' };
+      }
+      return q;
+    });
+  };
 
   const fetchTests = async (isInitial = true) => {
     if (fetchingRef.current) return;
@@ -101,7 +115,7 @@ export default function TestsWorkspace() {
           apiCall('/api/student/subjects'),
         ]);
         setStudentTests(testsData);
-        setQuestionsList(questionsData);
+        setQuestionsList(applyPendingReattempts(questionsData));
         setSubjects(subjectsData);
       } else {
         const [testsData, questionsData] = await Promise.all([
@@ -109,7 +123,7 @@ export default function TestsWorkspace() {
           apiCall('/api/student/questions'),
         ]);
         setStudentTests(testsData);
-        setQuestionsList(questionsData);
+        setQuestionsList(applyPendingReattempts(questionsData));
       }
     } catch (err: any) {
       setError(err.message || 'Failed to fetch practice challenges.');
@@ -180,7 +194,8 @@ export default function TestsWorkspace() {
         true, // isViewMode = true
         associatedTest.test.securityShieldEnabled ?? false
       );
-      router.push(`/student/tests/${associatedTest.test.id}?question=${q.id}`);
+      resetWarnings();
+      router.push(`/student/tests/${associatedTest.test.id}`);
     } catch (err: any) {
       setError(err.message || 'Failed to enter view mode.');
     }
@@ -192,6 +207,7 @@ export default function TestsWorkspace() {
       title: 'Confirm Reattempt Request',
       message: 'Are you sure you want to request another attempt from the admin? This will let you write this problem again once approved.',
       onConfirm: async () => {
+        pendingReattemptQuestionIdsRef.current.add(questionId);
         setQuestionsList((prev) =>
           prev.map((q) => (q.id === questionId ? { ...q, status: 'PENDING_REATTEMPT' } : q))
         );
