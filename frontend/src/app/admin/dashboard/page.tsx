@@ -57,6 +57,7 @@ export default function AdminDashboard() {
     onConfirm: () => {},
   });
   const fetchingRef = React.useRef(false);
+  const processedActionKeysRef = React.useRef<Set<string>>(new Set());
 
   const fetchMetrics = async (isInitial = false) => {
     if (fetchingRef.current) return;
@@ -72,7 +73,10 @@ export default function AdminDashboard() {
         apiCall('/api/admin/tests/reattempt-requests')
       ]);
       setData(response);
-      setReattemptRequests(reattempts || []);
+      const filteredReattempts = (reattempts || []).filter(
+        (req: any) => !processedActionKeysRef.current.has(`${req.id}_${req.reattemptQuestionId}`)
+      );
+      setReattemptRequests(filteredReattempts);
     } catch (err: any) {
       setError(err.message || 'Failed to load dashboard metrics');
     } finally {
@@ -114,6 +118,7 @@ export default function AdminDashboard() {
       title: 'Approve Reattempt Request',
       message: `Are you sure you want to approve this reattempt request for "${testName}"? The student's attempt progress will be reset.`,
       onConfirm: async () => {
+        if (questionId) processedActionKeysRef.current.add(`${studentTestId}_${questionId}`);
         setReattemptRequests(prev => prev.filter(req => !(req.id === studentTestId && (!questionId || req.reattemptQuestionId === questionId))));
         try {
           const url = `/api/admin/tests/reattempt-requests/${studentTestId}/approve` + (questionId ? `?questionId=${questionId}` : '');
@@ -136,6 +141,7 @@ export default function AdminDashboard() {
       title: 'Reject Reattempt Request',
       message: `Are you sure you want to reject this reattempt request for "${testName}"?`,
       onConfirm: async () => {
+        if (questionId) processedActionKeysRef.current.add(`${studentTestId}_${questionId}`);
         setReattemptRequests(prev => prev.filter(req => !(req.id === studentTestId && (!questionId || req.reattemptQuestionId === questionId))));
         try {
           const url = `/api/admin/tests/reattempt-requests/${studentTestId}/reject` + (questionId ? `?questionId=${questionId}` : '');
