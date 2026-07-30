@@ -146,9 +146,12 @@ export function formatISTDateTime(dateInput: string | Date | number | null | und
   if (!dateInput) return 'N/A';
   let dateStr = String(dateInput);
   if (typeof dateInput === 'string') {
-    const hasTimezone = dateInput.endsWith('Z') || /[-+]\d{2}:?\d{2}$/.test(dateInput);
+    const trimmed = dateInput.trim();
+    const hasTimezone = trimmed.endsWith('Z') || /[-+]\d{2}:?\d{2}$/.test(trimmed);
     if (!hasTimezone) {
-      dateStr = dateInput + '+05:30';
+      dateStr = trimmed.replace(' ', 'T') + '+05:30';
+    } else {
+      dateStr = trimmed;
     }
   }
   const d = new Date(dateStr);
@@ -169,9 +172,12 @@ export function formatISTDate(dateInput: string | Date | number | null | undefin
   if (!dateInput) return 'N/A';
   let dateStr = String(dateInput);
   if (typeof dateInput === 'string') {
-    const hasTimezone = dateInput.endsWith('Z') || /[-+]\d{2}:?\d{2}$/.test(dateInput);
+    const trimmed = dateInput.trim();
+    const hasTimezone = trimmed.endsWith('Z') || /[-+]\d{2}:?\d{2}$/.test(trimmed);
     if (!hasTimezone) {
-      dateStr = dateInput + '+05:30';
+      dateStr = trimmed.replace(' ', 'T') + '+05:30';
+    } else {
+      dateStr = trimmed;
     }
   }
   const d = new Date(dateStr);
@@ -183,3 +189,4 @@ export function formatISTDate(dateInput: string | Date | number | null | undefin
     day: 'numeric',
   });
 }
+

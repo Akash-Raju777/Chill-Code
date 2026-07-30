@@ -1158,15 +1158,26 @@ export default function CodingWorkspace() {
               </select>
             </div>
 
-            {/* Editor tools buttons: Settings, night mode, reset, fullscreen */}
+            {/* Editor tools buttons: Font increase/decrease, night mode, reset */}
             <div className="flex items-center gap-3 text-gray-500">
-              <button 
-                onClick={() => setFontSize(fontSize >= 18 ? 12 : fontSize + 2)} 
-                className="hover:text-white transition-colors p-1" 
-                title={`Change font size (current: ${fontSize}px)`}
-              >
-                <FontSizeIcon className="w-4 h-4" />
-              </button>
+              <div className="flex items-center gap-1 bg-white/5 rounded-lg px-1 py-0.5">
+                <button 
+                  onClick={() => setFontSize(prev => Math.min(prev + 2, 24))} 
+                  className="hover:text-white transition-colors p-1 flex items-center" 
+                  title={`Increase font size (current: ${fontSize}px)`}
+                >
+                  <FontSizeIcon className="w-3.5 h-3.5" />
+                  <ChevronUp className="w-3 h-3 -ml-0.5" />
+                </button>
+                <button 
+                  onClick={() => setFontSize(prev => Math.max(prev - 2, 10))} 
+                  className="hover:text-white transition-colors p-1 flex items-center" 
+                  title={`Decrease font size (current: ${fontSize}px)`}
+                >
+                  <FontSizeIcon className="w-3.5 h-3.5" />
+                  <ChevronDown className="w-3 h-3 -ml-0.5" />
+                </button>
+              </div>
               <button 
                 onClick={() => setEditorTheme(editorTheme === 'vs-dark' ? 'light' : 'vs-dark')} 
                 className="hover:text-white transition-colors p-1" 
@@ -1179,9 +1190,6 @@ export default function CodingWorkspace() {
                   <RotateCcw className="w-4 h-4" />
                 </button>
               )}
-              <button onClick={handleToggleFullscreen} className="hover:text-white transition-colors p-1" title="Toggle Fullscreen">
-                <Maximize2 className="w-4 h-4" />
-              </button>
             </div>
           </div>
 
