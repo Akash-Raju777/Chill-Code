@@ -1260,7 +1260,40 @@ export default function CodingWorkspace() {
                   }
                 });
 
-                // Override Monaco's existing single Paste context menu action so there is ONLY ONE "Paste" option!
+                // Intercept Monaco's command service for paste so right-clicking and selecting "Paste" works 100%!
+                const commandService = (editor as any)._commandService;
+                if (commandService && typeof commandService.executeCommand === 'function') {
+                  const originalExecuteCommand = commandService.executeCommand.bind(commandService);
+                  commandService.executeCommand = async (id: string, ...args: any[]) => {
+                    const isPasteCommand = id === 'editor.action.clipboardPasteAction' || id === 'paste' || (id === 'execCommand' && args[0] === 'paste');
+                    if (isPasteCommand) {
+                      let textToPaste = internalClipboardRef.current;
+                      if (!textToPaste && typeof navigator !== 'undefined' && navigator.clipboard && navigator.clipboard.readText) {
+                        try {
+                          textToPaste = await navigator.clipboard.readText();
+                        } catch (err) {
+                          console.warn('Clipboard read permission/error:', err);
+                        }
+                      }
+                      if (textToPaste) {
+                        const selection = editor.getSelection();
+                        if (selection) {
+                          editor.executeEdits('context-paste', [
+                            {
+                              range: selection,
+                              text: textToPaste,
+                              forceMoveMarkers: true,
+                            },
+                          ]);
+                          return Promise.resolve();
+                        }
+                      }
+                    }
+                    return originalExecuteCommand(id, ...args);
+                  };
+                }
+
+                // Also override action.run for maximum browser compatibility
                 const pasteAction = editor.getAction('editor.action.clipboardPasteAction');
                 if (pasteAction) {
                   (pasteAction as any).run = async () => {
