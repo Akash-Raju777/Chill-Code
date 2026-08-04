@@ -20,6 +20,25 @@ import {
   Sparkles
 } from 'lucide-react';
 
+
+interface StudentAchievement {
+  id: number;
+  studentId: number;
+  studentName: string;
+  studentRegisterNumber: string;
+  badgeName: string;
+  badgeIcon: string;
+  badgeCategory: string;
+  testId: number;
+  testCode: string;
+  testName: string;
+  subjectName: string;
+  rankAchieved: string;
+  awardedAt: string;
+  awardedBy: string;
+  status: string;
+}
+
 interface TestOption {
   id: number;
   testCode: string;
@@ -60,6 +79,8 @@ export default function AdminBadgeSetsPage() {
   const [tests, setTests] = useState<TestOption[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [achievements, setAchievements] = useState<StudentAchievement[]>([]);
+  const [selectedBadgeSetForWinners, setSelectedBadgeSetForWinners] = useState<BadgeSet | null>(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingSet, setEditingSet] = useState<BadgeSet | null>(null);
   const [confirmDelete, setConfirmDelete] = useState<{ open: boolean; id: number | null }>({ open: false, id: null });
@@ -84,10 +105,12 @@ export default function AdminBadgeSetsPage() {
   const loadData = async () => {
     setLoading(true);
     try {
-      const [setsData, testsData] = await Promise.all([
+      const [setsData, testsData, achievementsData] = await Promise.all([
         fetchBadgeSets(),
-        apiCall('/api/admin/tests')
+        apiCall('/api/admin/tests'),
+        apiCall('/api/admin/achievements').catch(() => [])
       ]);
+      setAchievements(achievementsData || []);
       setBadgeSets(setsData || []);
 
       const formattedTests: TestOption[] = (testsData || []).map((t: any) => {
