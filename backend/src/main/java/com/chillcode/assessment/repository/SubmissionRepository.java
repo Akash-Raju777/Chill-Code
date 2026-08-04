@@ -12,6 +12,9 @@ public interface SubmissionRepository extends JpaRepository<Submission, Long> {
     List<Submission> findByStudentTestIdAndQuestionId(Long studentTestId, Long questionId);
     Optional<Submission> findFirstByStudentTestIdAndQuestionIdOrderByCreatedAtDesc(Long studentTestId, Long questionId);
 
+    @org.springframework.data.jpa.repository.Query("SELECT s FROM Submission s WHERE s.studentTest.student.id = :studentId AND s.question.id = :questionId ORDER BY s.createdAt DESC")
+    List<Submission> findByStudentIdAndQuestionIdOrderByCreatedAtDesc(@org.springframework.data.repository.query.Param("studentId") Long studentId, @org.springframework.data.repository.query.Param("questionId") Long questionId);
+
     @org.springframework.data.jpa.repository.Query("SELECT DISTINCT CONCAT(s.studentTest.id, '_', s.question.id) FROM Submission s WHERE s.studentTest.student.id = :studentId AND (s.status = 'ACCEPTED' OR s.overallResult = 'PASS') AND (s.active IS NULL OR s.active = true)")
     List<String> findSolvedTestQuestionPairsByStudentId(@org.springframework.data.repository.query.Param("studentId") Long studentId);
 

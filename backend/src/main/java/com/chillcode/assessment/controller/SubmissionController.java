@@ -154,6 +154,13 @@ public class SubmissionController {
         return ResponseEntity.ok(history);
     }
 
+    @GetMapping("/submissions/question/{questionId}")
+    public ResponseEntity<List<Submission>> getSubmissionsForQuestion(@PathVariable Long questionId) {
+        com.chillcode.assessment.entity.User student = getCurrentUser();
+        List<Submission> history = submissionRepository.findByStudentIdAndQuestionIdOrderByCreatedAtDesc(student.getId(), questionId);
+        return ResponseEntity.ok(history);
+    }
+
     @GetMapping("/submissions/{id}")
     public ResponseEntity<java.util.Map<String, Object>> getSubmissionById(@PathVariable Long id) {
         Submission sub = submissionRepository.findById(id)

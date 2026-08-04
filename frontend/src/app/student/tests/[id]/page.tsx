@@ -228,22 +228,29 @@ export default function CodingWorkspace() {
             user?.id
           );
 
-          // For returning students (STARTED), restore their last submitted code per question
-          if (activeTest.status === 'STARTED' || activeTest.status === 'IN_PROGRESS') {
-            for (const q of targetQuestions) {
-              try {
-                const subs = await apiCall(`/api/student/submissions/test/${activeTest.id}/question/${q.id}`);
-                if (subs && subs.length > 0) {
-                  const sorted = [...subs].sort((a: any, b: any) => b.id - a.id);
-                  const latestCode = sorted[0].code || '';
-                  const latestLang = sorted[0].language || 'java';
-                  if (latestCode) {
-                    useTestStore.getState().updateCode(q.id, latestCode);
-                    useTestStore.getState().updateLanguage(q.id, latestLang);
-                  }
+          // Restore student's written & submitted code per question across all test states
+          for (const q of targetQuestions) {
+            try {
+              let subs = await apiCall(`/api/student/submissions/test/${activeTest.id}/question/${q.id}`);
+              if (!subs || subs.length === 0) {
+                subs = await apiCall(`/api/student/submissions/question/${q.id}`);
+              }
+              if (subs && subs.length > 0) {
+                const sorted = [...subs].sort((a: any, b: any) => (b.id || 0) - (a.id || 0));
+                const latestCode = sorted[0].code || '';
+                const latestLang = sorted[0].language || 'java';
+                if (latestCode) {
+                  useTestStore.getState().updateCode(q.id, latestCode);
+                  useTestStore.getState().updateLanguage(q.id, latestLang);
                 }
-              } catch (e) {
-                // If fetch fails, check localStorage backup
+              } else if (user?.id) {
+                const backup = localStorage.getItem(`chillcode_code_backup_${user.id}_${q.id}`);
+                if (backup) {
+                  useTestStore.getState().updateCode(q.id, backup);
+                }
+              }
+            } catch (e) {
+              if (user?.id) {
                 const backup = localStorage.getItem(`chillcode_code_backup_${user.id}_${q.id}`);
                 if (backup) {
                   useTestStore.getState().updateCode(q.id, backup);
