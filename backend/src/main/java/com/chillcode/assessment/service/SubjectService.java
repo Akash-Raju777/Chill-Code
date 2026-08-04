@@ -150,6 +150,26 @@ public class SubjectService {
                 .setParameter(1, id)
                 .executeUpdate();
 
+        // 9.1 Clear subject_rankings
+        entityManager.createNativeQuery("DELETE FROM subject_rankings WHERE subject_id = ?")
+                .setParameter(1, id)
+                .executeUpdate();
+
+        // 9.2 Clear student_achievements referencing tests of this subject
+        entityManager.createNativeQuery("DELETE FROM student_achievements WHERE test_id IN (SELECT id FROM tests WHERE subject_id = ?)")
+                .setParameter(1, id)
+                .executeUpdate();
+
+        // 9.3 Clear badge_definitions referencing badge_sets of this subject
+        entityManager.createNativeQuery("DELETE FROM badge_definitions WHERE badge_set_id IN (SELECT id FROM badge_sets WHERE subject_id = ?)")
+                .setParameter(1, id)
+                .executeUpdate();
+
+        // 9.4 Clear badge_sets
+        entityManager.createNativeQuery("DELETE FROM badge_sets WHERE subject_id = ?")
+                .setParameter(1, id)
+                .executeUpdate();
+
         // 10. Delete tests belonging to this subject
         entityManager.createQuery("DELETE FROM Test t WHERE t.subject.id = :subId")
                 .setParameter("subId", id)
