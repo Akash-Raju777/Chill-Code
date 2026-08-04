@@ -650,154 +650,170 @@ public class CodeExecutionService {
                 java.nio.file.Files.writeString(sourceFile.toPath(), code, StandardCharsets.UTF_8);
                 File exeFile = new File(tempDir, System.getProperty("os.name").toLowerCase().contains("win") ? "solution.exe" : "solution");
                 
-                // Compile
-                ProcessBuilder compilePb;
-                if (System.getProperty("os.name").toLowerCase().contains("win")) {
-                    compilePb = new ProcessBuilder("cmd.exe", "/c", "gcc", "-O2", sourceFile.getAbsolutePath(), "-o", exeFile.getAbsolutePath());
-                } else {
-                    compilePb = new ProcessBuilder("gcc", "-O2", sourceFile.getAbsolutePath(), "-o", exeFile.getAbsolutePath());
-                }
-                ByteArrayOutputStream errStream = new ByteArrayOutputStream();
-                Process compileProcess = compilePb.start();
-                try (InputStream is = compileProcess.getErrorStream()) {
-                    is.transferTo(errStream);
-                }
-                boolean compileFinished = compileProcess.waitFor(10, java.util.concurrent.TimeUnit.SECONDS);
-                int compileResult = compileFinished ? compileProcess.exitValue() : -1;
-                
-                if (compileResult != 0) {
-                    statusId = 6; // Compilation Error
-                    compileOutputVal = errStream.toString(StandardCharsets.UTF_8);
-                } else {
-                    // Run
-                    long startTime = System.currentTimeMillis();
-                    ProcessBuilder pb = new ProcessBuilder(exeFile.getAbsolutePath());
-                    Process process = pb.start();
-                    
-                    // Write stdin
-                    if (stdin != null && !stdin.isEmpty()) {
-                        try (OutputStream os = process.getOutputStream()) {
-                            os.write(stdin.getBytes(StandardCharsets.UTF_8));
-                            os.flush();
-                        }
-                    }
-                    
-                    ByteArrayOutputStream outStream = new ByteArrayOutputStream();
-                    ByteArrayOutputStream procErrStream = new ByteArrayOutputStream();
-                    
-                    Thread outThread = new Thread(() -> {
-                        try (InputStream is = process.getInputStream()) {
-                            is.transferTo(outStream);
-                        } catch (Exception ignored) {}
-                    });
-                    Thread errThread = new Thread(() -> {
-                        try (InputStream is = process.getErrorStream()) {
-                            is.transferTo(procErrStream);
-                        } catch (Exception ignored) {}
-                    });
-                    
-                    outThread.start();
-                    errThread.start();
-                    
-                    boolean finished = process.waitFor(5, java.util.concurrent.TimeUnit.SECONDS);
-                    if (!finished) {
-                        process.destroyForcibly();
-                        statusId = 5; // TLE
+                try {
+                    // Compile
+                    ProcessBuilder compilePb;
+                    if (System.getProperty("os.name").toLowerCase().contains("win")) {
+                        compilePb = new ProcessBuilder("cmd.exe", "/c", "gcc", "-O2", sourceFile.getAbsolutePath(), "-o", exeFile.getAbsolutePath());
                     } else {
-                        outThread.join(1000);
-                        errThread.join(1000);
-                        timeSec = (System.currentTimeMillis() - startTime) / 1000.0;
-                        int exitCode = process.exitValue();
-                        if (exitCode != 0) {
-                            statusId = 11; // Runtime Error
-                            stderrVal = procErrStream.toString(StandardCharsets.UTF_8);
+                        compilePb = new ProcessBuilder("gcc", "-O2", sourceFile.getAbsolutePath(), "-o", exeFile.getAbsolutePath());
+                    }
+                    ByteArrayOutputStream errStream = new ByteArrayOutputStream();
+                    Process compileProcess = compilePb.start();
+                    try (InputStream is = compileProcess.getErrorStream()) {
+                        is.transferTo(errStream);
+                    }
+                    boolean compileFinished = compileProcess.waitFor(10, java.util.concurrent.TimeUnit.SECONDS);
+                    int compileResult = compileFinished ? compileProcess.exitValue() : -1;
+                    
+                    if (compileResult != 0) {
+                        statusId = 6; // Compilation Error
+                        compileOutputVal = errStream.toString(StandardCharsets.UTF_8);
+                        if (compileOutputVal == null || compileOutputVal.trim().isEmpty()) {
+                            compileOutputVal = "GCC compilation failed with exit code " + compileResult;
+                        }
+                    } else {
+                        // Run
+                        long startTime = System.currentTimeMillis();
+                        ProcessBuilder pb = new ProcessBuilder(exeFile.getAbsolutePath());
+                        Process process = pb.start();
+                        
+                        // Write stdin
+                        if (stdin != null && !stdin.isEmpty()) {
+                            try (OutputStream os = process.getOutputStream()) {
+                                os.write(stdin.getBytes(StandardCharsets.UTF_8));
+                                os.flush();
+                            }
+                        }
+                        
+                        ByteArrayOutputStream outStream = new ByteArrayOutputStream();
+                        ByteArrayOutputStream procErrStream = new ByteArrayOutputStream();
+                        
+                        Thread outThread = new Thread(() -> {
+                            try (InputStream is = process.getInputStream()) {
+                                is.transferTo(outStream);
+                            } catch (Exception ignored) {}
+                        });
+                        Thread errThread = new Thread(() -> {
+                            try (InputStream is = process.getErrorStream()) {
+                                is.transferTo(procErrStream);
+                            } catch (Exception ignored) {}
+                        });
+                        
+                        outThread.start();
+                        errThread.start();
+                        
+                        boolean finished = process.waitFor(5, java.util.concurrent.TimeUnit.SECONDS);
+                        if (!finished) {
+                            process.destroyForcibly();
+                            statusId = 5; // TLE
                         } else {
-                            stdoutVal = outStream.toString(StandardCharsets.UTF_8);
-                            if (expectedOutput != null) {
-                                boolean match = compareOutputs(expectedOutput, stdoutVal);
-                                statusId = match ? 3 : 4;
+                            outThread.join(1000);
+                            errThread.join(1000);
+                            timeSec = (System.currentTimeMillis() - startTime) / 1000.0;
+                            int exitCode = process.exitValue();
+                            if (exitCode != 0) {
+                                statusId = 11; // Runtime Error
+                                stderrVal = procErrStream.toString(StandardCharsets.UTF_8);
                             } else {
-                                statusId = 3;
+                                stdoutVal = outStream.toString(StandardCharsets.UTF_8);
+                                if (expectedOutput != null) {
+                                    boolean match = compareOutputs(expectedOutput, stdoutVal);
+                                    statusId = match ? 3 : 4;
+                                } else {
+                                    statusId = 3;
+                                }
                             }
                         }
                     }
+                } catch (Exception ex) {
+                    statusId = 6; // Compilation Error
+                    compileOutputVal = "Local C execution error: GCC compiler ('gcc') is not installed or not found on the host server PATH.\nPlease install GCC (e.g. MinGW-w64 on Windows or gcc on Linux) or enable Judge0 container.";
                 }
             } else if (languageId == 54) { // C++
                 File sourceFile = new File(tempDir, "solution.cpp");
                 java.nio.file.Files.writeString(sourceFile.toPath(), code, StandardCharsets.UTF_8);
                 File exeFile = new File(tempDir, System.getProperty("os.name").toLowerCase().contains("win") ? "solution.exe" : "solution");
                 
-                // Compile
-                ProcessBuilder compilePb;
-                if (System.getProperty("os.name").toLowerCase().contains("win")) {
-                    compilePb = new ProcessBuilder("cmd.exe", "/c", "g++", "-O2", sourceFile.getAbsolutePath(), "-o", exeFile.getAbsolutePath());
-                } else {
-                    compilePb = new ProcessBuilder("g++", "-O2", sourceFile.getAbsolutePath(), "-o", exeFile.getAbsolutePath());
-                }
-                ByteArrayOutputStream errStream = new ByteArrayOutputStream();
-                Process compileProcess = compilePb.start();
-                try (InputStream is = compileProcess.getErrorStream()) {
-                    is.transferTo(errStream);
-                }
-                boolean compileFinished = compileProcess.waitFor(10, java.util.concurrent.TimeUnit.SECONDS);
-                int compileResult = compileFinished ? compileProcess.exitValue() : -1;
-                
-                if (compileResult != 0) {
-                    statusId = 6; // Compilation Error
-                    compileOutputVal = errStream.toString(StandardCharsets.UTF_8);
-                } else {
-                    // Run
-                    long startTime = System.currentTimeMillis();
-                    ProcessBuilder pb = new ProcessBuilder(exeFile.getAbsolutePath());
-                    Process process = pb.start();
-                    
-                    // Write stdin
-                    if (stdin != null && !stdin.isEmpty()) {
-                        try (OutputStream os = process.getOutputStream()) {
-                            os.write(stdin.getBytes(StandardCharsets.UTF_8));
-                            os.flush();
-                        }
-                    }
-                    
-                    ByteArrayOutputStream outStream = new ByteArrayOutputStream();
-                    ByteArrayOutputStream procErrStream = new ByteArrayOutputStream();
-                    
-                    Thread outThread = new Thread(() -> {
-                        try (InputStream is = process.getInputStream()) {
-                            is.transferTo(outStream);
-                        } catch (Exception ignored) {}
-                    });
-                    Thread errThread = new Thread(() -> {
-                        try (InputStream is = process.getErrorStream()) {
-                            is.transferTo(procErrStream);
-                        } catch (Exception ignored) {}
-                    });
-                    
-                    outThread.start();
-                    errThread.start();
-                    
-                    boolean finished = process.waitFor(5, java.util.concurrent.TimeUnit.SECONDS);
-                    if (!finished) {
-                        process.destroyForcibly();
-                        statusId = 5; // TLE
+                try {
+                    // Compile
+                    ProcessBuilder compilePb;
+                    if (System.getProperty("os.name").toLowerCase().contains("win")) {
+                        compilePb = new ProcessBuilder("cmd.exe", "/c", "g++", "-O2", sourceFile.getAbsolutePath(), "-o", exeFile.getAbsolutePath());
                     } else {
-                        outThread.join(1000);
-                        errThread.join(1000);
-                        timeSec = (System.currentTimeMillis() - startTime) / 1000.0;
-                        int exitCode = process.exitValue();
-                        if (exitCode != 0) {
-                            statusId = 11; // Runtime Error
-                            stderrVal = procErrStream.toString(StandardCharsets.UTF_8);
+                        compilePb = new ProcessBuilder("g++", "-O2", sourceFile.getAbsolutePath(), "-o", exeFile.getAbsolutePath());
+                    }
+                    ByteArrayOutputStream errStream = new ByteArrayOutputStream();
+                    Process compileProcess = compilePb.start();
+                    try (InputStream is = compileProcess.getErrorStream()) {
+                        is.transferTo(errStream);
+                    }
+                    boolean compileFinished = compileProcess.waitFor(10, java.util.concurrent.TimeUnit.SECONDS);
+                    int compileResult = compileFinished ? compileProcess.exitValue() : -1;
+                    
+                    if (compileResult != 0) {
+                        statusId = 6; // Compilation Error
+                        compileOutputVal = errStream.toString(StandardCharsets.UTF_8);
+                        if (compileOutputVal == null || compileOutputVal.trim().isEmpty()) {
+                            compileOutputVal = "G++ compilation failed with exit code " + compileResult;
+                        }
+                    } else {
+                        // Run
+                        long startTime = System.currentTimeMillis();
+                        ProcessBuilder pb = new ProcessBuilder(exeFile.getAbsolutePath());
+                        Process process = pb.start();
+                        
+                        // Write stdin
+                        if (stdin != null && !stdin.isEmpty()) {
+                            try (OutputStream os = process.getOutputStream()) {
+                                os.write(stdin.getBytes(StandardCharsets.UTF_8));
+                                os.flush();
+                            }
+                        }
+                        
+                        ByteArrayOutputStream outStream = new ByteArrayOutputStream();
+                        ByteArrayOutputStream procErrStream = new ByteArrayOutputStream();
+                        
+                        Thread outThread = new Thread(() -> {
+                            try (InputStream is = process.getInputStream()) {
+                                is.transferTo(outStream);
+                            } catch (Exception ignored) {}
+                        });
+                        Thread errThread = new Thread(() -> {
+                            try (InputStream is = process.getErrorStream()) {
+                                is.transferTo(procErrStream);
+                            } catch (Exception ignored) {}
+                        });
+                        
+                        outThread.start();
+                        errThread.start();
+                        
+                        boolean finished = process.waitFor(5, java.util.concurrent.TimeUnit.SECONDS);
+                        if (!finished) {
+                            process.destroyForcibly();
+                            statusId = 5; // TLE
                         } else {
-                            stdoutVal = outStream.toString(StandardCharsets.UTF_8);
-                            if (expectedOutput != null) {
-                                boolean match = compareOutputs(expectedOutput, stdoutVal);
-                                statusId = match ? 3 : 4;
+                            outThread.join(1000);
+                            errThread.join(1000);
+                            timeSec = (System.currentTimeMillis() - startTime) / 1000.0;
+                            int exitCode = process.exitValue();
+                            if (exitCode != 0) {
+                                statusId = 11; // Runtime Error
+                                stderrVal = procErrStream.toString(StandardCharsets.UTF_8);
                             } else {
-                                statusId = 3;
+                                stdoutVal = outStream.toString(StandardCharsets.UTF_8);
+                                if (expectedOutput != null) {
+                                    boolean match = compareOutputs(expectedOutput, stdoutVal);
+                                    statusId = match ? 3 : 4;
+                                } else {
+                                    statusId = 3;
+                                }
                             }
                         }
                     }
+                } catch (Exception ex) {
+                    statusId = 6; // Compilation Error
+                    compileOutputVal = "Local C++ execution error: G++ compiler ('g++') is not installed or not found on the host server PATH.\nPlease install MinGW-w64 (G++) or enable Judge0 container.";
                 }
             } else if (languageId == 63) { // JavaScript (Node.js)
                 File sourceFile = new File(tempDir, "solution.js");
