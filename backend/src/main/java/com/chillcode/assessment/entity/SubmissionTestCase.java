@@ -44,6 +44,6 @@ public class SubmissionTestCase {
     @Column(name = "marks_awarded")
     private Integer marksAwarded = 0;
 
-    @Column(length = 255)
+    @Column(columnDefinition = "TEXT")
     private String message;
 }

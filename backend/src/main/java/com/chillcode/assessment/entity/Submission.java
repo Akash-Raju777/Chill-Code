@@ -90,7 +90,7 @@ public class Submission {
     @Column(name = "judge0_token", length = 100)
     private String judge0Token;
 
-    @OneToMany(mappedBy = "submission", cascade = CascadeType.ALL, orphanRemoval = true)
+    @OneToMany(mappedBy = "submission")
     private java.util.List<SubmissionTestCase> submissionTestCases;
 
     @Column(name = "active")

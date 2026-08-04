@@ -1074,20 +1074,31 @@ public class CodeExecutionService {
         Submission savedSub = submissionRepository.save(sub);
 
         if (result.getTestCaseResults() != null) {
+            List<SubmissionTestCase> subTcList = new ArrayList<>();
             for (TestCaseResultDto tcRes : result.getTestCaseResults()) {
-                TestCase tc = testCaseRepository.findById(tcRes.getTestCaseId()).orElse(null);
-                if (tc != null) {
-                    SubmissionTestCase subTc = SubmissionTestCase.builder()
-                            .submission(savedSub)
-                            .testCase(tc)
-                            .status(tcRes.getStatus())
-                            .runTimeMs(tcRes.getRunTimeMs())
-                            .memoryUsedKb(tcRes.getMemoryUsedKb())
-                            .marksAwarded(tcRes.getMarksAwarded() != null ? tcRes.getMarksAwarded() : 0)
-                            .message(tcRes.getMessage())
-                            .build();
-                    submissionTestCaseRepository.save(subTc);
+                if (tcRes.getTestCaseId() != null) {
+                    TestCase tc = testCaseRepository.findById(tcRes.getTestCaseId()).orElse(null);
+                    if (tc != null) {
+                        String msg = tcRes.getMessage();
+                        if (msg != null && msg.length() > 1000) {
+                            msg = msg.substring(0, 997) + "...";
+                        }
+                        SubmissionTestCase subTc = SubmissionTestCase.builder()
+                                .submission(savedSub)
+                                .testCase(tc)
+                                .status(tcRes.getStatus() != null ? tcRes.getStatus() : "FAILED")
+                                .runTimeMs(tcRes.getRunTimeMs() != null ? tcRes.getRunTimeMs() : 0)
+                                .memoryUsedKb(tcRes.getMemoryUsedKb() != null ? tcRes.getMemoryUsedKb() : 0)
+                                .marksAwarded(tcRes.getMarksAwarded() != null ? tcRes.getMarksAwarded() : 0)
+                                .message(msg)
+                                .build();
+                        subTcList.add(subTc);
+                    }
                 }
+            }
+            if (!subTcList.isEmpty()) {
+                submissionTestCaseRepository.saveAll(subTcList);
+                savedSub.setSubmissionTestCases(subTcList);
             }
         }
 
