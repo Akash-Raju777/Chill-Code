@@ -46,7 +46,8 @@ function CodingWorkspaceInner() {
   const searchParams = useSearchParams();
   const router = useRouter();
   const testId = Number(params.id);
-  const questionIdParam = searchParams.get('question');
+  const searchQuestionId = typeof window !== 'undefined' ? new URLSearchParams(window.location.search).get('question') : null;
+  const questionIdParam = searchParams.get('question') || searchQuestionId;
 
   const activeTestName = useTestStore((s) => s.activeTestName);
   const questions = useTestStore((s) => s.questions);
@@ -210,7 +211,8 @@ function CodingWorkspaceInner() {
           }
 
           // View mode for submitted, evaluated, completed tests, or explicit view mode request
-          const isViewParam = searchParams.get('view') === 'true';
+          const viewFromSearch = typeof window !== 'undefined' ? new URLSearchParams(window.location.search).get('view') === 'true' : false;
+          const isViewParam = searchParams.get('view') === 'true' || viewFromSearch;
           const isDone = isViewParam || activeTest.status === 'SUBMITTED' || activeTest.status === 'EVALUATED' || activeTest.status === 'COMPLETED';
           // If time expired but not submitted, restart with full duration
           if (remainingSeconds <= 0 && !isDone) {

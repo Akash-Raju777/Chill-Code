@@ -191,15 +191,6 @@ export default function TestsWorkspace() {
     const associatedTest = getAssociatedTest(q.subjectId, q.id);
     if (!associatedTest) return;
     try {
-      startTestSession(
-        associatedTest.test.id,
-        associatedTest.id,
-        q.title,
-        [q],
-        0,
-        true, // isViewMode = true
-        associatedTest.test.securityShieldEnabled ?? false
-      );
       resetWarnings();
       router.push(`/student/tests/${associatedTest.test.id}?question=${q.id}&view=true`);
     } catch (err: any) {
