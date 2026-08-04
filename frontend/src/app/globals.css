@@ -32,6 +32,18 @@ body {
   overflow-x: hidden;
 }
 
+/* Global Select Option Styling for Dark Mode */
+select option {
+  background-color: #11131c !important;
+  color: #ffffff !important;
+  padding: 8px 12px;
+}
+
+select option:disabled {
+  color: #6b7280 !important;
+  background-color: #11131c !important;
+}
+
 /* Glassmorphism Styles */
 .glass-panel {
   background: rgba(17, 20, 28, 0.65);

@@ -780,13 +780,13 @@ export default function QuestionManagement() {
               <label className="block text-xs font-semibold text-gray-400 uppercase mb-1">Subject / Topic</label>
               <select
                 required
-                className="w-full glass-input p-3 rounded-xl text-sm"
+                className="w-full glass-input p-3 rounded-xl text-sm cursor-pointer"
                 value={formSubjectId || ''}
                 onChange={(e) => setFormSubjectId(Number(e.target.value))}
               >
-                <option value="" disabled>Select Subject</option>
+                <option value="" disabled className="bg-[#11131c] text-gray-400">Select Subject</option>
                 {subjects.map((sub) => (
-                  <option key={sub.id} value={sub.id}>{sub.name}</option>
+                  <option key={sub.id} value={sub.id} className="bg-[#11131c] text-white font-sans">{sub.name}</option>
                 ))}
               </select>
             </div>
@@ -806,13 +806,13 @@ export default function QuestionManagement() {
             <div>
               <label className="block text-xs font-semibold text-gray-400 uppercase mb-1">Difficulty Level</label>
               <select
-                className="w-full glass-input p-3 rounded-xl text-sm"
+                className="w-full glass-input p-3 rounded-xl text-sm cursor-pointer"
                 value={difficulty}
                 onChange={(e) => setDifficulty(e.target.value as any)}
               >
-                <option value="EASY">Easy</option>
-                <option value="MEDIUM">Medium</option>
-                <option value="HARD">Hard</option>
+                <option value="EASY" className="bg-[#11131c] text-white font-sans">Easy</option>
+                <option value="MEDIUM" className="bg-[#11131c] text-white font-sans">Medium</option>
+                <option value="HARD" className="bg-[#11131c] text-white font-sans">Hard</option>
               </select>
             </div>
           </div>
