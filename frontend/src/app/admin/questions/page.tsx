@@ -480,6 +480,8 @@ export default function QuestionManagement() {
   const executeDeleteQuestion = async () => {
     if (!confirmDeleteQuestion.id) return;
     const id = confirmDeleteQuestion.id;
+    // Close modal INSTANTLY
+    setConfirmDeleteQuestion({ open: false, id: null });
     const backup = [...questions];
     setQuestions((prev) => prev.filter((q) => q.id !== id));
     showToast('Question deleted successfully!');
@@ -489,8 +491,6 @@ export default function QuestionManagement() {
       setQuestions(backup);
       setError('Failed to delete question');
       showToast('Failed to delete question', 'error');
-    } finally {
-      setConfirmDeleteQuestion({ open: false, id: null });
     }
   };
 

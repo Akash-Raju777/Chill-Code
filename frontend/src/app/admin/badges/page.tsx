@@ -217,14 +217,15 @@ export default function AdminBadgeSetsPage() {
 
   const executeDelete = async () => {
     if (!confirmDelete.id) return;
+    const id = confirmDelete.id;
+    // Close modal INSTANTLY
+    setConfirmDelete({ open: false, id: null });
     try {
-      await deleteBadgeSet(confirmDelete.id);
+      await deleteBadgeSet(id);
       loadData();
       toast.success('Badge set deleted successfully.');
     } catch (err: any) {
       toast.error(err.message || 'Failed to delete badge set.');
-    } finally {
-      setConfirmDelete({ open: false, id: null });
     }
   };
 

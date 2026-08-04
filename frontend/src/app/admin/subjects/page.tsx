@@ -145,6 +145,8 @@ export default function SubjectManagement() {
   const executeDeleteSubject = async () => {
     if (!confirmDeleteSubject.id) return;
     const id = confirmDeleteSubject.id;
+    // Close modal INSTANTLY
+    setConfirmDeleteSubject({ open: false, id: null });
     const previousSubjects = subjects;
     setSubjects(subjects.filter(sub => sub.id !== id));
     try {
@@ -152,8 +154,6 @@ export default function SubjectManagement() {
     } catch (err: any) {
       setSubjects(previousSubjects);
       setError(err.message || 'Failed to delete subject');
-    } finally {
-      setConfirmDeleteSubject({ open: false, id: null });
     }
   };
 

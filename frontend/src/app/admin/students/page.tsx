@@ -121,6 +121,8 @@ export default function StudentManagement() {
   const executeDeleteStudent = async () => {
     if (!confirmDeleteStudent.student) return;
     const student = confirmDeleteStudent.student;
+    // Close modal INSTANTLY
+    setConfirmDeleteStudent({ open: false, student: null });
     const previousStudents = students;
     setStudents(students.filter(s => s.id !== student.id));
     try {
@@ -130,8 +132,6 @@ export default function StudentManagement() {
     } catch (err: any) {
       setStudents(previousStudents);
       setError(err.message || 'Failed to delete student account');
-    } finally {
-      setConfirmDeleteStudent({ open: false, student: null });
     }
   };
 
