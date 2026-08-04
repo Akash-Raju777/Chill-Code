@@ -159,15 +159,21 @@ export default function TestsWorkspace() {
     };
   }, []);
 
-  const getAssociatedTest = (subjectId: number) => {
-    const matched = studentTests.filter((st) => st.test.subject.id === subjectId);
+  const getAssociatedTest = (subjectId: number, questionId?: number) => {
+    if (questionId) {
+      const specific = studentTests.find((st) =>
+        st.test?.questions?.some((tq: any) => tq.id === questionId)
+      );
+      if (specific) return specific;
+    }
+    const matched = studentTests.filter((st) => st.test?.subject?.id === subjectId);
     if (matched.length === 0) return null;
     const active = matched.find((st) => ['STARTED', 'ASSIGNED'].includes(st.status));
     return active || matched[0];
   };
 
   const handleStartQuestionAttempt = (q: any) => {
-    const associatedTest = getAssociatedTest(q.subjectId);
+    const associatedTest = getAssociatedTest(q.subjectId, q.id);
     if (associatedTest) {
       if ((associatedTest.status === 'SUBMITTED' || associatedTest.status === 'EVALUATED') && q.status === 'COMPLETED') {
         handleViewQuestionAttempt(q);
@@ -182,7 +188,7 @@ export default function TestsWorkspace() {
   };
 
   const handleViewQuestionAttempt = async (q: any) => {
-    const associatedTest = getAssociatedTest(q.subjectId);
+    const associatedTest = getAssociatedTest(q.subjectId, q.id);
     if (!associatedTest) return;
     try {
       startTestSession(
@@ -715,7 +721,7 @@ export default function TestsWorkspace() {
                 {isSecActive ? 'Initiate Coding Examination' : 'Start Practice Challenge'}
               </h3>
               <p className="text-xs text-gray-400 mb-6 leading-relaxed">
-                You are about to start <strong className="text-white">{selectedTest.test.name}</strong>.<br />
+                You are about to start <strong className="text-white">{selectedQuestion?.title || selectedTest.test.name}</strong>.<br />
                 {isSecActive ? (
                   <>
                     This exam has strict anti-cheating controls. 
