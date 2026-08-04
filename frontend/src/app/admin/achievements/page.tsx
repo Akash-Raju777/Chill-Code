@@ -55,7 +55,8 @@ export default function AdminAchievementsOverviewPage() {
   const filteredAchievements = achievements.filter(a => 
     a.studentName?.toLowerCase().includes(searchTerm.toLowerCase()) ||
     a.studentRegisterNumber?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    a.badge?.name?.toLowerCase().includes(searchTerm.toLowerCase())
+    a.badgeName?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    a.subjectName?.toLowerCase().includes(searchTerm.toLowerCase())
   );
 
   return (
@@ -108,6 +109,9 @@ export default function AdminAchievementsOverviewPage() {
                 <tr>
                   <th className="px-6 py-4">Student</th>
                   <th className="px-6 py-4">Badge Earned</th>
+                  <th className="px-6 py-4">Subject</th>
+                  <th className="px-6 py-4 text-center">Subject Rank</th>
+                  <th className="px-6 py-4 text-center">Overall Rank</th>
                   <th className="px-6 py-4">Type</th>
                   <th className="px-6 py-4">Earned Date</th>
                   <th className="px-6 py-4">Source Test</th>
@@ -123,24 +127,37 @@ export default function AdminAchievementsOverviewPage() {
                     <td className="px-6 py-4">
                       <div className="flex items-center gap-3">
                         <div className="w-8 h-8 rounded-lg bg-purple-500/10 border border-purple-500/30 flex items-center justify-center">
-                          {renderBadgeIcon(a.badge?.icon)}
+                          {renderBadgeIcon(a.badgeIcon)}
                         </div>
                         <div>
-                          <div className="font-bold text-slate-100">{a.badge?.name}</div>
-                          <div className="text-xs text-slate-400 line-clamp-1">{a.badge?.description}</div>
+                          <div className="font-bold text-slate-100">{a.badgeName}</div>
+                          <div className="text-xs text-slate-400 line-clamp-1">{a.rankAchieved || a.badgeCategory}</div>
                         </div>
                       </div>
                     </td>
                     <td className="px-6 py-4">
+                      <div className="font-semibold text-slate-200">{a.subjectName || '-'}</div>
+                    </td>
+                    <td className="px-6 py-4 text-center">
+                      <div className="inline-flex items-center justify-center min-w-[2rem] px-2 py-1 rounded-md bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 font-bold text-xs">
+                        {a.subjectRank ? `#${a.subjectRank}` : '-'}
+                      </div>
+                    </td>
+                    <td className="px-6 py-4 text-center">
+                      <div className="inline-flex items-center justify-center min-w-[2rem] px-2 py-1 rounded-md bg-blue-500/10 border border-blue-500/20 text-blue-400 font-bold text-xs">
+                        {a.overallRank ? `#${a.overallRank}` : '-'}
+                      </div>
+                    </td>
+                    <td className="px-6 py-4">
                       <span className="text-[10px] font-bold px-2.5 py-1 rounded-full uppercase tracking-wider bg-purple-500/10 border border-purple-500/30 text-purple-300">
-                        {a.badge?.type?.replace('_', ' ')}
+                        {a.badgeCategory?.replace('_', ' ') || 'Achievement'}
                       </span>
                     </td>
                     <td className="px-6 py-4 text-xs text-slate-400 font-mono">
-                      {formatISTDate(a.earnedAt)}
+                      {formatISTDate(a.awardedAt)}
                     </td>
                     <td className="px-6 py-4 text-xs text-slate-400">
-                      {a.sourceTestName || 'System Evaluation'}
+                      {a.testName || 'System Evaluation'}
                     </td>
                   </tr>
                 ))}

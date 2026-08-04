@@ -20,6 +20,8 @@ public class StudentAchievementDto {
     private String testCode;
     private String testName;
     private String subjectName;
+    private Integer subjectRank;
+    private Integer overallRank;
     private String rankAchieved;
     private LocalDateTime awardedAt;
     private String awardedBy;

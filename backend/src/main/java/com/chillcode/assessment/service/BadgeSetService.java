@@ -44,6 +44,12 @@ public class BadgeSetService {
     @Autowired
     private LanguageMasterBadgeRepository languageMasterBadgeRepository;
 
+    @Autowired
+    private OverallLeaderboardService overallLeaderboardService;
+
+    @Autowired
+    private SubjectRankingRepository subjectRankingRepository;
+
     // --- Admin Badge Set CRUD ---
 
     @Transactional
@@ -340,8 +346,27 @@ public class BadgeSetService {
 
     @Transactional(readOnly = true)
     public List<StudentAchievementDto> getAllStudentAchievements() {
+        // Fetch all overall leaderboard entries once to avoid N+1 problem
+        List<com.chillcode.assessment.service.OverallLeaderboardService.OverallLeaderboardEntry> overallLeaderboard = overallLeaderboardService.getOverallLeaderboard("ALL", "ALL");
+        Map<Long, Integer> overallRankMap = new HashMap<>();
+        for (com.chillcode.assessment.service.OverallLeaderboardService.OverallLeaderboardEntry entry : overallLeaderboard) {
+            if (entry.studentId != null) {
+                overallRankMap.put(entry.studentId, entry.rankPosition);
+            }
+        }
+
+        // Fetch all subject rankings and group by studentId and subjectName
+        List<SubjectRanking> allSubjectRankings = subjectRankingRepository.findAll();
+        Map<String, Integer> subjectRankMap = new HashMap<>();
+        for (SubjectRanking sr : allSubjectRankings) {
+            if (sr.getStudent() != null && sr.getSubject() != null) {
+                String key = sr.getStudent().getId() + "-" + sr.getSubject().getName();
+                subjectRankMap.put(key, sr.getRankPosition());
+            }
+        }
+
         return studentAchievementRepository.findAll().stream()
-                .map(this::mapAchievementToDto)
+                .map(sa -> mapAchievementToDtoWithRanks(sa, overallRankMap, subjectRankMap))
                 .collect(Collectors.toList());
     }
 
@@ -436,6 +461,18 @@ public class BadgeSetService {
     }
 
     private StudentAchievementDto mapAchievementToDto(StudentAchievement sa) {
+        return mapAchievementToDtoWithRanks(sa, new HashMap<>(), new HashMap<>());
+    }
+
+    private StudentAchievementDto mapAchievementToDtoWithRanks(StudentAchievement sa, Map<Long, Integer> overallRankMap, Map<String, Integer> subjectRankMap) {
+        Long studentId = sa.getStudent() != null ? sa.getStudent().getId() : null;
+        Integer overallRank = studentId != null ? overallRankMap.get(studentId) : null;
+        
+        Integer subjectRank = null;
+        if (studentId != null && sa.getSubjectName() != null) {
+            subjectRank = subjectRankMap.get(studentId + "-" + sa.getSubjectName());
+        }
+
         return StudentAchievementDto.builder()
                 .id(sa.getId())
                 .studentId(sa.getStudent() != null ? sa.getStudent().getId() : null)
@@ -448,6 +485,8 @@ public class BadgeSetService {
                 .testCode(sa.getTestCode())
                 .testName(sa.getTestName())
                 .subjectName(sa.getSubjectName())
+                .subjectRank(subjectRank)
+                .overallRank(overallRank)
                 .rankAchieved(sa.getRankAchieved())
                 .awardedAt(sa.getAwardedAt())
                 .awardedBy(sa.getAwardedBy())

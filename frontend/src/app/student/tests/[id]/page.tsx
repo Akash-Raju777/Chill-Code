@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useEffect, useState, useRef } from 'react';
+import React, { useEffect, useState, useRef, Suspense } from 'react';
 import { useParams, useRouter, useSearchParams } from 'next/navigation';
 import { useTestStore } from '../../../../store/testStore';
 import { useAuthStore } from '../../../../store/authStore';
@@ -41,7 +41,7 @@ import Link from 'next/link';
 import GloryCelebrationModal from '../../../../components/GloryCelebrationModal';
 import FailResultModal from '../../../../components/FailResultModal';
 
-export default function CodingWorkspace() {
+function CodingWorkspaceInner() {
   const params = useParams();
   const searchParams = useSearchParams();
   const router = useRouter();
@@ -1551,6 +1551,18 @@ export default function CodingWorkspace() {
         </div>
       )}
     </div>
+  );
+}
+
+export default function CodingWorkspace() {
+  return (
+    <Suspense fallback={
+      <div className="flex items-center justify-center min-h-screen bg-[#0b0c10]">
+        <div className="w-8 h-8 border-4 border-[#7c3aed] border-t-transparent rounded-full animate-spin"></div>
+      </div>
+    }>
+      <CodingWorkspaceInner />
+    </Suspense>
   );
 }
 
