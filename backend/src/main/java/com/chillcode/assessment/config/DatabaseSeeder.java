@@ -75,18 +75,40 @@ public class DatabaseSeeder implements CommandLineRunner {
                 .orElseGet(() -> userRepository.findByUsername("student_demo")
                 .orElseGet(() -> userRepository.findByRegisterNumber("2024CS001")
                 .orElseGet(() -> userRepository.findByRegisterNumber("student_demo")
-                .orElse(new User()))));
+                .orElse(null))));
 
-        demoStudent.setName("Demo Student");
-        demoStudent.setEmail("student@chillcode.com");
-        demoStudent.setRegisterNumber("2024CS001");
-        demoStudent.setUsername("student_demo");
-        demoStudent.setDepartment("CS");
-        demoStudent.setRole(Role.STUDENT);
-        demoStudent.setStatus(UserStatus.ACTIVE);
-        demoStudent.setPassword(passwordEncoder.encode("password"));
-        userRepository.save(demoStudent);
-        System.out.println("Seeded and verified Demo Student (2024CS001 / student_demo) successfully.");
+        if (demoStudent == null) {
+            demoStudent = new User();
+            demoStudent.setName("Demo Student");
+            demoStudent.setEmail("student@chillcode.com");
+            demoStudent.setRegisterNumber("2024CS001");
+            demoStudent.setUsername("student_demo");
+            demoStudent.setDepartment("CS");
+            demoStudent.setRole(Role.STUDENT);
+            demoStudent.setStatus(UserStatus.ACTIVE);
+            demoStudent.setPassword(passwordEncoder.encode("password"));
+            userRepository.save(demoStudent);
+            System.out.println("Seeded Demo Student (2024CS001 / student_demo) successfully.");
+        } else {
+            // Update missing credentials if needed, but preserve admin-configured status (e.g. NO_SECURITY, INACTIVE, SUSPENDED)
+            boolean updated = false;
+            if (demoStudent.getRegisterNumber() == null || !demoStudent.getRegisterNumber().equals("2024CS001")) {
+                demoStudent.setRegisterNumber("2024CS001");
+                updated = true;
+            }
+            if (demoStudent.getUsername() == null || !demoStudent.getUsername().equals("student_demo")) {
+                demoStudent.setUsername("student_demo");
+                updated = true;
+            }
+            if (demoStudent.getStatus() == null) {
+                demoStudent.setStatus(UserStatus.ACTIVE);
+                updated = true;
+            }
+            if (updated) {
+                userRepository.save(demoStudent);
+            }
+            System.out.println("Verified Demo Student credentials, maintaining current security status: " + demoStudent.getStatus());
+        }
 
         // Seed default Java Programming subject if not exists
         if (subjectRepository.findByName("Java Programming").isEmpty()) {
