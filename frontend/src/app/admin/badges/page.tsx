@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useEffect, useState } from 'react';
+import ConfirmModal from '../../../components/ConfirmModal';
 import { apiCall, fetchBadgeSets, createBadgeSet, updateBadgeSet, deleteBadgeSet, toggleBadgeSetStatus } from '../../../utils/api';
 import { toast } from '../../../store/toastStore';
 import { 
@@ -61,6 +62,7 @@ export default function AdminBadgeSetsPage() {
   const [error, setError] = useState('');
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingSet, setEditingSet] = useState<BadgeSet | null>(null);
+  const [confirmDelete, setConfirmDelete] = useState<{ open: boolean; id: number | null }>({ open: false, id: null });
 
   // Form states
   const [setName, setSetName] = useState('');
@@ -210,13 +212,19 @@ export default function AdminBadgeSetsPage() {
   };
 
   const handleDelete = async (id: number) => {
-    if (!confirm('Are you sure you want to delete this badge set?')) return;
+    setConfirmDelete({ open: true, id });
+  };
+
+  const executeDelete = async () => {
+    if (!confirmDelete.id) return;
     try {
-      await deleteBadgeSet(id);
+      await deleteBadgeSet(confirmDelete.id);
       loadData();
       toast.success('Badge set deleted successfully.');
     } catch (err: any) {
       toast.error(err.message || 'Failed to delete badge set.');
+    } finally {
+      setConfirmDelete({ open: false, id: null });
     }
   };
 
@@ -581,6 +589,16 @@ export default function AdminBadgeSetsPage() {
           </div>
         </div>
       )}
+      <ConfirmModal
+        isOpen={confirmDelete.open}
+        title="Delete Badge Set"
+        message="Are you sure you want to delete this badge set? This action cannot be undone and all associated badge definitions will be permanently removed."
+        confirmText="Delete"
+        cancelText="Cancel"
+        variant="danger"
+        onConfirm={executeDelete}
+        onCancel={() => setConfirmDelete({ open: false, id: null })}
+      />
     </div>
   );
 }

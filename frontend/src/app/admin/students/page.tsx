@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useEffect, useState } from 'react';
+import ConfirmModal from '../../../components/ConfirmModal';
 import { apiCall } from '../../../utils/api';
 import { Users, Loader2, UserX, AlertTriangle, ShieldCheck, Edit2, Plus, Lock } from 'lucide-react';
 
@@ -23,6 +24,7 @@ export default function StudentManagement() {
   // Modal toggle states
   const [showAddForm, setShowAddForm] = useState(false);
   const [editingStudent, setEditingStudent] = useState<Student | null>(null);
+  const [confirmDeleteStudent, setConfirmDeleteStudent] = useState<{ open: boolean; student: Student | null }>({ open: false, student: null });
 
   // Form Fields State
   const [name, setName] = useState('');
@@ -113,9 +115,12 @@ export default function StudentManagement() {
   };
 
   const handleDeleteStudent = async (student: Student) => {
-    if (!window.confirm(`Are you sure you want to delete student ${student.name} (${student.registerNumber})? This will permanently wipe all their scores, test sessions, and logs.`)) {
-      return;
-    }
+    setConfirmDeleteStudent({ open: true, student });
+  };
+
+  const executeDeleteStudent = async () => {
+    if (!confirmDeleteStudent.student) return;
+    const student = confirmDeleteStudent.student;
     const previousStudents = students;
     setStudents(students.filter(s => s.id !== student.id));
     try {
@@ -124,7 +129,9 @@ export default function StudentManagement() {
       });
     } catch (err: any) {
       setStudents(previousStudents);
-      alert(err.message || 'Failed to delete student account');
+      setError(err.message || 'Failed to delete student account');
+    } finally {
+      setConfirmDeleteStudent({ open: false, student: null });
     }
   };
 
@@ -422,6 +429,16 @@ export default function StudentManagement() {
           </div>
         </div>
       )}
+      <ConfirmModal
+        isOpen={confirmDeleteStudent.open}
+        title="Delete Student"
+        message={confirmDeleteStudent.student ? `Are you sure you want to delete student ${confirmDeleteStudent.student.name} (${confirmDeleteStudent.student.registerNumber})? This will permanently wipe all their scores, test sessions, and logs.` : ''}
+        confirmText="Delete"
+        cancelText="Cancel"
+        variant="danger"
+        onConfirm={executeDeleteStudent}
+        onCancel={() => setConfirmDeleteStudent({ open: false, student: null })}
+      />
     </div>
   );
 }

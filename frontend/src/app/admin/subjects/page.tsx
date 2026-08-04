@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useEffect, useState } from 'react';
+import ConfirmModal from '../../../components/ConfirmModal';
 import { apiCall } from '../../../utils/api';
 import { BookOpen, Plus, Trash2, Tag, Loader2, Download } from 'lucide-react';
 
@@ -19,6 +20,7 @@ export default function SubjectManagement() {
   const [subjects, setSubjects] = useState<Subject[]>([]);
   const [loading, setLoading] = useState(true);
   const [showAddForm, setShowAddForm] = useState(false);
+  const [confirmDeleteSubject, setConfirmDeleteSubject] = useState<{ open: boolean; id: number | null }>({ open: false, id: null });
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
   const [color, setColor] = useState('#3B82F6');
@@ -137,7 +139,12 @@ export default function SubjectManagement() {
   };
 
   const handleDelete = async (id: number) => {
-    if (!confirm('Are you sure you want to delete this subject? All related questions will be permanently deleted.')) return;
+    setConfirmDeleteSubject({ open: true, id });
+  };
+
+  const executeDeleteSubject = async () => {
+    if (!confirmDeleteSubject.id) return;
+    const id = confirmDeleteSubject.id;
     const previousSubjects = subjects;
     setSubjects(subjects.filter(sub => sub.id !== id));
     try {
@@ -145,6 +152,8 @@ export default function SubjectManagement() {
     } catch (err: any) {
       setSubjects(previousSubjects);
       setError(err.message || 'Failed to delete subject');
+    } finally {
+      setConfirmDeleteSubject({ open: false, id: null });
     }
   };
 
@@ -396,6 +405,16 @@ export default function SubjectManagement() {
           </div>
         </div>
       )}
+      <ConfirmModal
+        isOpen={confirmDeleteSubject.open}
+        title="Delete Subject"
+        message="Are you sure you want to delete this subject? All related questions will be permanently deleted. This action cannot be undone."
+        confirmText="Delete"
+        cancelText="Cancel"
+        variant="danger"
+        onConfirm={executeDeleteSubject}
+        onCancel={() => setConfirmDeleteSubject({ open: false, id: null })}
+      />
     </div>
   );
 }

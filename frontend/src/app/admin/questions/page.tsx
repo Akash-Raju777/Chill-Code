@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useEffect, useState } from 'react';
+import ConfirmModal from '../../../components/ConfirmModal';
 import { apiCall, fetchBadgeSets, createBadgeSet, updateBadgeSet } from '../../../utils/api';
 import { Plus, Trash2, Edit2, Code2, Loader2, ArrowLeft, Check, AlertCircle, Award, Trophy, Layers } from 'lucide-react';
 
@@ -520,8 +521,15 @@ export default function QuestionManagement() {
     }
   };
 
+  const [confirmDeleteQuestion, setConfirmDeleteQuestion] = useState<{ open: boolean; id: number | null }>({ open: false, id: null });
+
   const handleDelete = async (id: number) => {
-    if (!confirm('Are you sure you want to delete this question?')) return;
+    setConfirmDeleteQuestion({ open: true, id });
+  };
+
+  const executeDeleteQuestion = async () => {
+    if (!confirmDeleteQuestion.id) return;
+    const id = confirmDeleteQuestion.id;
     const backup = [...questions];
     setQuestions((prev) => prev.filter((q) => q.id !== id));
     showToast('Question deleted successfully!');
@@ -531,6 +539,8 @@ export default function QuestionManagement() {
       setQuestions(backup);
       setError('Failed to delete question');
       showToast('Failed to delete question', 'error');
+    } finally {
+      setConfirmDeleteQuestion({ open: false, id: null });
     }
   };
 
@@ -1202,6 +1212,16 @@ export default function QuestionManagement() {
           <span className="text-xs font-semibold text-white">{toast.message}</span>
         </div>
       )}
+      <ConfirmModal
+        isOpen={confirmDeleteQuestion.open}
+        title="Delete Question"
+        message="Are you sure you want to delete this question? All associated test cases and submissions will be permanently removed."
+        confirmText="Delete"
+        cancelText="Cancel"
+        variant="danger"
+        onConfirm={executeDeleteQuestion}
+        onCancel={() => setConfirmDeleteQuestion({ open: false, id: null })}
+      />
     </div>
   );
 }
