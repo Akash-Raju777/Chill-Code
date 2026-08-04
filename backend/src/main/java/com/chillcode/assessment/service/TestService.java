@@ -217,10 +217,7 @@ public class TestService {
         boolean hasSecurityShield = Boolean.TRUE.equals(st.getTest().getSecurityShieldEnabled());
 
         if ("COMPLETED".equals(st.getStatus())) {
-            if (isPracticeArena || !hasSecurityShield) {
-                return st;
-            }
-            throw new RuntimeException("Test has already been completed and passed.");
+            return st;
         }
 
         if ("SUBMITTED".equals(st.getStatus()) || "EVALUATED".equals(st.getStatus())) {
@@ -229,7 +226,7 @@ public class TestService {
                 st.setStartedAt(LocalDateTime.now());
                 return studentTestRepository.save(st);
             }
-            throw new RuntimeException("Test has already been submitted.");
+            return st;
         }
 
         if (st.getIsSuspended()) {
