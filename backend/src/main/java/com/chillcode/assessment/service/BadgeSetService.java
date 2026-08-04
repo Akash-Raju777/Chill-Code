@@ -155,10 +155,14 @@ public class BadgeSetService {
         for (BadgeSet bs : sets) {
             if (bs.getTest() != null && bs.getTest().getQuestions() != null) {
                 for (Question q : bs.getTest().getQuestions()) {
-                    if (q.getQuestionCode() != null && !q.getQuestionCode().trim().isEmpty() && !q.getQuestionCode().trim().startsWith("TEST-")) {
+                    if (q.getQuestionCode() != null && !q.getQuestionCode().trim().isEmpty()) {
                         String qCode = q.getQuestionCode().trim().toUpperCase();
                         if (!qCode.equals(bs.getTestCode())) {
                             bs.setTestCode(qCode);
+                            if (bs.getTest() != null) {
+                                bs.getTest().setTestCode(qCode);
+                                testRepository.save(bs.getTest());
+                            }
                             badgeSetRepository.save(bs);
                         }
                         break;
@@ -214,75 +218,88 @@ public class BadgeSetService {
 
         List<StudentAchievement> allocated = new ArrayList<>();
         int rank = 1;
-
         for (StudentTest st : studentTests) {
-            User student = st.getStudent();
-            if (student == null) continue;
+            if (rank > badgeSet.getNumberOfWinners()) break;
 
             final int currentRank = rank;
-            Optional<BadgeDefinition> defOpt = definitions.stream().filter(d -> d.getRankPosition().equals(currentRank)).findFirst();
-            if (defOpt.isPresent()) {
-                BadgeDefinition def = defOpt.get();
-                String rankAchievedStr = "Badge " + currentRank;
+            BadgeDefinition def = definitions.stream()
+                    .filter(d -> d.getRankPosition() == currentRank)
+                    .findFirst()
+                    .orElse(null);
 
-                // Idempotent allocation check for standard winner badges
-                if (studentAchievementRepository.findByStudentIdAndTestIdAndRankAchieved(student.getId(), testId, rankAchievedStr).isEmpty()) {
+            if (def != null && st.getStudent() != null) {
+                User student = st.getStudent();
+                Test test = st.getTest();
+
+                boolean alreadyAwarded = studentAchievementRepository
+                        .findByStudentIdAndTestId(student.getId(), test.getId()).stream()
+                        .anyMatch(sa -> sa.getRankAchieved() != null && sa.getRankAchieved().equals("Badge " + currentRank));
+
+                if (!alreadyAwarded) {
                     StudentAchievement sa = StudentAchievement.builder()
                             .student(student)
                             .badgeName(def.getBadgeName())
                             .badgeIcon(def.getBadgeIcon())
-                            .badgeCategory("Test Ranking")
-                            .test(st.getTest())
-                            .testCode(st.getTest().getTestCode())
-                            .testName(st.getTest().getName())
-                            .subjectName(st.getTest().getSubject() != null ? st.getTest().getSubject().getName() : "")
-                            .rankAchieved(rankAchievedStr)
+                            .badgeCategory("TEST_WINNER")
+                            .test(test)
+                            .testCode(badgeSet.getTestCode())
+                            .testName(test.getName())
+                            .subjectName(test.getSubject() != null ? test.getSubject().getName() : "")
+                            .rankAchieved("Badge " + currentRank)
                             .awardedAt(LocalDateTime.now())
-                            .awardedBy("Automatic System")
+                            .awardedBy("SYSTEM")
                             .status("ACTIVE")
                             .build();
 
-                    sa = studentAchievementRepository.save(sa);
+                    studentAchievementRepository.save(sa);
                     allocated.add(sa);
 
                     // Notify winner
                     Notification notification = Notification.builder()
                             .user(student)
-                            .title("🎉 Badge Unlocked: " + def.getBadgeName())
-                            .message("Congratulations! You achieved Rank " + currentRank + " in '" + st.getTest().getName() + "' and earned '" + def.getBadgeName() + "'!")
-                            .type("ACHIEVEMENT")
+                            .title("🏆 Congratulations! You earned a Badge!")
+                            .message("You achieved Rank " + currentRank + " in '" + test.getName() + "' and earned the badge '" + def.getBadgeName() + "'!")
+                            .type("BADGE_ALERT")
                             .isRead(false)
                             .build();
                     notificationRepository.save(notification);
                 }
             }
 
-            // Language Master Badge Allocation Engine
-            if (Boolean.TRUE.equals(badgeSet.getEnableLanguageBadge())) {
-                int targetRank = badgeSet.getLanguageAwardRank() != null ? badgeSet.getLanguageAwardRank() : 1;
-                if (currentRank == targetRank) {
-                    String langBadgeName = badgeSet.getLanguageBadgeName() != null ? badgeSet.getLanguageBadgeName() : "Language Master";
-                    if (languageMasterBadgeRepository.findByStudentIdAndTestIdAndBadgeName(student.getId(), testId, langBadgeName).isEmpty()) {
-                        LanguageMasterBadge lmb = LanguageMasterBadge.builder()
-                                .student(student)
-                                .test(st.getTest())
-                                .subject(st.getTest().getSubject() != null ? st.getTest().getSubject().getName() : "General")
-                                .badgeName(langBadgeName)
-                                .badgeIcon(badgeSet.getLanguageBadgeIcon() != null ? badgeSet.getLanguageBadgeIcon() : "☕")
-                                .awardedRank(currentRank)
-                                .awardedDate(LocalDateTime.now())
-                                .build();
-                        languageMasterBadgeRepository.save(lmb);
+            // Language Master Badge Auto Awarding
+            if (badgeSet.getEnableLanguageBadge() != null && badgeSet.getEnableLanguageBadge()
+                    && rank <= (badgeSet.getLanguageAwardRank() != null ? badgeSet.getLanguageAwardRank() : 1)) {
 
-                        Notification notification = Notification.builder()
-                                .user(student)
-                                .title("🎉 Language Master Badge Unlocked: " + langBadgeName)
-                                .message("Awarded for securing Rank " + currentRank + " in '" + st.getTest().getName() + "'.")
-                                .type("ACHIEVEMENT")
-                                .isRead(false)
-                                .build();
-                        notificationRepository.save(notification);
-                    }
+                User student = st.getStudent();
+                Test test = st.getTest();
+                String langName = badgeSet.getLanguageName() != null ? badgeSet.getLanguageName() : "Java";
+                String badgeName = badgeSet.getLanguageBadgeName() != null ? badgeSet.getLanguageBadgeName() : "☕ " + langName + " Expert";
+                String badgeIcon = badgeSet.getLanguageBadgeIcon() != null ? badgeSet.getLanguageBadgeIcon() : "☕";
+
+                boolean alreadyAwardedLang = languageMasterBadgeRepository
+                        .findByStudentIdOrderByAwardedDateDesc(student.getId()).stream()
+                        .anyMatch(lmb -> lmb.getTest() != null && lmb.getTest().getId().equals(test.getId()) && lmb.getAwardedRank() != null && lmb.getAwardedRank() == currentRank);
+
+                if (!alreadyAwardedLang) {
+                    LanguageMasterBadge lmb = LanguageMasterBadge.builder()
+                            .student(student)
+                            .test(test)
+                            .subject(test.getSubject() != null ? test.getSubject().getName() : "")
+                            .badgeName(badgeName)
+                            .badgeIcon(badgeIcon)
+                            .awardedRank(currentRank)
+                            .awardedDate(LocalDateTime.now())
+                            .build();
+                    languageMasterBadgeRepository.save(lmb);
+
+                    Notification langNotification = Notification.builder()
+                            .user(student)
+                            .title("🎖️ Language Master Badge Earned!")
+                            .message("You were awarded the '" + badgeName + "' badge for your performance in " + test.getName() + "!")
+                            .type("BADGE_ALERT")
+                            .isRead(false)
+                            .build();
+                    notificationRepository.save(langNotification);
                 }
             }
 
@@ -365,27 +382,26 @@ public class BadgeSetService {
 
         String effectiveTestCode = null;
 
-        if (set.getTestCode() != null && !set.getTestCode().trim().isEmpty() && !set.getTestCode().trim().startsWith("TEST-") && !set.getTestCode().trim().startsWith("JAVAPR-")) {
-            effectiveTestCode = set.getTestCode().trim();
-        }
-
-        if ((effectiveTestCode == null || effectiveTestCode.startsWith("TEST-") || effectiveTestCode.startsWith("JAVAPR-")) && set.getTest() != null && set.getTest().getQuestions() != null) {
+        // Top Priority: Custom Question ID (questionCode, e.g. "JAVA-2") set on any question linked to this test
+        if (set.getTest() != null && set.getTest().getQuestions() != null) {
             for (Question q : set.getTest().getQuestions()) {
-                if (q.getQuestionCode() != null && !q.getQuestionCode().trim().isEmpty() && !q.getQuestionCode().trim().startsWith("TEST-")) {
-                    effectiveTestCode = q.getQuestionCode().trim();
+                if (q.getQuestionCode() != null && !q.getQuestionCode().trim().isEmpty()) {
+                    effectiveTestCode = q.getQuestionCode().trim().toUpperCase();
                     break;
                 }
             }
         }
 
-        if ((effectiveTestCode == null || effectiveTestCode.startsWith("TEST-")) && set.getTestCode() != null && !set.getTestCode().trim().isEmpty()) {
-            effectiveTestCode = set.getTestCode().trim();
+        // Second Priority: Test Code set on BadgeSet or Test
+        if ((effectiveTestCode == null || effectiveTestCode.trim().isEmpty()) && set.getTestCode() != null && !set.getTestCode().trim().isEmpty()) {
+            effectiveTestCode = set.getTestCode().trim().toUpperCase();
         }
 
-        if ((effectiveTestCode == null || effectiveTestCode.startsWith("TEST-")) && set.getTest() != null && set.getTest().getTestCode() != null && !set.getTest().getTestCode().trim().isEmpty()) {
-            effectiveTestCode = set.getTest().getTestCode().trim();
+        if ((effectiveTestCode == null || effectiveTestCode.trim().isEmpty()) && set.getTest() != null && set.getTest().getTestCode() != null && !set.getTest().getTestCode().trim().isEmpty()) {
+            effectiveTestCode = set.getTest().getTestCode().trim().toUpperCase();
         }
 
+        // Fallback: Subject name prefix + Test ID
         if (effectiveTestCode == null || effectiveTestCode.trim().isEmpty() || effectiveTestCode.startsWith("TEST-")) {
             String subName = set.getSubject() != null ? set.getSubject().getName() : (set.getTest() != null && set.getTest().getSubject() != null ? set.getTest().getSubject().getName() : "JAVA");
             String prefix = subName.replaceAll("[^a-zA-Z]", "").toUpperCase();
