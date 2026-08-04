@@ -40,6 +40,7 @@ export default function QuestionManagement() {
   const [selectedSubjectId, setSelectedSubjectId] = useState<number | null>(null);
   const [questions, setQuestions] = useState<Question[]>([]);
   const [loading, setLoading] = useState(false);
+  const [saving, setSaving] = useState(false);
   const [editingQuestion, setEditingQuestion] = useState<Question | null>(null);
   const [showForm, setShowForm] = useState(false);
   const [error, setError] = useState('');
