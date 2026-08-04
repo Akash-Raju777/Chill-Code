@@ -506,9 +506,6 @@ public class QuestionService {
                 if (!test.getQuestions().contains(question)) {
                     test.getQuestions().add(question);
                 }
-                if (qCode != null) {
-                    test.setTestCode(qCode);
-                }
                 testRepository.save(test);
             } else {
                 // Unlink from tests of other subjects
@@ -540,9 +537,6 @@ public class QuestionService {
 
         if (badgeSets != null && !badgeSets.isEmpty()) {
             badgeSet = badgeSets.get(0);
-            if (qCode != null) {
-                badgeSet.setTestCode(qCode);
-            }
             badgeSetRepository.save(badgeSet);
         } else {
             String testName = subjectTest.getName() != null ? subjectTest.getName() : subject.getName();

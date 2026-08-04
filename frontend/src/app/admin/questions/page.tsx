@@ -402,8 +402,8 @@ export default function QuestionManagement() {
           if (!resolvedTestId) resolvedTestId = testObj.id;
           const subName = subjects.find((s: any) => s.id === subId)?.name || 'Subject';
           const prefix = subName.replace(/[^a-zA-Z]/g, '').toUpperCase().slice(0, 6) || 'TEST';
-          if (!resolvedTestCode) resolvedTestCode = questionCode.trim() ? questionCode.trim().toUpperCase() : (testObj.testCode || `${prefix}-${testObj.id}`);
-          if (!resolvedTestName) resolvedTestName = title.trim() ? title.trim() : (testObj.name || `${subName} Practice Arena`);
+          if (!resolvedTestCode) resolvedTestCode = testObj.testCode || `${prefix}-${testObj.id}`;
+          if (!resolvedTestName) resolvedTestName = testObj.name || `${subName} Practice Arena`;
 
           // Fetch fresh badge sets to find the auto-created one
           const badgeSets = await fetchBadgeSets();
