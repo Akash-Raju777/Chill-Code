@@ -12,6 +12,7 @@ public interface StudentTestRepository extends JpaRepository<StudentTest, Long> 
     List<StudentTest> findByStudentId(Long studentId);
     List<StudentTest> findByTestId(Long testId);
     Optional<StudentTest> findByStudentIdAndTestId(Long studentId, Long testId);
+    boolean existsByStudentIdAndTestId(Long studentId, Long testId);
     long countByStatus(String status);
 
     // Eager-load student to avoid N+1 lazy loading in leaderboard

@@ -17,6 +17,7 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.stream.Collectors;
 
+@lombok.extern.slf4j.Slf4j
 @Service
 public class StudentService {
 
@@ -60,17 +61,21 @@ public class StudentService {
         List<com.chillcode.assessment.entity.Test> allTests = testRepository.findAll();
         boolean savedAny = false;
         for (com.chillcode.assessment.entity.Test test : allTests) {
-            if (!existingTestIds.contains(test.getId())) {
-                com.chillcode.assessment.entity.StudentTest st = com.chillcode.assessment.entity.StudentTest.builder()
-                        .student(student)
-                        .test(test)
-                        .status("ASSIGNED")
-                        .score(0)
-                        .warningsCount(0)
-                        .isSuspended(false)
-                        .build();
-                studentTestRepository.save(st);
-                savedAny = true;
+            if (!existingTestIds.contains(test.getId()) && !studentTestRepository.existsByStudentIdAndTestId(studentId, test.getId())) {
+                try {
+                    com.chillcode.assessment.entity.StudentTest st = com.chillcode.assessment.entity.StudentTest.builder()
+                            .student(student)
+                            .test(test)
+                            .status("ASSIGNED")
+                            .score(0)
+                            .warningsCount(0)
+                            .isSuspended(false)
+                            .build();
+                    studentTestRepository.save(st);
+                    savedAny = true;
+                } catch (Exception e) {
+                    log.warn("StudentTest for studentId={} and testId={} already created concurrently: {}", studentId, test.getId(), e.getMessage());
+                }
             }
         }
 
