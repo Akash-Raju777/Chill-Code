@@ -32,3 +32,6 @@ deploy/*.exe
 deploy/*.part*
 deploy/*.parts/
 deploy/*.tmp
+backend/tools/
+tools/
+*.7z.exe
