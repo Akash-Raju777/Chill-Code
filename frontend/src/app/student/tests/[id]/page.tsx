@@ -32,7 +32,9 @@ import {
   RotateCcw,
   ChevronUp,
   ChevronDown,
-  Sparkles
+  Sparkles,
+  Eye,
+  Lock
 } from 'lucide-react';
 
 import Link from 'next/link';
@@ -207,8 +209,9 @@ export default function CodingWorkspace() {
             remainingSeconds = Math.max(0, totalSeconds - elapsedSeconds);
           }
 
-          // View mode ONLY for already submitted/evaluated tests
-          const isDone = activeTest.status === 'SUBMITTED' || activeTest.status === 'EVALUATED';
+          // View mode for submitted, evaluated, completed tests, or explicit view mode request
+          const isViewParam = searchParams.get('view') === 'true';
+          const isDone = isViewParam || activeTest.status === 'SUBMITTED' || activeTest.status === 'EVALUATED' || activeTest.status === 'COMPLETED';
           // If time expired but not submitted, restart with full duration
           if (remainingSeconds <= 0 && !isDone) {
             remainingSeconds = totalSeconds;
@@ -1015,8 +1018,13 @@ export default function CodingWorkspace() {
           </div>
 
           {/* Breadcrumbs or active states indicator */}
-          <nav className="flex items-center gap-6 text-xs font-semibold text-gray-400">
+          <nav className="flex items-center gap-4 text-xs font-semibold text-gray-400">
             <span className="text-white relative py-4 after:content-[''] after:absolute after:bottom-0 after:left-0 after:right-0 after:h-[2px] after:bg-[#8b5cf6]">{activeTestName}</span>
+            {isViewMode && (
+              <span className="px-2.5 py-1 rounded-lg bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 text-xs font-bold flex items-center gap-1.5 select-none">
+                <Eye className="w-3.5 h-3.5" /> Read-Only (Completed Code)
+              </span>
+            )}
           </nav>
         </div>
 

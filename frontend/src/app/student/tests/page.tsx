@@ -201,7 +201,7 @@ export default function TestsWorkspace() {
         associatedTest.test.securityShieldEnabled ?? false
       );
       resetWarnings();
-      router.push(`/student/tests/${associatedTest.test.id}`);
+      router.push(`/student/tests/${associatedTest.test.id}?question=${q.id}&view=true`);
     } catch (err: any) {
       setError(err.message || 'Failed to enter view mode.');
     }
