@@ -108,22 +108,18 @@ public class BadgeSetService {
         if (dto.getLanguageBadgeName() != null) set.setLanguageBadgeName(dto.getLanguageBadgeName());
         if (dto.getLanguageBadgeIcon() != null) set.setLanguageBadgeIcon(dto.getLanguageBadgeIcon());
         if (dto.getLanguageAwardRank() != null) set.setLanguageAwardRank(dto.getLanguageAwardRank());
-        if (dto.getStatus() != null) set.setStatus(dto.getStatus());
+        if (dto.getStatus() != null && !dto.getStatus().trim().isEmpty()) {
+            set.setStatus(dto.getStatus().trim());
+        }
 
-        if (set.getTest() != null) {
-            Test test = set.getTest();
-            boolean updated = false;
-            if (dto.getTestCode() != null && !dto.getTestCode().trim().isEmpty()) {
-                test.setTestCode(dto.getTestCode().trim());
-                set.setTestCode(dto.getTestCode().trim());
-                updated = true;
-            }
-            if (dto.getTestName() != null && !dto.getTestName().trim().isEmpty()) {
-                test.setName(dto.getTestName().trim());
-                updated = true;
-            }
-            if (updated) {
-                testRepository.save(test);
+        if (dto.getTestId() != null) {
+            Test newTest = testRepository.findById(dto.getTestId()).orElse(null);
+            if (newTest != null) {
+                set.setTest(newTest);
+                set.setSubject(newTest.getSubject());
+                if (newTest.getTestCode() != null && !newTest.getTestCode().trim().isEmpty()) {
+                    set.setTestCode(newTest.getTestCode().trim());
+                }
             }
         }
 
