@@ -162,7 +162,7 @@ export default function TestsWorkspace() {
   const getAssociatedTest = (subjectId: number, questionId?: number) => {
     if (questionId) {
       const specific = studentTests.find((st) =>
-        st.test?.questions?.some((tq: any) => tq.id === questionId)
+        (st.test as any)?.questions?.some((tq: any) => tq.id === questionId)
       );
       if (specific) return specific;
     }

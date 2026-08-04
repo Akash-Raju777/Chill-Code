@@ -9,14 +9,20 @@ interface StudentBadge {
   studentId: number;
   studentName: string;
   studentRegisterNumber: string;
-  badge: {
-    id: number;
-    name: string;
-    description: string;
-    icon: string;
-    type: string;
-  };
-  earnedAt: string;
+  badgeName?: string;
+  badgeIcon?: string;
+  badgeCategory?: string;
+  testId?: number;
+  testCode?: string;
+  testName?: string;
+  subjectName?: string;
+  subjectRank?: number;
+  overallRank?: number;
+  rankAchieved?: string;
+  awardedAt?: string;
+  awardedBy?: string;
+  status?: string;
+  earnedAt?: string;
   sourceTestName?: string;
 }
 
@@ -127,7 +133,7 @@ export default function AdminAchievementsOverviewPage() {
                     <td className="px-6 py-4">
                       <div className="flex items-center gap-3">
                         <div className="w-8 h-8 rounded-lg bg-purple-500/10 border border-purple-500/30 flex items-center justify-center">
-                          {renderBadgeIcon(a.badgeIcon)}
+                          {renderBadgeIcon(a.badgeIcon || 'Award')}
                         </div>
                         <div>
                           <div className="font-bold text-slate-100">{a.badgeName}</div>
