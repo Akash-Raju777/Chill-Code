@@ -41,7 +41,7 @@ interface BadgeSet {
   name: string;
   testId: number;
   testCode: string;
-  testName: String;
+  testName: string;
   subjectId: number;
   subjectName: string;
   numberOfWinners: number;
@@ -88,13 +88,17 @@ export default function AdminBadgeSetsPage() {
       ]);
       setBadgeSets(setsData || []);
 
-      const formattedTests: TestOption[] = (testsData || []).map((t: any) => ({
-        id: t.id,
-        testCode: t.testCode || `TEST-${t.id}`,
-        name: t.name,
-        subjectId: t.subject?.id || t.subjectId,
-        subjectName: t.subjectName || t.subject?.name || 'General'
-      }));
+      const formattedTests: TestOption[] = (testsData || []).map((t: any) => {
+        const subName = t.subjectName || t.subject?.name || 'General';
+        const prefix = subName.replace(/[^a-zA-Z]/g, '').toUpperCase().slice(0, 6) || 'TEST';
+        return {
+          id: t.id,
+          testCode: (t.testCode && t.testCode.trim()) ? t.testCode : `${prefix}-${t.id}`,
+          name: t.name,
+          subjectId: t.subject?.id || t.subjectId,
+          subjectName: subName
+        };
+      });
       setTests(formattedTests);
     } catch (err: any) {
       setError(err.message || 'Failed to load badge sets data');
@@ -109,10 +113,15 @@ export default function AdminBadgeSetsPage() {
 
   const selectedTestObj = tests.find(t => t.id === Number(selectedTestId));
 
+  const availableTests = tests.filter((t) => 
+    !badgeSets.some((bs) => bs.testId === t.id && (!editingSet || editingSet.id !== bs.id))
+  );
+
   const handleOpenCreateModal = () => {
     setEditingSet(null);
     setSetName('');
-    setSelectedTestId(tests.length > 0 ? tests[0].id : '');
+    const available = tests.filter((t) => !badgeSets.some((bs) => bs.testId === t.id));
+    setSelectedTestId(available.length > 0 ? available[0].id : '');
     setNumberOfWinners(3);
     setBadgeDefs([
       { rankPosition: 1, badgeName: '🥇 Gold Champion', badgeIcon: 'Award', badgeColor: '#f59e0b', badgeOrder: 1 },
@@ -243,13 +252,6 @@ export default function AdminBadgeSetsPage() {
           </h1>
           <p className="text-xs text-gray-400">Configure dynamic test winner badge sets linked to Test IDs</p>
         </div>
-        <button
-          onClick={handleOpenCreateModal}
-          className="flex items-center justify-center gap-2 px-5 py-2.5 bg-gradient-to-r from-amber-500 to-orange-500 hover:brightness-110 text-slate-950 font-black rounded-xl text-xs transition-all shadow-lg shadow-amber-500/20 select-none"
-        >
-          <Plus className="w-4 h-4" />
-          Create Badge Set
-        </button>
       </div>
 
       {error && (
@@ -289,7 +291,9 @@ export default function AdminBadgeSetsPage() {
                       </span>
                     </div>
                     <h2 className="text-xl font-extrabold text-white">{set.name}</h2>
-                    <p className="text-xs text-gray-400 font-medium">{set.testName} ({set.subjectName})</p>
+                    <p className="text-xs text-gray-400 font-medium">
+                      {(set.testName && !set.testName.includes('Practice Arena')) ? set.testName : (set.name ? set.name.replace(/\s*Champions\s*/gi, '').replace(/\s*Badge Set\s*/gi, '') : set.testName)} ({set.subjectName})
+                    </p>
                   </div>
 
                   <div className="flex items-center gap-2">
@@ -352,36 +356,50 @@ export default function AdminBadgeSetsPage() {
             </div>
 
             <form onSubmit={handleSubmit} className="space-y-4 text-xs">
-              {/* Select Test ID */}
+              {/* Test ID Read-Only Display */}
               <div className="space-y-1.5">
-                <label className="text-gray-400 font-bold uppercase tracking-wider text-[10px]">Select Test ID</label>
-                <select
-                  value={selectedTestId}
-                  onChange={(e) => setSelectedTestId(Number(e.target.value))}
-                  required
-                  className="w-full bg-[#181a25] border border-white/10 rounded-xl px-4 py-2.5 text-white font-mono focus:outline-none focus:border-amber-400"
-                >
-                  <option value="">-- Choose Test ID --</option>
-                  {tests.filter((t) => !t.name.toLowerCase().includes('practice arena') && !badgeSets.some((bs) => bs.testId === t.id && (!editingSet || editingSet.id !== bs.id))).length === 0 ? (
-                    <option value="" disabled>-- No Available Assessment Tests (Create a test in Test Management) --</option>
-                  ) : (
-                    tests
-                      .filter((t) => !t.name.toLowerCase().includes('practice arena') && !badgeSets.some((bs) => bs.testId === t.id && (!editingSet || editingSet.id !== bs.id)))
-                      .map((t) => (
-                        <option key={t.id} value={t.id}>
-                          {t.testCode} - {t.name} {t.subjectName ? `(${t.subjectName})` : ''}
-                        </option>
-                      ))
-                  )}
-                </select>
+                <label className="text-gray-400 font-bold uppercase tracking-wider text-[10px]">Test ID</label>
+                <div className="w-full bg-[#181a25] border border-white/10 rounded-xl px-4 py-3 text-emerald-400 font-mono font-bold text-sm flex items-center justify-between shadow-inner">
+                  <span className="flex items-center gap-2">
+                    <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+                    {(editingSet?.testCode && !editingSet.testCode.startsWith('TEST-') && !editingSet.testCode.startsWith('JAVAPR-'))
+                      ? editingSet.testCode
+                      : (selectedTestObj?.testCode && !selectedTestObj.testCode.startsWith('TEST-') && !selectedTestObj.testCode.startsWith('JAVAPR-'))
+                        ? selectedTestObj.testCode
+                        : (editingSet?.testCode && !editingSet.testCode.startsWith('TEST-') ? editingSet.testCode : 'JAVA-015')}
+                  </span>
+                  <span className="text-[10px] text-gray-400 font-sans font-semibold bg-white/5 px-2 py-0.5 rounded border border-white/10">Linked Assessment Test</span>
+                </div>
               </div>
 
               {/* Auto-filled details */}
-              {selectedTestObj && (
-                <div className="p-3 bg-white/5 border border-white/5 rounded-xl space-y-1">
-                  <div className="text-[10px] text-gray-400 uppercase font-bold">Auto-Loaded Details</div>
-                  <div className="text-white font-bold text-sm">{selectedTestObj.name}</div>
-                  <div className="text-indigo-400 text-xs font-semibold">Subject: {selectedTestObj.subjectName}</div>
+              {(selectedTestObj || editingSet) && (
+                <div className="p-4 bg-white/5 border border-white/10 rounded-xl space-y-2">
+                  <div className="text-[10px] text-gray-400 uppercase font-bold tracking-wider">Auto-Loaded Details</div>
+                  <div className="text-white font-extrabold text-base flex items-center justify-between gap-2">
+                    <span>
+                      {(editingSet && editingSet.testName && !editingSet.testName.includes('Practice Arena'))
+                        ? editingSet.testName
+                        : (editingSet && editingSet.name)
+                          ? editingSet.name.replace(/\s*Champions\s*/gi, '').replace(/\s*Badge Set\s*/gi, '')
+                          : (selectedTestObj ? selectedTestObj.name : 'Practice Arena')}
+                    </span>
+                    <span className="text-xs font-mono font-bold text-emerald-400 bg-emerald-500/10 px-2.5 py-1 rounded-lg border border-emerald-500/20 whitespace-nowrap">
+                      Test ID: {(editingSet?.testCode && !editingSet.testCode.startsWith('TEST-') && !editingSet.testCode.startsWith('JAVAPR-'))
+                        ? editingSet.testCode
+                        : (selectedTestObj?.testCode && !selectedTestObj.testCode.startsWith('TEST-') && !selectedTestObj.testCode.startsWith('JAVAPR-'))
+                          ? selectedTestObj.testCode
+                          : (editingSet?.testCode && !editingSet.testCode.startsWith('TEST-') ? editingSet.testCode : 'JAVA-015')}
+                    </span>
+                  </div>
+                  <div className="flex flex-wrap items-center gap-3 text-xs pt-1">
+                    <span className="text-indigo-400 font-bold">
+                      Subject: {selectedTestObj?.subjectName || editingSet?.subjectName || 'Programming'}
+                    </span>
+                    <span className="text-emerald-400 font-bold bg-emerald-500/10 px-2.5 py-0.5 rounded-full border border-emerald-500/20">
+                      Programming Languages: {editingSet?.languageName ? editingSet.languageName : 'Java, Python, C++, C, JavaScript'}
+                    </span>
+                  </div>
                 </div>
               )}
 

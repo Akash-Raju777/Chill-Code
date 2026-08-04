@@ -1,8 +1,8 @@
 'use client';
 
 import React, { useEffect, useState } from 'react';
-import { apiCall } from '../../../utils/api';
-import { Plus, Trash2, Edit2, Code2, Loader2, ArrowLeft, Check, AlertCircle } from 'lucide-react';
+import { apiCall, fetchBadgeSets, createBadgeSet, updateBadgeSet } from '../../../utils/api';
+import { Plus, Trash2, Edit2, Code2, Loader2, ArrowLeft, Check, AlertCircle, Award, Trophy, Layers } from 'lucide-react';
 
 interface Subject {
   id: number;
@@ -63,6 +63,30 @@ export default function QuestionManagement() {
   const [passingMarks, setPassingMarks] = useState<number>(10);
   const [questionCode, setQuestionCode] = useState('');
   const [timer, setTimer] = useState<number | ''>('');
+
+  // Enable Badge Management states
+  const [enableBadgeManagement, setEnableBadgeManagement] = useState(false);
+  const [badgeStepActive, setBadgeStepActive] = useState(false);
+  const [targetTestId, setTargetTestId] = useState<number | null>(null);
+  const [targetTestCode, setTargetTestCode] = useState<string>('');
+  const [targetTestName, setTargetTestName] = useState<string>('');
+  const [targetSubjectName, setTargetSubjectName] = useState<string>('');
+  const [existingBadgeSetId, setExistingBadgeSetId] = useState<number | null>(null);
+  const [badgeSetName, setBadgeSetName] = useState('');
+  const [badgeWinnersCount, setBadgeWinnersCount] = useState(3);
+  const [badgeDefs, setBadgeDefs] = useState([
+    { rankPosition: 1, badgeName: '🥇 Gold Champion', badgeIcon: 'Award', badgeColor: '#f59e0b', badgeOrder: 1 },
+    { rankPosition: 2, badgeName: '🥈 Silver Champion', badgeIcon: 'Award', badgeColor: '#94a3b8', badgeOrder: 2 },
+    { rankPosition: 3, badgeName: '🥉 Bronze Champion', badgeIcon: 'Award', badgeColor: '#b45309', badgeOrder: 3 },
+  ]);
+
+  // Language Master Badge Form States
+  const [enableLanguageBadge, setEnableLanguageBadge] = useState(false);
+  const [languageName, setLanguageName] = useState('Java');
+  const [languageBadgeName, setLanguageBadgeName] = useState('☕ Java Expert');
+  const [languageBadgeIcon, setLanguageBadgeIcon] = useState('☕');
+  const [languageAwardRank, setLanguageAwardRank] = useState(1);
+  const [savingBadgeSet, setSavingBadgeSet] = useState(false);
 
   const [allowedLangs, setAllowedLangs] = useState({
     java: true,
@@ -126,6 +150,10 @@ export default function QuestionManagement() {
     setPassingMarks(10);
     setQuestionCode('');
     setTimer('');
+    setEnableBadgeManagement(false);
+    setBadgeStepActive(false);
+    setExistingBadgeSetId(null);
+    setTargetTestId(null);
 
     setAllowedLangs({ java: true, python: true, cpp: false, c: false, javascript: false });
     setTags('');
@@ -163,7 +191,29 @@ export default function QuestionManagement() {
       javascript: langs.includes('javascript'),
     });
     
+    setEnableBadgeManagement(false);
+    setBadgeStepActive(false);
+    setExistingBadgeSetId(null);
+    setTargetTestId(null);
     setFormSubjectId(q.subjectId);
+
+    // Check if badges were previously configured for this subject's test
+    (async () => {
+      try {
+        const testsData = await apiCall('/api/admin/tests');
+        const subjectTests = (testsData || []).filter((t: any) => (t.subject?.id || t.subjectId) === q.subjectId);
+        if (subjectTests.length > 0) {
+          const badgeSets = await fetchBadgeSets();
+          const existing = (badgeSets || []).find((bs: any) => bs.testId === subjectTests[0].id);
+          if (existing) {
+            setEnableBadgeManagement(true);
+          }
+        }
+      } catch (err) {
+        // silent fallback
+      }
+    })();
+
     setShowForm(true);
   };
 
@@ -181,6 +231,27 @@ export default function QuestionManagement() {
     const updated = [...testCases];
     updated[index] = { ...updated[index], [field]: value };
     setTestCases(updated);
+  };
+
+  const handleBadgeWinnersCountChange = (count: number) => {
+    setBadgeWinnersCount(count);
+    const newDefs: any[] = [];
+    for (let i = 1; i <= count; i++) {
+      const existing = badgeDefs.find((b) => b.rankPosition === i);
+      if (existing) {
+        newDefs.push(existing);
+      } else {
+        const icon = i === 1 ? '🥇' : i === 2 ? '🥈' : i === 3 ? '🥉' : '🎖️';
+        newDefs.push({
+          rankPosition: i,
+          badgeName: `${icon} Rank ${i} Award`,
+          badgeIcon: 'Award',
+          badgeColor: i === 1 ? '#f59e0b' : i === 2 ? '#94a3b8' : i === 3 ? '#b45309' : '#6366f1',
+          badgeOrder: i,
+        });
+      }
+    }
+    setBadgeDefs(newDefs);
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -233,7 +304,6 @@ export default function QuestionManagement() {
           body: JSON.stringify(payload),
         });
         setQuestions((prev) => prev.map((q) => (q.id === editingQuestion.id ? updatedQ : q)));
-        showToast('Question updated successfully!');
       } else {
         const createdQ = await apiCall('/api/admin/questions', {
           method: 'POST',
@@ -242,14 +312,113 @@ export default function QuestionManagement() {
         if (selectedSubjectId === formSubjectId) {
           setQuestions((prev) => [...prev, createdQ]);
         }
-        showToast('Question created successfully!');
       }
+
+      if (enableBadgeManagement) {
+        const testsData = await apiCall('/api/admin/tests');
+        const subjectTests = (testsData || []).filter((t: any) => (t.subject?.id || t.subjectId) === formSubjectId);
+        let testObj = subjectTests.length > 0 ? subjectTests[0] : (testsData && testsData.length > 0 ? testsData[0] : null);
+
+        if (testObj) {
+          const subName = subjects.find(s => s.id === formSubjectId)?.name || 'Subject';
+          const prefix = subName.replace(/[^a-zA-Z]/g, '').toUpperCase().slice(0, 6) || 'TEST';
+
+          const actualCode = questionCode.trim() ? questionCode.trim().toUpperCase() : (testObj.testCode || `${prefix}-${testObj.id}`);
+          const actualTitle = title.trim() ? title.trim() : (testObj.name || `${subName} Practice Arena`);
+
+          setTargetTestId(testObj.id);
+          setTargetTestCode(actualCode);
+          setTargetTestName(actualTitle);
+          setTargetSubjectName(testObj.subjectName || testObj.subject?.name || subName);
+
+          const badgeSets = await fetchBadgeSets();
+          const existingSet = (badgeSets || []).find((bs: any) => bs.testId === testObj.id);
+
+          if (existingSet) {
+            setExistingBadgeSetId(existingSet.id);
+            const newSetName = title.trim() ? `${actualTitle} Champions` : (existingSet.name || `${actualTitle} Champions`);
+            setBadgeSetName(newSetName);
+            setBadgeWinnersCount(existingSet.numberOfWinners || 3);
+            
+            if (title.trim()) {
+              setBadgeDefs([
+                { rankPosition: 1, badgeName: `🥇 ${actualTitle} Gold Winner`, badgeIcon: 'Award', badgeColor: '#f59e0b', badgeOrder: 1 },
+                { rankPosition: 2, badgeName: `🥈 ${actualTitle} Silver Winner`, badgeIcon: 'Award', badgeColor: '#94a3b8', badgeOrder: 2 },
+                { rankPosition: 3, badgeName: `🥉 ${actualTitle} Bronze Winner`, badgeIcon: 'Award', badgeColor: '#b45309', badgeOrder: 3 },
+              ]);
+            } else if (existingSet.badges && existingSet.badges.length > 0) {
+              setBadgeDefs(existingSet.badges);
+            }
+            setEnableLanguageBadge(existingSet.enableLanguageBadge || false);
+            setLanguageName(existingSet.languageName || 'Java');
+            setLanguageBadgeName(existingSet.languageBadgeName || '☕ Java Expert');
+            setLanguageBadgeIcon(existingSet.languageBadgeIcon || '☕');
+            setLanguageAwardRank(existingSet.languageAwardRank || 1);
+          } else {
+            setExistingBadgeSetId(null);
+            setBadgeSetName(`${actualTitle} Champions`);
+            setBadgeWinnersCount(3);
+            setBadgeDefs([
+              { rankPosition: 1, badgeName: `🥇 ${actualTitle} Gold Winner`, badgeIcon: 'Award', badgeColor: '#f59e0b', badgeOrder: 1 },
+              { rankPosition: 2, badgeName: `🥈 ${actualTitle} Silver Winner`, badgeIcon: 'Award', badgeColor: '#94a3b8', badgeOrder: 2 },
+              { rankPosition: 3, badgeName: `🥉 ${actualTitle} Bronze Winner`, badgeIcon: 'Award', badgeColor: '#b45309', badgeOrder: 3 },
+            ]);
+            setEnableLanguageBadge(false);
+            const defaultLang = subName.includes('Python') ? 'Python' : subName.includes('C++') ? 'C++' : subName.includes('C') ? 'C' : subName.includes('JavaScript') ? 'JavaScript' : 'Java';
+            setLanguageName(defaultLang);
+            setLanguageBadgeName(defaultLang === 'Java' ? '☕ Java Expert' : defaultLang === 'Python' ? '🐍 Python Master' : '🎖️ Language Expert');
+            setLanguageBadgeIcon(defaultLang === 'Java' ? '☕' : defaultLang === 'Python' ? '🐍' : '🎖️');
+            setLanguageAwardRank(1);
+          }
+
+          setBadgeStepActive(true);
+          showToast('Question saved! Now configure and assign winner badges.', 'success');
+          return;
+        }
+      }
+
+      showToast(editingQuestion ? 'Question updated successfully!' : 'Question created successfully!');
       setShowForm(false);
     } catch (err: any) {
       setError(err.message || 'Failed to save question');
       showToast('Failed to save question', 'error');
     } finally {
       setSaving(false);
+    }
+  };
+
+  const handleSaveBadgeSetAndFinish = async () => {
+    if (!targetTestId) return;
+    setSavingBadgeSet(true);
+
+    const badgePayload = {
+      name: badgeSetName || `${targetTestName} Badge Set`,
+      testId: targetTestId,
+      testCode: targetTestCode,
+      testName: targetTestName,
+      numberOfWinners: badgeWinnersCount,
+      enableLanguageBadge,
+      languageName,
+      languageBadgeName,
+      languageBadgeIcon,
+      languageAwardRank: Number(languageAwardRank),
+      badges: badgeDefs,
+    };
+
+    try {
+      if (existingBadgeSetId) {
+        await updateBadgeSet(existingBadgeSetId, badgePayload);
+      } else {
+        await createBadgeSet(badgePayload);
+      }
+      showToast('Question and Badge Set allocated successfully!', 'success');
+      setBadgeStepActive(false);
+      setShowForm(false);
+      if (selectedSubjectId) fetchQuestions(selectedSubjectId);
+    } catch (err: any) {
+      showToast(err.message || 'Failed to assign badge set', 'error');
+    } finally {
+      setSavingBadgeSet(false);
     }
   };
 
@@ -389,6 +558,219 @@ export default function QuestionManagement() {
             ))}
           </div>
         )
+      ) : badgeStepActive ? (
+        <div className="space-y-6 glass-panel p-6 md:p-8 rounded-2xl border border-amber-500/20 bg-[#11131c]">
+          {/* Header Progress Banner */}
+          <div className="bg-amber-500/10 border border-amber-500/30 p-5 rounded-2xl flex flex-col md:flex-row md:items-center justify-between gap-4">
+            <div className="flex items-center gap-3">
+              <div className="p-3 bg-amber-500/20 rounded-xl text-amber-400">
+                <Trophy className="w-6 h-6" />
+              </div>
+              <div>
+                <h3 className="text-base font-extrabold text-white flex items-center gap-2">
+                  Step 2: Assign Winner Badges
+                </h3>
+                <p className="text-xs text-amber-300">
+                  Target Test ID: <span className="font-mono font-bold text-white bg-amber-500/20 px-2 py-0.5 rounded">{targetTestCode}</span> ({targetTestName})
+                </p>
+              </div>
+            </div>
+            <span className="text-xs font-bold text-emerald-400 bg-emerald-500/10 px-3 py-1 rounded-full border border-emerald-500/20 self-start md:self-auto flex items-center gap-1.5">
+              <Check className="w-3.5 h-3.5" />
+              Question Uploaded
+            </span>
+          </div>
+
+          {/* Auto-Loaded Details */}
+          <div className="p-4 bg-[#181a25] border border-white/10 rounded-xl space-y-2">
+            <div className="text-[10px] text-gray-400 uppercase font-bold tracking-wider">Auto-Loaded Details</div>
+            <div className="text-white font-extrabold text-base flex items-center justify-between gap-2">
+              <span>{targetTestName}</span>
+              <span className="text-xs font-mono font-bold text-emerald-400 bg-emerald-500/10 px-2.5 py-1 rounded-lg border border-emerald-500/20 whitespace-nowrap">
+                Test ID: {targetTestCode}
+              </span>
+            </div>
+            <div className="flex flex-wrap items-center gap-3 text-xs pt-1">
+              <span className="text-indigo-400 font-bold">Subject: {targetSubjectName}</span>
+              <span className="text-emerald-400 font-bold bg-emerald-500/10 px-2.5 py-0.5 rounded-full border border-emerald-500/20">
+                Programming Languages: {Object.keys(allowedLangs).filter(k => allowedLangs[k as keyof typeof allowedLangs]).map(l => l === 'cpp' ? 'C++' : l === 'javascript' ? 'JavaScript' : l.toUpperCase()).join(', ') || 'Java'}
+              </span>
+            </div>
+          </div>
+
+          {/* Badge Set Customizer */}
+          <div className="space-y-5 text-xs">
+            <div className="space-y-1.5">
+              <label className="text-gray-400 font-bold uppercase tracking-wider text-[10px]">Badge Set Name</label>
+              <input
+                type="text"
+                value={badgeSetName}
+                onChange={(e) => setBadgeSetName(e.target.value)}
+                placeholder="e.g. Java Mid-Term Champions"
+                className="w-full bg-[#181a25] border border-white/10 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-amber-400 text-sm font-semibold"
+              />
+            </div>
+
+            <div className="space-y-1.5">
+              <label className="text-gray-400 font-bold uppercase tracking-wider text-[10px]">Number of Winners</label>
+              <div className="grid grid-cols-4 gap-3">
+                {[1, 3, 5, 10].map((num) => (
+                  <button
+                    type="button"
+                    key={num}
+                    onClick={() => handleBadgeWinnersCountChange(num)}
+                    className={`py-2.5 rounded-xl font-bold border transition-all ${
+                      badgeWinnersCount === num ? 'bg-amber-500/20 border-amber-400 text-amber-400 shadow-md shadow-amber-500/10' : 'bg-white/5 border-white/5 text-gray-400 hover:bg-white/10'
+                    }`}
+                  >
+                    Top {num}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div className="space-y-3 pt-2">
+              <label className="text-gray-400 font-bold uppercase tracking-wider text-[10px]">Customize Winner Badges</label>
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                {badgeDefs.map((def, idx) => (
+                  <div key={def.rankPosition} className="p-4 bg-[#181a25] border border-white/10 rounded-xl space-y-2 text-center">
+                    <div className="text-2xl mb-1">{def.badgeName.includes('🥇') ? '🥇' : def.badgeName.includes('🥈') ? '🥈' : def.badgeName.includes('🥉') ? '🥉' : '🎖️'}</div>
+                    <div className="text-slate-300 font-bold text-xs">Rank {def.rankPosition} Winner</div>
+                    <input
+                      type="text"
+                      value={def.badgeName}
+                      onChange={(e) => {
+                        const updated = [...badgeDefs];
+                        updated[idx].badgeName = e.target.value;
+                        setBadgeDefs(updated);
+                      }}
+                      placeholder="Badge Name"
+                      className="w-full bg-[#11131c] border border-white/10 rounded-lg px-3 py-2 text-white font-bold text-center focus:outline-none focus:border-amber-400 text-xs"
+                    />
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {/* Language Master Badge Configuration Section */}
+            <div className="p-4 bg-[#181a25] border border-white/10 rounded-xl space-y-4 pt-4">
+              <div className="text-gray-400 font-bold uppercase tracking-wider text-[10px] border-b border-white/10 pb-2 flex items-center justify-between">
+                <span>Language Master Badge</span>
+                {enableLanguageBadge && (
+                  <span className="text-emerald-400 font-mono font-bold text-[10px] bg-emerald-500/10 px-2 py-0.5 rounded border border-emerald-500/20">
+                    Enabled
+                  </span>
+                )}
+              </div>
+
+              <div className="flex items-center justify-between">
+                <label className="text-white font-bold cursor-pointer flex items-center gap-2">
+                  <input
+                    type="checkbox"
+                    checked={enableLanguageBadge}
+                    onChange={(e) => setEnableLanguageBadge(e.target.checked)}
+                    className="w-4 h-4 rounded border-white/10 bg-[#11131c] text-amber-500 focus:ring-0"
+                  />
+                  Enable Language Master Badge
+                </label>
+              </div>
+
+              {enableLanguageBadge && (
+                <div className="space-y-3 pt-2">
+                  <div>
+                    <label className="text-gray-400 font-bold text-[10px] uppercase">Language</label>
+                    <select
+                      value={languageName}
+                      onChange={(e) => {
+                        const lang = e.target.value;
+                        setLanguageName(lang);
+                        if (lang === 'Java') { setLanguageBadgeName('☕ Java Expert'); setLanguageBadgeIcon('☕'); }
+                        else if (lang === 'Python') { setLanguageBadgeName('🐍 Python Master'); setLanguageBadgeIcon('🐍'); }
+                        else if (lang === 'C') { setLanguageBadgeName('⚙️ C Programmer'); setLanguageBadgeIcon('⚙️'); }
+                        else if (lang === 'C++') { setLanguageBadgeName('💻 C++ Expert'); setLanguageBadgeIcon('💻'); }
+                        else if (lang === 'JavaScript') { setLanguageBadgeName('🌐 JavaScript Ninja'); setLanguageBadgeIcon('🌐'); }
+                      }}
+                      className="w-full bg-[#11131c] border border-white/10 rounded-lg px-3 py-2 text-white font-bold mt-1"
+                    >
+                      <option value="Java">☕ Java</option>
+                      <option value="Python">🐍 Python</option>
+                      <option value="C">⚙️ C</option>
+                      <option value="C++">💻 C++</option>
+                      <option value="JavaScript">🌐 JavaScript</option>
+                    </select>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="text-gray-400 font-bold text-[10px] uppercase">Badge Title</label>
+                      <input
+                        type="text"
+                        value={languageBadgeName}
+                        onChange={(e) => setLanguageBadgeName(e.target.value)}
+                        className="w-full bg-[#11131c] border border-white/10 rounded-lg px-3 py-2 text-white font-bold mt-1"
+                      />
+                    </div>
+                    <div>
+                      <label className="text-gray-400 font-bold text-[10px] uppercase">Badge Icon / Emoji</label>
+                      <input
+                        type="text"
+                        value={languageBadgeIcon}
+                        onChange={(e) => setLanguageBadgeIcon(e.target.value)}
+                        className="w-full bg-[#11131c] border border-white/10 rounded-lg px-3 py-2 text-white font-bold mt-1"
+                      />
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="text-gray-400 font-bold text-[10px] uppercase">Award Rank Cutoff</label>
+                    <select
+                      value={languageAwardRank}
+                      onChange={(e) => setLanguageAwardRank(Number(e.target.value))}
+                      className="w-full bg-[#11131c] border border-white/10 rounded-lg px-3 py-2 text-white font-bold mt-1"
+                    >
+                      <option value={1}>Rank 1 Only</option>
+                      <option value={3}>Top 3</option>
+                      <option value={5}>Top 5</option>
+                      <option value={10}>Top 10</option>
+                    </select>
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+
+          <div className="flex justify-end gap-3 border-t border-white/5 pt-6">
+            <button
+              type="button"
+              onClick={() => {
+                setBadgeStepActive(false);
+                setShowForm(false);
+                showToast('Question uploaded cleanly without badge allocation.', 'success');
+              }}
+              className="px-5 py-2.5 border border-white/10 rounded-xl text-xs font-semibold hover:bg-white/5 text-gray-400"
+            >
+              Skip Badge Allocation
+            </button>
+            <button
+              type="button"
+              onClick={handleSaveBadgeSetAndFinish}
+              disabled={savingBadgeSet}
+              className="px-6 py-2.5 rounded-xl bg-gradient-to-r from-amber-500 to-orange-500 hover:brightness-110 text-slate-950 font-black text-xs flex items-center gap-2 shadow-lg shadow-amber-500/20"
+            >
+              {savingBadgeSet ? (
+                <>
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                  Assigning Badges...
+                </>
+              ) : (
+                <>
+                  <Award className="w-4 h-4" />
+                  Assign Badges & Complete Upload
+                </>
+              )}
+            </button>
+          </div>
+        </div>
       ) : (
         /* Form view */
         <form onSubmit={handleSubmit} className="space-y-8 glass-panel p-6 md:p-8 rounded-2xl">
@@ -415,14 +797,14 @@ export default function QuestionManagement() {
                 type="text"
                 required
                 className="w-full glass-input p-3 rounded-xl text-sm"
-                placeholder="e.g. Find Missing Elements"
+                placeholder="e.g. Find Maximum Subarray Sum"
                 value={title}
                 onChange={(e) => setTitle(e.target.value)}
               />
             </div>
             {/* Difficulty */}
             <div>
-              <label className="block text-xs font-semibold text-gray-400 uppercase mb-1">Difficulty level</label>
+              <label className="block text-xs font-semibold text-gray-400 uppercase mb-1">Difficulty Level</label>
               <select
                 className="w-full glass-input p-3 rounded-xl text-sm"
                 value={difficulty}
@@ -441,8 +823,9 @@ export default function QuestionManagement() {
               <label className="block text-xs font-semibold text-gray-400 uppercase mb-1">Problem Statement</label>
               <textarea
                 required
+                rows={4}
                 className="w-full glass-input p-3 rounded-xl text-sm h-36 font-sans leading-relaxed"
-                placeholder="Write the comprehensive description..."
+                placeholder="Describe the coding challenge in detail..."
                 value={problemStatement}
                 onChange={(e) => setProblemStatement(e.target.value)}
               />
@@ -461,7 +844,7 @@ export default function QuestionManagement() {
                 <label className="block text-xs font-semibold text-gray-400 uppercase mb-1">Input Format</label>
                 <textarea
                   className="w-full glass-input p-3 rounded-xl text-sm h-24"
-                  placeholder="Format details..."
+                  placeholder="e.g. First line contains N"
                   value={inputFormat}
                   onChange={(e) => setInputFormat(e.target.value)}
                 />
@@ -470,7 +853,7 @@ export default function QuestionManagement() {
                 <label className="block text-xs font-semibold text-gray-400 uppercase mb-1">Output Format</label>
                 <textarea
                   className="w-full glass-input p-3 rounded-xl text-sm h-24"
-                  placeholder="Expected output details..."
+                  placeholder="e.g. Print single integer"
                   value={outputFormat}
                   onChange={(e) => setOutputFormat(e.target.value)}
                 />
@@ -485,7 +868,7 @@ export default function QuestionManagement() {
               <input
                 type="text"
                 placeholder="e.g. JAVA-1"
-                className="w-full glass-input p-3 rounded-xl text-sm font-mono tracking-wider"
+                className="w-full glass-input p-3 rounded-xl text-sm font-mono tracking-wider uppercase"
                 value={questionCode}
                 onChange={(e) => setQuestionCode(e.target.value.toUpperCase())}
                 maxLength={20}
@@ -658,6 +1041,32 @@ export default function QuestionManagement() {
               {passingMarks >= 0 && passingMarks <= computedTotalMarks && (
                 <p className="text-[11px] text-gray-500 mt-1">Student must score at least this mark to PASS.</p>
               )}
+            </div>
+          </div>
+
+          {/* Enable Badge Management Toggle */}
+          <div className="border-t border-white/5 pt-6">
+            <div className="p-4 bg-amber-500/5 border border-amber-500/20 rounded-2xl flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <div className="p-2 bg-amber-500/20 rounded-xl text-amber-400">
+                  <Award className="w-5 h-5" />
+                </div>
+                <div>
+                  <h4 className="text-sm font-bold text-white">Enable Badge Management</h4>
+                  <p className="text-[11px] text-gray-400">
+                    If enabled, saving will pause completion until winner badges (Gold, Silver, Bronze) are assigned for this subject's test.
+                  </p>
+                </div>
+              </div>
+              <label className="relative inline-flex items-center cursor-pointer select-none">
+                <input
+                  type="checkbox"
+                  checked={enableBadgeManagement}
+                  onChange={(e) => setEnableBadgeManagement(e.target.checked)}
+                  className="sr-only peer"
+                />
+                <div className="w-11 h-6 bg-gray-700 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-amber-500"></div>
+              </label>
             </div>
           </div>
 

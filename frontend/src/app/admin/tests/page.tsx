@@ -359,7 +359,7 @@ export default function TestManagement() {
                 </div>
                 <div className="flex items-center gap-2">
                   <span className="text-[10px] font-mono font-bold text-emerald-400 bg-emerald-500/10 px-2.5 py-0.5 rounded border border-emerald-500/20">
-                    {t.testCode || `TEST-${t.id}`}
+                    {t.testCode || `JAVA-${String(t.id).padStart(3, '0')}`}
                   </span>
                   <h3 className="font-bold text-white text-lg">{t.name}</h3>
                 </div>

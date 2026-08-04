@@ -44,6 +44,9 @@ public class QuestionService {
     @Autowired
     private com.chillcode.assessment.repository.SubmissionRepository submissionRepository;
 
+    @Autowired
+    private com.chillcode.assessment.repository.BadgeSetRepository badgeSetRepository;
+
     @jakarta.persistence.PersistenceContext
     private jakarta.persistence.EntityManager entityManager;
 
@@ -239,6 +242,15 @@ public class QuestionService {
         for (com.chillcode.assessment.entity.Test test : tests) {
             if (test.getSubject().getId().equals(subject.getId())) {
                 test.getQuestions().add(savedQuestion);
+                if (savedQuestion.getQuestionCode() != null && !savedQuestion.getQuestionCode().trim().isEmpty()) {
+                    String qCode = savedQuestion.getQuestionCode().trim().toUpperCase();
+                    test.setTestCode(qCode);
+                    java.util.List<com.chillcode.assessment.entity.BadgeSet> bSets = badgeSetRepository.findByTestId(test.getId());
+                    for (com.chillcode.assessment.entity.BadgeSet bs : bSets) {
+                        bs.setTestCode(qCode);
+                        badgeSetRepository.save(bs);
+                    }
+                }
             } else {
                 test.getQuestions().remove(savedQuestion);
             }
@@ -300,11 +312,20 @@ public class QuestionService {
         Question savedQuestion = questionRepository.save(question);
         log.info("Question Updated: Question ID: {}, Title: '{}' successfully updated in database", savedQuestion.getId(), savedQuestion.getTitle());
 
-        // Synchronize question links to tests based on subject
+        // Synchronize question links to tests based on subject and update BadgeSet testCode
         java.util.List<com.chillcode.assessment.entity.Test> tests = testRepository.findAll();
         for (com.chillcode.assessment.entity.Test test : tests) {
             if (test.getSubject().getId().equals(subject.getId())) {
                 test.getQuestions().add(savedQuestion);
+                if (savedQuestion.getQuestionCode() != null && !savedQuestion.getQuestionCode().trim().isEmpty()) {
+                    String qCode = savedQuestion.getQuestionCode().trim().toUpperCase();
+                    test.setTestCode(qCode);
+                    java.util.List<com.chillcode.assessment.entity.BadgeSet> bSets = badgeSetRepository.findByTestId(test.getId());
+                    for (com.chillcode.assessment.entity.BadgeSet bs : bSets) {
+                        bs.setTestCode(qCode);
+                        badgeSetRepository.save(bs);
+                    }
+                }
             } else {
                 test.getQuestions().remove(savedQuestion);
             }

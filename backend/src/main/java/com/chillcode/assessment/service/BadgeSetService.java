@@ -52,11 +52,21 @@ public class BadgeSetService {
                 .orElseThrow(() -> new RuntimeException("Test not found: " + dto.getTestId()));
 
         Subject subject = test.getSubject();
-        String testCode = test.getTestCode() != null ? test.getTestCode() : "TEST-" + test.getId();
+        if (dto.getTestCode() != null && !dto.getTestCode().trim().isEmpty()) {
+            test.setTestCode(dto.getTestCode().trim());
+        }
+        if (dto.getTestName() != null && !dto.getTestName().trim().isEmpty()) {
+            test.setName(dto.getTestName().trim());
+        }
+        testRepository.save(test);
+
+        String testCode = (test.getTestCode() != null && !test.getTestCode().trim().isEmpty()) 
+                ? test.getTestCode() 
+                : ((subject != null ? subject.getName().replaceAll("[^a-zA-Z]", "").toUpperCase() : "JAVA") + "-" + String.format("%03d", test.getId()));
 
         List<BadgeSet> existingSets = badgeSetRepository.findByTestId(test.getId());
         if (existingSets != null && !existingSets.isEmpty()) {
-            throw new RuntimeException("A Badge Set for Test ID '" + testCode + "' already exists! Each Test ID can only have one Badge Set.");
+            return updateBadgeSet(existingSets.get(0).getId(), dto);
         }
 
         BadgeSet set = BadgeSet.builder()
@@ -100,6 +110,23 @@ public class BadgeSetService {
         if (dto.getLanguageAwardRank() != null) set.setLanguageAwardRank(dto.getLanguageAwardRank());
         if (dto.getStatus() != null) set.setStatus(dto.getStatus());
 
+        if (set.getTest() != null) {
+            Test test = set.getTest();
+            boolean updated = false;
+            if (dto.getTestCode() != null && !dto.getTestCode().trim().isEmpty()) {
+                test.setTestCode(dto.getTestCode().trim());
+                set.setTestCode(dto.getTestCode().trim());
+                updated = true;
+            }
+            if (dto.getTestName() != null && !dto.getTestName().trim().isEmpty()) {
+                test.setName(dto.getTestName().trim());
+                updated = true;
+            }
+            if (updated) {
+                testRepository.save(test);
+            }
+        }
+
         BadgeSet savedSet = badgeSetRepository.save(set);
 
         if (dto.getBadges() != null) {
@@ -126,9 +153,24 @@ public class BadgeSetService {
         badgeSetRepository.save(set);
     }
 
-    @Transactional(readOnly = true)
+    @Transactional
     public List<BadgeSetDto> getAllBadgeSets() {
-        return badgeSetRepository.findAll().stream().map(this::mapBadgeSetToDto).collect(Collectors.toList());
+        List<BadgeSet> sets = badgeSetRepository.findAll();
+        for (BadgeSet bs : sets) {
+            if (bs.getTest() != null && bs.getTest().getQuestions() != null) {
+                for (Question q : bs.getTest().getQuestions()) {
+                    if (q.getQuestionCode() != null && !q.getQuestionCode().trim().isEmpty() && !q.getQuestionCode().trim().startsWith("TEST-")) {
+                        String qCode = q.getQuestionCode().trim().toUpperCase();
+                        if (!qCode.equals(bs.getTestCode())) {
+                            bs.setTestCode(qCode);
+                            badgeSetRepository.save(bs);
+                        }
+                        break;
+                    }
+                }
+            }
+        }
+        return sets.stream().map(this::mapBadgeSetToDto).collect(Collectors.toList());
     }
 
     @Transactional(readOnly = true)
@@ -325,12 +367,47 @@ public class BadgeSetService {
                         .build())
                 .collect(Collectors.toList());
 
+        String effectiveTestCode = null;
+
+        if (set.getTestCode() != null && !set.getTestCode().trim().isEmpty() && !set.getTestCode().trim().startsWith("TEST-") && !set.getTestCode().trim().startsWith("JAVAPR-")) {
+            effectiveTestCode = set.getTestCode().trim();
+        }
+
+        if ((effectiveTestCode == null || effectiveTestCode.startsWith("TEST-") || effectiveTestCode.startsWith("JAVAPR-")) && set.getTest() != null && set.getTest().getQuestions() != null) {
+            for (Question q : set.getTest().getQuestions()) {
+                if (q.getQuestionCode() != null && !q.getQuestionCode().trim().isEmpty() && !q.getQuestionCode().trim().startsWith("TEST-")) {
+                    effectiveTestCode = q.getQuestionCode().trim();
+                    break;
+                }
+            }
+        }
+
+        if ((effectiveTestCode == null || effectiveTestCode.startsWith("TEST-")) && set.getTestCode() != null && !set.getTestCode().trim().isEmpty()) {
+            effectiveTestCode = set.getTestCode().trim();
+        }
+
+        if ((effectiveTestCode == null || effectiveTestCode.startsWith("TEST-")) && set.getTest() != null && set.getTest().getTestCode() != null && !set.getTest().getTestCode().trim().isEmpty()) {
+            effectiveTestCode = set.getTest().getTestCode().trim();
+        }
+
+        if (effectiveTestCode == null || effectiveTestCode.trim().isEmpty() || effectiveTestCode.startsWith("TEST-")) {
+            String subName = set.getSubject() != null ? set.getSubject().getName() : (set.getTest() != null && set.getTest().getSubject() != null ? set.getTest().getSubject().getName() : "JAVA");
+            String prefix = subName.replaceAll("[^a-zA-Z]", "").toUpperCase();
+            if (prefix.length() > 6) prefix = prefix.substring(0, 6);
+            if (prefix.isEmpty()) prefix = "JAVA";
+            effectiveTestCode = prefix + "-" + String.format("%03d", (set.getTest() != null ? set.getTest().getId() : set.getId()));
+        }
+
+        String effectiveTestName = (set.getTest() != null && set.getTest().getName() != null && !set.getTest().getName().trim().isEmpty())
+                ? set.getTest().getName()
+                : "";
+
         return BadgeSetDto.builder()
                 .id(set.getId())
                 .name(set.getName())
                 .testId(set.getTest() != null ? set.getTest().getId() : null)
-                .testCode(set.getTestCode())
-                .testName(set.getTest() != null ? set.getTest().getName() : "")
+                .testCode(effectiveTestCode)
+                .testName(effectiveTestName)
                 .subjectId(set.getSubject() != null ? set.getSubject().getId() : null)
                 .subjectName(set.getSubject() != null ? set.getSubject().getName() : "")
                 .numberOfWinners(set.getNumberOfWinners())

@@ -58,8 +58,33 @@ public class TestService {
     private BadgeSetService badgeSetService;
 
 
+    @Transactional
     public List<Test> getAllTests() {
-        return testRepository.findAll();
+        List<Test> tests = testRepository.findAll();
+        for (Test t : tests) {
+            String foundQCode = null;
+            if (t.getQuestions() != null) {
+                for (Question q : t.getQuestions()) {
+                    if (q.getQuestionCode() != null && !q.getQuestionCode().trim().isEmpty() && !q.getQuestionCode().trim().startsWith("TEST-")) {
+                        foundQCode = q.getQuestionCode().trim().toUpperCase();
+                        break;
+                    }
+                }
+            }
+            if (foundQCode != null) {
+                if (!foundQCode.equals(t.getTestCode())) {
+                    t.setTestCode(foundQCode);
+                    testRepository.save(t);
+                }
+            } else if (t.getTestCode() == null || t.getTestCode().trim().isEmpty() || t.getTestCode().startsWith("TEST-")) {
+                String prefix = (t.getSubject() != null && t.getSubject().getName() != null) ? 
+                        t.getSubject().getName().replaceAll("[^a-zA-Z]", "").toUpperCase() : "TEST";
+                if (prefix.length() > 6) prefix = prefix.substring(0, 6);
+                t.setTestCode(prefix + "-" + String.format("%03d", t.getId()));
+                testRepository.save(t);
+            }
+        }
+        return tests;
     }
 
     public List<StudentTest> getTestsForStudent(Long studentId) {
@@ -109,6 +134,13 @@ public class TestService {
         }
 
         Test savedTest = testRepository.save(test);
+
+        if (savedTest.getTestCode() == null || savedTest.getTestCode().trim().isEmpty()) {
+            String prefix = subject.getName() != null ? subject.getName().replaceAll("[^a-zA-Z]", "").toUpperCase() : "TEST";
+            if (prefix.length() > 6) prefix = prefix.substring(0, 6);
+            savedTest.setTestCode(prefix + "-" + String.format("%03d", savedTest.getId()));
+            savedTest = testRepository.save(savedTest);
+        }
 
         // Assign to students
         List<User> studentsToAssign;
