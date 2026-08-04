@@ -586,10 +586,13 @@ public class CodeExecutionService {
                     memoryKb = 307200; // 300MB
                 } else {
                     ProcessBuilder pb;
-                    if (System.getProperty("os.name").toLowerCase().contains("win")) {
+                    String pythonCmd = getPythonExecutable();
+                    if (pythonCmd.endsWith(".exe")) {
+                        pb = new ProcessBuilder(pythonCmd, sourceFile.getAbsolutePath());
+                    } else if (System.getProperty("os.name").toLowerCase().contains("win")) {
                         pb = new ProcessBuilder("cmd.exe", "/c", "python", sourceFile.getAbsolutePath());
                     } else {
-                        pb = new ProcessBuilder("python3", sourceFile.getAbsolutePath());
+                        pb = new ProcessBuilder(pythonCmd, sourceFile.getAbsolutePath());
                     }
                     
                     Process process = pb.start();
@@ -953,6 +956,19 @@ public class CodeExecutionService {
             }
         }
         return defaultCmd;
+    }
+
+    private String getPythonExecutable() {
+        if (System.getProperty("os.name").toLowerCase().contains("win")) {
+            String userDir = System.getProperty("user.dir");
+            File localPy = new File(userDir, "tools/python/python.exe");
+            if (localPy.exists()) return localPy.getAbsolutePath();
+            File backendPy = new File(userDir, "backend/tools/python/python.exe");
+            if (backendPy.exists()) return backendPy.getAbsolutePath();
+            File hardcodedPy = new File("c:/Users/Administrator/Desktop/Chill-Code3/backend/tools/python/python.exe");
+            if (hardcodedPy.exists()) return hardcodedPy.getAbsolutePath();
+        }
+        return "python3";
     }
 
     private String getStatusDescription(int statusId) {
