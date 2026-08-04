@@ -132,11 +132,22 @@ public class BadgeSetService {
         BadgeSet savedSet = badgeSetRepository.save(set);
 
         if (dto.getBadges() != null) {
-            List<BadgeDefinition> existing = badgeDefinitionRepository.findByBadgeSetIdOrderByRankPositionAsc(id);
-            badgeDefinitionRepository.deleteAll(existing);
+            set.getBadges().clear();
+            badgeSetRepository.saveAndFlush(set);
+            
             for (BadgeDefinitionDto bDto : dto.getBadges()) {
-                saveBadgeDefinition(savedSet, bDto);
+                BadgeDefinition def = BadgeDefinition.builder()
+                        .badgeSet(set)
+                        .rankPosition(bDto.getRankPosition() != null ? bDto.getRankPosition() : 1)
+                        .badgeName(bDto.getBadgeName() != null ? bDto.getBadgeName() : "Rank Badge")
+                        .badgeIcon(bDto.getBadgeIcon() != null ? bDto.getBadgeIcon() : "Award")
+                        .badgeColor(bDto.getBadgeColor() != null ? bDto.getBadgeColor() : "#f59e0b")
+                        .badgeOrder(bDto.getBadgeOrder() != null ? bDto.getBadgeOrder() : bDto.getRankPosition())
+                        .status("ACTIVE")
+                        .build();
+                set.getBadges().add(def);
             }
+            savedSet = badgeSetRepository.save(set);
         }
 
         return getBadgeSetById(savedSet.getId());
