@@ -11,9 +11,15 @@ import java.util.Collections;
 public class CustomUserDetails implements UserDetails {
 
     private final User user;
+    private final String identifier;
 
     public CustomUserDetails(User user) {
+        this(user, user.getRegisterNumber() != null ? user.getRegisterNumber() : user.getUsername());
+    }
+
+    public CustomUserDetails(User user, String identifier) {
         this.user = user;
+        this.identifier = identifier;
     }
 
     public User getUser() {
@@ -32,6 +38,9 @@ public class CustomUserDetails implements UserDetails {
 
     @Override
     public String getUsername() {
+        if (identifier != null && !identifier.trim().isEmpty()) {
+            return identifier;
+        }
         return user.getRegisterNumber() != null ? user.getRegisterNumber() : user.getUsername();
     }
 

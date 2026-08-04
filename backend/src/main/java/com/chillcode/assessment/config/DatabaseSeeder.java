@@ -70,19 +70,23 @@ public class DatabaseSeeder implements CommandLineRunner {
         // Seed default Language & Ranking Badges
         seedDefaultBadges();
 
-        // Seed student_demo if it doesn't exist
-        if (userRepository.findByRegisterNumber("student_demo").isEmpty() && userRepository.findByEmail("student@chillcode.com").isEmpty()) {
-            User student = User.builder()
-                .registerNumber("student_demo")
-                .name("Demo Student")
-                .email("student@chillcode.com")
-                .password(passwordEncoder.encode("password"))
-                .role(Role.STUDENT)
-                .status(UserStatus.ACTIVE)
-                .build();
-            userRepository.save(student);
-            System.out.println("Seeded Demo Student successfully.");
-        }
+        // Seed or update Demo Student to guarantee credentials (student_demo / 2024CS001 / password)
+        User demoStudent = userRepository.findByEmail("student@chillcode.com")
+                .orElseGet(() -> userRepository.findByUsername("student_demo")
+                .orElseGet(() -> userRepository.findByRegisterNumber("2024CS001")
+                .orElseGet(() -> userRepository.findByRegisterNumber("student_demo")
+                .orElse(new User()))));
+
+        demoStudent.setName("Demo Student");
+        demoStudent.setEmail("student@chillcode.com");
+        demoStudent.setRegisterNumber("2024CS001");
+        demoStudent.setUsername("student_demo");
+        demoStudent.setDepartment("CS");
+        demoStudent.setRole(Role.STUDENT);
+        demoStudent.setStatus(UserStatus.ACTIVE);
+        demoStudent.setPassword(passwordEncoder.encode("password"));
+        userRepository.save(demoStudent);
+        System.out.println("Seeded and verified Demo Student (2024CS001 / student_demo) successfully.");
 
         // Seed default Java Programming subject if not exists
         if (subjectRepository.findByName("Java Programming").isEmpty()) {

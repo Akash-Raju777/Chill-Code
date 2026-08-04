@@ -23,6 +23,6 @@ public class UserDetailsServiceImpl implements UserDetailsService {
         User user = userRepository.findByIdentifier(identifier).orElseThrow(() -> 
             new UsernameNotFoundException("User not found with identifier: " + identifier));
 
-        return new CustomUserDetails(user);
+        return new CustomUserDetails(user, identifier);
     }
 }

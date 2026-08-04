@@ -240,7 +240,7 @@ export default function StudentLeaderboardPage() {
                       </td>
 
                       <td className="py-4 px-6 font-mono text-gray-400 font-bold">
-                        {item.registerNumber || 'N/A'}
+                        {item.registerNumber || item.studentRegisterNumber || 'N/A'}
                       </td>
 
                       <td className="py-4 px-6 text-center font-black text-amber-400 text-sm">

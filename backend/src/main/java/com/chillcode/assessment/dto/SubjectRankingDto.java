@@ -15,6 +15,8 @@ public class SubjectRankingDto {
     private Long studentId;
     private String studentName;
     private String studentRegisterNumber;
+    private String registerNumber;
+    private String department;
     private Integer rankPosition;
     private Integer totalScore;
     private Integer testCasesPassed;
