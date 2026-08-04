@@ -239,78 +239,73 @@ export default function QuestionManagement() {
     setTestCases(testCases.filter((_, i) => i !== index));
   };
 
-  const handleToggleEnableBadgeManagementInstantly = async (checked: boolean) => {
+  const handleToggleEnableBadgeManagementInstantly = (checked: boolean) => {
     setEnableBadgeManagement(checked);
-    if (!checked) return;
-
-    try {
-      const subId = formSubjectId || selectedSubjectId;
-      const testsData = await apiCall('/api/admin/tests');
-      const subjectTests = (testsData || []).filter((t: any) => (t.subject?.id || t.subjectId) === subId);
-      let testObj = subjectTests.length > 0 ? subjectTests[0] : (testsData && testsData.length > 0 ? testsData[0] : null);
-
-      if (testObj) {
-        const subName = subjects.find(s => s.id === subId)?.name || 'Subject';
-        const prefix = subName.replace(/[^a-zA-Z]/g, '').toUpperCase().slice(0, 6) || 'TEST';
-
-        const actualCode = questionCode.trim() ? questionCode.trim().toUpperCase() : (testObj.testCode || `${prefix}-${testObj.id}`);
-        const actualTitle = title.trim() ? title.trim() : (testObj.name || `${subName} Practice Arena`);
-
-        setTargetTestId(testObj.id);
-        setTargetTestCode(actualCode);
-        setTargetTestName(actualTitle);
-        setTargetSubjectName(testObj.subjectName || testObj.subject?.name || subName);
-
-        const badgeSets = await fetchBadgeSets();
-        const qCode = questionCode ? questionCode.trim().toUpperCase() : null;
-        const existingSet = (badgeSets || []).find((bs: any) => 
-          bs.testId === testObj.id || 
-          (qCode && bs.testCode === qCode) || 
-          bs.subjectId === subId
-        );
-
-        if (existingSet) {
-          setExistingBadgeSetId(existingSet.id);
-          setBadgeSetName(existingSet.name || `${actualTitle} Champions`);
-          setBadgeWinnersCount(existingSet.numberOfWinners || 3);
-          if (existingSet.badges && existingSet.badges.length > 0) {
-            setBadgeDefs(existingSet.badges);
-          } else {
-            setBadgeDefs([
-              { rankPosition: 1, badgeName: `🥇 ${actualTitle} Gold Winner`, badgeIcon: 'Award', badgeColor: '#f59e0b', badgeOrder: 1 },
-              { rankPosition: 2, badgeName: `🥈 ${actualTitle} Silver Winner`, badgeIcon: 'Award', badgeColor: '#94a3b8', badgeOrder: 2 },
-              { rankPosition: 3, badgeName: `🥉 ${actualTitle} Bronze Winner`, badgeIcon: 'Award', badgeColor: '#b45309', badgeOrder: 3 },
-            ]);
-          }
-          setEnableLanguageBadge(existingSet.enableLanguageBadge || false);
-          setLanguageName(existingSet.languageName || 'Java');
-          setLanguageBadgeName(existingSet.languageBadgeName || '☕ Java Expert');
-          setLanguageBadgeIcon(existingSet.languageBadgeIcon || '☕');
-          setLanguageAwardRank(existingSet.languageAwardRank || 1);
-        } else {
-          setExistingBadgeSetId(null);
-          setBadgeSetName(`${actualTitle} Champions`);
-          setBadgeWinnersCount(3);
-          setBadgeDefs([
-            { rankPosition: 1, badgeName: `🥇 ${actualTitle} Gold Winner`, badgeIcon: 'Award', badgeColor: '#f59e0b', badgeOrder: 1 },
-            { rankPosition: 2, badgeName: `🥈 ${actualTitle} Silver Winner`, badgeIcon: 'Award', badgeColor: '#94a3b8', badgeOrder: 2 },
-            { rankPosition: 3, badgeName: `🥉 ${actualTitle} Bronze Winner`, badgeIcon: 'Award', badgeColor: '#b45309', badgeOrder: 3 },
-          ]);
-          setEnableLanguageBadge(false);
-          const defaultLang = subName.includes('Python') ? 'Python' : subName.includes('C++') ? 'C++' : subName.includes('C') ? 'C' : subName.includes('JavaScript') ? 'JavaScript' : 'Java';
-          setLanguageName(defaultLang);
-          setLanguageBadgeName(defaultLang === 'Java' ? '☕ Java Expert' : defaultLang === 'Python' ? '🐍 Python Master' : '🎖️ Language Expert');
-          setLanguageBadgeIcon(defaultLang === 'Java' ? '☕' : defaultLang === 'Python' ? '🐍' : '🎖️');
-          setLanguageAwardRank(1);
-        }
-
-        // Instantly open Badge Management configuration view
-        setBadgeStepActive(true);
-        showToast('Badge Management opened! Configure winner badges below.', 'success');
-      }
-    } catch (err: any) {
-      showToast('Failed to open badge management', 'error');
+    if (!checked) {
+      setBadgeStepActive(false);
+      return;
     }
+
+    // Show badge UI INSTANTLY with default values - no API calls needed
+    const subId = formSubjectId || selectedSubjectId;
+    const subName = subjects.find(s => s.id === subId)?.name || 'Subject';
+    const actualTitle = title.trim() || `${subName} Practice Arena`;
+    const actualCode = questionCode.trim() ? questionCode.trim().toUpperCase() : '';
+
+    setTargetTestCode(actualCode);
+    setTargetTestName(actualTitle);
+    setTargetSubjectName(subName);
+
+    // Set defaults immediately
+    if (!badgeSetName) setBadgeSetName(`${actualTitle} Champions`);
+    if (!badgeWinnersCount) setBadgeWinnersCount(3);
+    setBadgeDefs([
+      { rankPosition: 1, badgeName: `🥇 ${actualTitle} Gold Winner`, badgeIcon: 'Award', badgeColor: '#f59e0b', badgeOrder: 1 },
+      { rankPosition: 2, badgeName: `🥈 ${actualTitle} Silver Winner`, badgeIcon: 'Award', badgeColor: '#94a3b8', badgeOrder: 2 },
+      { rankPosition: 3, badgeName: `🥉 ${actualTitle} Bronze Winner`, badgeIcon: 'Award', badgeColor: '#b45309', badgeOrder: 3 },
+    ]);
+
+    const defaultLang = subName.includes('Python') ? 'Python' : subName.includes('C++') ? 'C++' : subName.includes('C') ? 'C' : subName.includes('JavaScript') ? 'JavaScript' : 'Java';
+    if (!enableLanguageBadge) {
+      setLanguageName(defaultLang);
+      setLanguageBadgeName(defaultLang === 'Java' ? '☕ Java Expert' : defaultLang === 'Python' ? '🐍 Python Master' : '🎖️ Language Expert');
+      setLanguageBadgeIcon(defaultLang === 'Java' ? '☕' : defaultLang === 'Python' ? '🐍' : '🎖️');
+      setLanguageAwardRank(1);
+    }
+
+    // Show badge step UI instantly
+    setBadgeStepActive(true);
+
+    // Load existing badge data in background (non-blocking)
+    (async () => {
+      try {
+        const testsData = await apiCall('/api/admin/tests');
+        const subjectTests = (testsData || []).filter((t: any) => (t.subject?.id || t.subjectId) === subId);
+        const testObj = subjectTests.length > 0 ? subjectTests[0] : null;
+        if (testObj) {
+          setTargetTestId(testObj.id);
+          if (!actualCode) setTargetTestCode(testObj.testCode || '');
+
+          const badgeSets = await fetchBadgeSets();
+          const existingSet = (badgeSets || []).find((bs: any) =>
+            bs.testId === testObj.id || (actualCode && bs.testCode === actualCode) || bs.subjectId === subId
+          );
+          if (existingSet) {
+            setExistingBadgeSetId(existingSet.id);
+            if (existingSet.name) setBadgeSetName(existingSet.name);
+            if (existingSet.numberOfWinners) setBadgeWinnersCount(existingSet.numberOfWinners);
+            if (existingSet.badges?.length > 0) setBadgeDefs(existingSet.badges);
+            if (existingSet.enableLanguageBadge !== undefined) setEnableLanguageBadge(existingSet.enableLanguageBadge);
+            if (existingSet.languageName) setLanguageName(existingSet.languageName);
+            if (existingSet.languageBadgeName) setLanguageBadgeName(existingSet.languageBadgeName);
+            if (existingSet.languageBadgeIcon) setLanguageBadgeIcon(existingSet.languageBadgeIcon);
+            if (existingSet.languageAwardRank) setLanguageAwardRank(existingSet.languageAwardRank);
+          }
+        }
+      } catch (_) {
+        // Silently fail - defaults are already shown
+      }
+    })();
   };
 
   const handleTestCaseChange = (index: number, field: keyof TestCase, value: any) => {
@@ -384,69 +379,24 @@ export default function QuestionManagement() {
     };
 
     try {
-      let savedQ: any;
+      // Step 1: Save the question (backend auto-creates Test + BadgeSet)
       if (editingQuestion) {
-        savedQ = await apiCall(`/api/admin/questions/${editingQuestion.id}`, {
+        await apiCall(`/api/admin/questions/${editingQuestion.id}`, {
           method: 'PUT',
           body: JSON.stringify(payload),
         });
       } else {
-        savedQ = await apiCall('/api/admin/questions', {
+        await apiCall('/api/admin/questions', {
           method: 'POST',
           body: JSON.stringify(payload),
         });
       }
 
+      // Step 2: Refresh question list
       const activeSubjectId = formSubjectId || selectedSubjectId;
       if (activeSubjectId) {
         setSelectedSubjectId(activeSubjectId);
-        await fetchQuestions(activeSubjectId);
-      }
-
-      // Automatically sync/create BadgeSet for the test linked to this subject
-      const testsData = await apiCall('/api/admin/tests');
-      const subjectTests = (testsData || []).filter((t: any) => (t.subject?.id || t.subjectId) === formSubjectId);
-      let testObj = subjectTests.length > 0 ? subjectTests[0] : (testsData && testsData.length > 0 ? testsData[0] : null);
-
-      if (testObj) {
-        const subName = subjects.find(s => s.id === formSubjectId)?.name || 'Subject';
-        const prefix = subName.replace(/[^a-zA-Z]/g, '').toUpperCase().slice(0, 6) || 'TEST';
-
-        const actualCode = questionCode.trim() ? questionCode.trim().toUpperCase() : (testObj.testCode || `${prefix}-${testObj.id}`);
-        const actualTitle = title.trim() ? title.trim() : (testObj.name || `${subName} Practice Arena`);
-
-        setTargetTestId(testObj.id);
-        setTargetTestCode(actualCode);
-        setTargetTestName(actualTitle);
-        setTargetSubjectName(testObj.subjectName || testObj.subject?.name || subName);
-
-        const badgeSets = await fetchBadgeSets();
-        const existingSet = (badgeSets || []).find((bs: any) => bs.testId === testObj.id || (actualCode && bs.testCode === actualCode));
-
-        const autoBadgePayload = {
-          name: badgeSetName || (existingSet?.name ? existingSet.name : `${actualTitle} Champions`),
-          testId: testObj.id,
-          testCode: actualCode,
-          testName: actualTitle,
-          numberOfWinners: badgeWinnersCount || 3,
-          enableLanguageBadge: enableLanguageBadge || false,
-          languageName: languageName || 'Java',
-          languageBadgeName: languageBadgeName || '☕ Java Expert',
-          languageBadgeIcon: languageBadgeIcon || '☕',
-          languageAwardRank: Number(languageAwardRank) || 1,
-          status: 'ACTIVE',
-          badges: badgeDefs && badgeDefs.length > 0 ? badgeDefs : [
-            { rankPosition: 1, badgeName: `🥇 ${actualTitle} Gold Winner`, badgeIcon: 'Award', badgeColor: '#f59e0b', badgeOrder: 1 },
-            { rankPosition: 2, badgeName: `🥈 ${actualTitle} Silver Winner`, badgeIcon: 'Award', badgeColor: '#94a3b8', badgeOrder: 2 },
-            { rankPosition: 3, badgeName: `🥉 ${actualTitle} Bronze Winner`, badgeIcon: 'Award', badgeColor: '#b45309', badgeOrder: 3 },
-          ]
-        };
-
-        if (existingSet) {
-          await updateBadgeSet(existingSet.id, autoBadgePayload);
-        } else {
-          await createBadgeSet(autoBadgePayload);
-        }
+        fetchQuestions(activeSubjectId); // non-blocking
       }
 
       showToast(editingQuestion ? 'Question updated successfully!' : 'Question uploaded successfully!');
