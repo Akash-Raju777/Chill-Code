@@ -652,8 +652,11 @@ public class CodeExecutionService {
                 
                 try {
                     // Compile
+                    String compilerCmd = getCompilerExecutable("gcc");
                     ProcessBuilder compilePb;
-                    if (System.getProperty("os.name").toLowerCase().contains("win")) {
+                    if (compilerCmd.endsWith(".exe")) {
+                        compilePb = new ProcessBuilder(compilerCmd, "-O2", sourceFile.getAbsolutePath(), "-o", exeFile.getAbsolutePath());
+                    } else if (System.getProperty("os.name").toLowerCase().contains("win")) {
                         compilePb = new ProcessBuilder("cmd.exe", "/c", "gcc", "-O2", sourceFile.getAbsolutePath(), "-o", exeFile.getAbsolutePath());
                     } else {
                         compilePb = new ProcessBuilder("gcc", "-O2", sourceFile.getAbsolutePath(), "-o", exeFile.getAbsolutePath());
@@ -737,8 +740,11 @@ public class CodeExecutionService {
                 
                 try {
                     // Compile
+                    String compilerCmd = getCompilerExecutable("g++");
                     ProcessBuilder compilePb;
-                    if (System.getProperty("os.name").toLowerCase().contains("win")) {
+                    if (compilerCmd.endsWith(".exe")) {
+                        compilePb = new ProcessBuilder(compilerCmd, "-O2", sourceFile.getAbsolutePath(), "-o", exeFile.getAbsolutePath());
+                    } else if (System.getProperty("os.name").toLowerCase().contains("win")) {
                         compilePb = new ProcessBuilder("cmd.exe", "/c", "g++", "-O2", sourceFile.getAbsolutePath(), "-o", exeFile.getAbsolutePath());
                     } else {
                         compilePb = new ProcessBuilder("g++", "-O2", sourceFile.getAbsolutePath(), "-o", exeFile.getAbsolutePath());
@@ -918,6 +924,25 @@ public class CodeExecutionService {
             }
         }
         dir.delete();
+    }
+
+    private String getCompilerExecutable(String defaultCmd) {
+        if (System.getProperty("os.name").toLowerCase().contains("win")) {
+            String userDir = System.getProperty("user.dir");
+            File localW64 = new File(userDir, "tools/w64devkit/bin/" + defaultCmd + ".exe");
+            if (localW64.exists()) {
+                return localW64.getAbsolutePath();
+            }
+            File backendToolsW64 = new File(userDir, "backend/tools/w64devkit/bin/" + defaultCmd + ".exe");
+            if (backendToolsW64.exists()) {
+                return backendToolsW64.getAbsolutePath();
+            }
+            File hardcodedW64 = new File("c:/Users/Administrator/Desktop/Chill-Code3/backend/tools/w64devkit/bin/" + defaultCmd + ".exe");
+            if (hardcodedW64.exists()) {
+                return hardcodedW64.getAbsolutePath();
+            }
+        }
+        return defaultCmd;
     }
 
     private String getStatusDescription(int statusId) {
