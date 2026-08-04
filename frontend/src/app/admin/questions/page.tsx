@@ -197,17 +197,29 @@ export default function QuestionManagement() {
     setTargetTestId(null);
     setFormSubjectId(q.subjectId);
 
-    // Check if badges were previously configured for this subject's test
+    // Check if badges were previously configured for this subject or question
     (async () => {
       try {
         const testsData = await apiCall('/api/admin/tests');
         const subjectTests = (testsData || []).filter((t: any) => (t.subject?.id || t.subjectId) === q.subjectId);
-        if (subjectTests.length > 0) {
-          const badgeSets = await fetchBadgeSets();
-          const existing = (badgeSets || []).find((bs: any) => bs.testId === subjectTests[0].id);
-          if (existing) {
-            setEnableBadgeManagement(true);
-          }
+        const badgeSets = await fetchBadgeSets();
+        const qCode = q.questionCode ? q.questionCode.trim().toUpperCase() : null;
+        const existing = (badgeSets || []).find((bs: any) => 
+          (subjectTests.length > 0 && bs.testId === subjectTests[0].id) ||
+          (qCode && bs.testCode === qCode) ||
+          (bs.subjectId === q.subjectId)
+        );
+        if (existing) {
+          setEnableBadgeManagement(true);
+          setExistingBadgeSetId(existing.id);
+          if (existing.name) setBadgeSetName(existing.name);
+          if (existing.numberOfWinners) setBadgeWinnersCount(existing.numberOfWinners);
+          if (existing.enableLanguageBadge !== undefined) setEnableLanguageBadge(existing.enableLanguageBadge);
+          if (existing.languageName) setLanguageName(existing.languageName);
+          if (existing.languageBadgeName) setLanguageBadgeName(existing.languageBadgeName);
+          if (existing.languageBadgeIcon) setLanguageBadgeIcon(existing.languageBadgeIcon);
+          if (existing.languageAwardRank) setLanguageAwardRank(existing.languageAwardRank);
+          if (existing.badges && existing.badges.length > 0) setBadgeDefs(existing.badges);
         }
       } catch (err) {
         // silent fallback
@@ -225,7 +237,79 @@ export default function QuestionManagement() {
     setTestCases(testCases.filter((_, i) => i !== index));
   };
 
-  const [saving, setSaving] = useState(false);
+  const handleToggleEnableBadgeManagementInstantly = async (checked: boolean) => {
+    setEnableBadgeManagement(checked);
+    if (!checked) return;
+
+    try {
+      const subId = formSubjectId || selectedSubjectId;
+      const testsData = await apiCall('/api/admin/tests');
+      const subjectTests = (testsData || []).filter((t: any) => (t.subject?.id || t.subjectId) === subId);
+      let testObj = subjectTests.length > 0 ? subjectTests[0] : (testsData && testsData.length > 0 ? testsData[0] : null);
+
+      if (testObj) {
+        const subName = subjects.find(s => s.id === subId)?.name || 'Subject';
+        const prefix = subName.replace(/[^a-zA-Z]/g, '').toUpperCase().slice(0, 6) || 'TEST';
+
+        const actualCode = questionCode.trim() ? questionCode.trim().toUpperCase() : (testObj.testCode || `${prefix}-${testObj.id}`);
+        const actualTitle = title.trim() ? title.trim() : (testObj.name || `${subName} Practice Arena`);
+
+        setTargetTestId(testObj.id);
+        setTargetTestCode(actualCode);
+        setTargetTestName(actualTitle);
+        setTargetSubjectName(testObj.subjectName || testObj.subject?.name || subName);
+
+        const badgeSets = await fetchBadgeSets();
+        const qCode = questionCode ? questionCode.trim().toUpperCase() : null;
+        const existingSet = (badgeSets || []).find((bs: any) => 
+          bs.testId === testObj.id || 
+          (qCode && bs.testCode === qCode) || 
+          bs.subjectId === subId
+        );
+
+        if (existingSet) {
+          setExistingBadgeSetId(existingSet.id);
+          setBadgeSetName(existingSet.name || `${actualTitle} Champions`);
+          setBadgeWinnersCount(existingSet.numberOfWinners || 3);
+          if (existingSet.badges && existingSet.badges.length > 0) {
+            setBadgeDefs(existingSet.badges);
+          } else {
+            setBadgeDefs([
+              { rankPosition: 1, badgeName: `🥇 ${actualTitle} Gold Winner`, badgeIcon: 'Award', badgeColor: '#f59e0b', badgeOrder: 1 },
+              { rankPosition: 2, badgeName: `🥈 ${actualTitle} Silver Winner`, badgeIcon: 'Award', badgeColor: '#94a3b8', badgeOrder: 2 },
+              { rankPosition: 3, badgeName: `🥉 ${actualTitle} Bronze Winner`, badgeIcon: 'Award', badgeColor: '#b45309', badgeOrder: 3 },
+            ]);
+          }
+          setEnableLanguageBadge(existingSet.enableLanguageBadge || false);
+          setLanguageName(existingSet.languageName || 'Java');
+          setLanguageBadgeName(existingSet.languageBadgeName || '☕ Java Expert');
+          setLanguageBadgeIcon(existingSet.languageBadgeIcon || '☕');
+          setLanguageAwardRank(existingSet.languageAwardRank || 1);
+        } else {
+          setExistingBadgeSetId(null);
+          setBadgeSetName(`${actualTitle} Champions`);
+          setBadgeWinnersCount(3);
+          setBadgeDefs([
+            { rankPosition: 1, badgeName: `🥇 ${actualTitle} Gold Winner`, badgeIcon: 'Award', badgeColor: '#f59e0b', badgeOrder: 1 },
+            { rankPosition: 2, badgeName: `🥈 ${actualTitle} Silver Winner`, badgeIcon: 'Award', badgeColor: '#94a3b8', badgeOrder: 2 },
+            { rankPosition: 3, badgeName: `🥉 ${actualTitle} Bronze Winner`, badgeIcon: 'Award', badgeColor: '#b45309', badgeOrder: 3 },
+          ]);
+          setEnableLanguageBadge(false);
+          const defaultLang = subName.includes('Python') ? 'Python' : subName.includes('C++') ? 'C++' : subName.includes('C') ? 'C' : subName.includes('JavaScript') ? 'JavaScript' : 'Java';
+          setLanguageName(defaultLang);
+          setLanguageBadgeName(defaultLang === 'Java' ? '☕ Java Expert' : defaultLang === 'Python' ? '🐍 Python Master' : '🎖️ Language Expert');
+          setLanguageBadgeIcon(defaultLang === 'Java' ? '☕' : defaultLang === 'Python' ? '🐍' : '🎖️');
+          setLanguageAwardRank(1);
+        }
+
+        // Instantly open Badge Management configuration view
+        setBadgeStepActive(true);
+        showToast('Badge Management opened! Configure winner badges below.', 'success');
+      }
+    } catch (err: any) {
+      showToast('Failed to open badge management', 'error');
+    }
+  };
 
   const handleTestCaseChange = (index: number, field: keyof TestCase, value: any) => {
     const updated = [...testCases];
@@ -1062,7 +1146,7 @@ export default function QuestionManagement() {
                 <input
                   type="checkbox"
                   checked={enableBadgeManagement}
-                  onChange={(e) => setEnableBadgeManagement(e.target.checked)}
+                  onChange={(e) => handleToggleEnableBadgeManagementInstantly(e.target.checked)}
                   className="sr-only peer"
                 />
                 <div className="w-11 h-6 bg-gray-700 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-amber-500"></div>
