@@ -47,6 +47,9 @@ public class QuestionService {
     @Autowired
     private com.chillcode.assessment.repository.BadgeSetRepository badgeSetRepository;
 
+    @Autowired
+    private com.chillcode.assessment.repository.BadgeDefinitionRepository badgeDefinitionRepository;
+
     @jakarta.persistence.PersistenceContext
     private jakarta.persistence.EntityManager entityManager;
 
@@ -237,26 +240,7 @@ public class QuestionService {
             }
         }
 
-        // Link uploaded question to existing tests of the same subject automatically and unlink from others
-        java.util.List<com.chillcode.assessment.entity.Test> tests = testRepository.findAll();
-        for (com.chillcode.assessment.entity.Test test : tests) {
-            if (test.getSubject().getId().equals(subject.getId())) {
-                test.getQuestions().add(savedQuestion);
-                if (savedQuestion.getQuestionCode() != null && !savedQuestion.getQuestionCode().trim().isEmpty()) {
-                    String qCode = savedQuestion.getQuestionCode().trim().toUpperCase();
-                    test.setTestCode(qCode);
-                    java.util.List<com.chillcode.assessment.entity.BadgeSet> bSets = badgeSetRepository.findByTestId(test.getId());
-                    for (com.chillcode.assessment.entity.BadgeSet bs : bSets) {
-                        bs.setTestCode(qCode);
-                        badgeSetRepository.save(bs);
-                    }
-                }
-            } else {
-                test.getQuestions().remove(savedQuestion);
-            }
-            testRepository.save(test);
-        }
-
+        ensureTestAndBadgeSetForSubject(subject, savedQuestion);
         return convertToDto(savedQuestion);
     }
 
@@ -312,25 +296,7 @@ public class QuestionService {
         Question savedQuestion = questionRepository.save(question);
         log.info("Question Updated: Question ID: {}, Title: '{}' successfully updated in database", savedQuestion.getId(), savedQuestion.getTitle());
 
-        // Synchronize question links to tests based on subject and update BadgeSet testCode
-        java.util.List<com.chillcode.assessment.entity.Test> tests = testRepository.findAll();
-        for (com.chillcode.assessment.entity.Test test : tests) {
-            if (test.getSubject().getId().equals(subject.getId())) {
-                test.getQuestions().add(savedQuestion);
-                if (savedQuestion.getQuestionCode() != null && !savedQuestion.getQuestionCode().trim().isEmpty()) {
-                    String qCode = savedQuestion.getQuestionCode().trim().toUpperCase();
-                    test.setTestCode(qCode);
-                    java.util.List<com.chillcode.assessment.entity.BadgeSet> bSets = badgeSetRepository.findByTestId(test.getId());
-                    for (com.chillcode.assessment.entity.BadgeSet bs : bSets) {
-                        bs.setTestCode(qCode);
-                        badgeSetRepository.save(bs);
-                    }
-                }
-            } else {
-                test.getQuestions().remove(savedQuestion);
-            }
-            testRepository.save(test);
-        }
+        ensureTestAndBadgeSetForSubject(subject, savedQuestion);
 
         // Update test cases (delete existing and insert new ones for simplicity)
         List<TestCase> existingTestCases = testCaseRepository.findByQuestionId(id);
@@ -518,5 +484,98 @@ public class QuestionService {
             }
         }
         return dto;
+    }
+
+    /**
+     * Ensures that a Test and BadgeSet exist for the given subject, links the question to the test,
+     * and creates a BadgeSet with default Gold/Silver/Bronze definitions if one doesn't exist.
+     * This guarantees that every saved question appears in Question Management AND Badge Management.
+     */
+    private void ensureTestAndBadgeSetForSubject(Subject subject, Question question) {
+        String qCode = (question.getQuestionCode() != null && !question.getQuestionCode().trim().isEmpty())
+                ? question.getQuestionCode().trim().toUpperCase() : null;
+
+        // 1. Find or create a Test for this subject
+        java.util.List<com.chillcode.assessment.entity.Test> allTests = testRepository.findAll();
+        com.chillcode.assessment.entity.Test subjectTest = null;
+
+        for (com.chillcode.assessment.entity.Test test : allTests) {
+            if (test.getSubject() != null && test.getSubject().getId().equals(subject.getId())) {
+                subjectTest = test;
+                // Link question to this test
+                if (!test.getQuestions().contains(question)) {
+                    test.getQuestions().add(question);
+                }
+                if (qCode != null) {
+                    test.setTestCode(qCode);
+                }
+                testRepository.save(test);
+            } else {
+                // Unlink from tests of other subjects
+                test.getQuestions().remove(question);
+                testRepository.save(test);
+            }
+        }
+
+        // If no test exists for this subject, create one
+        if (subjectTest == null) {
+            String prefix = subject.getName().replaceAll("[^a-zA-Z]", "").toUpperCase();
+            if (prefix.length() > 6) prefix = prefix.substring(0, 6);
+            if (prefix.isEmpty()) prefix = "TEST";
+
+            subjectTest = com.chillcode.assessment.entity.Test.builder()
+                    .name(subject.getName() + " Practice Arena")
+                    .subject(subject)
+                    .testCode(qCode != null ? qCode : prefix + "-001")
+                    .build();
+            subjectTest = testRepository.save(subjectTest);
+            subjectTest.getQuestions().add(question);
+            testRepository.save(subjectTest);
+            log.info("Auto-created Test ID: {} for subject '{}'", subjectTest.getId(), subject.getName());
+        }
+
+        // 2. Find or create a BadgeSet for this test
+        java.util.List<com.chillcode.assessment.entity.BadgeSet> badgeSets = badgeSetRepository.findByTestId(subjectTest.getId());
+        com.chillcode.assessment.entity.BadgeSet badgeSet;
+
+        if (badgeSets != null && !badgeSets.isEmpty()) {
+            badgeSet = badgeSets.get(0);
+            if (qCode != null) {
+                badgeSet.setTestCode(qCode);
+            }
+            badgeSetRepository.save(badgeSet);
+        } else {
+            String testName = subjectTest.getName() != null ? subjectTest.getName() : subject.getName();
+            badgeSet = com.chillcode.assessment.entity.BadgeSet.builder()
+                    .name(testName + " Champions")
+                    .test(subjectTest)
+                    .subject(subject)
+                    .testCode(qCode != null ? qCode : subjectTest.getTestCode())
+                    .numberOfWinners(3)
+                    .status("ACTIVE")
+                    .build();
+            badgeSet = badgeSetRepository.save(badgeSet);
+
+            // Seed default badge definitions (Gold, Silver, Bronze)
+            String titlePrefix = question.getTitle() != null ? question.getTitle() : testName;
+            String[][] defaults = {
+                    {"1", "\uD83E\uDD47 " + titlePrefix + " Gold Winner", "Award", "#f59e0b"},
+                    {"2", "\uD83E\uDD48 " + titlePrefix + " Silver Winner", "Award", "#94a3b8"},
+                    {"3", "\uD83E\uDD49 " + titlePrefix + " Bronze Winner", "Award", "#b45309"}
+            };
+            for (String[] def : defaults) {
+                com.chillcode.assessment.entity.BadgeDefinition bd = com.chillcode.assessment.entity.BadgeDefinition.builder()
+                        .badgeSet(badgeSet)
+                        .rankPosition(Integer.parseInt(def[0]))
+                        .badgeName(def[1])
+                        .badgeIcon(def[2])
+                        .badgeColor(def[3])
+                        .badgeOrder(Integer.parseInt(def[0]))
+                        .status("ACTIVE")
+                        .build();
+                badgeDefinitionRepository.save(bd);
+            }
+            log.info("Auto-created BadgeSet ID: {} with 3 default badge definitions for test '{}'", badgeSet.getId(), testName);
+        }
     }
 }
