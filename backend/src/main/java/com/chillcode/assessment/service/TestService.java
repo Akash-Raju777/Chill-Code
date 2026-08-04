@@ -212,12 +212,19 @@ public class TestService {
         StudentTest st = studentTestRepository.findByStudentIdAndTestId(studentId, testId)
                 .orElseThrow(() -> new RuntimeException("Student is not assigned to this test"));
 
+        boolean isPracticeArena = st.getTest().getName() != null && 
+                (st.getTest().getName().toLowerCase().contains("practice") || st.getTest().getName().toLowerCase().contains("arena"));
+        boolean hasSecurityShield = Boolean.TRUE.equals(st.getTest().getSecurityShieldEnabled());
+
         if ("COMPLETED".equals(st.getStatus())) {
+            if (isPracticeArena || !hasSecurityShield) {
+                return st;
+            }
             throw new RuntimeException("Test has already been completed and passed.");
         }
 
         if ("SUBMITTED".equals(st.getStatus()) || "EVALUATED".equals(st.getStatus())) {
-            if (st.getTest().getName().toLowerCase().contains("practice arena") || Boolean.FALSE.equals(st.getTest().getSecurityShieldEnabled())) {
+            if (isPracticeArena || !hasSecurityShield) {
                 st.setStatus("STARTED");
                 st.setStartedAt(LocalDateTime.now());
                 return studentTestRepository.save(st);
@@ -228,8 +235,6 @@ public class TestService {
         if (st.getIsSuspended()) {
             // For practice arenas or tests without security shield, auto-clear suspension
             // so students can attempt other questions (suspension was for the previous question session only)
-            boolean isPracticeArena = st.getTest().getName() != null && st.getTest().getName().toLowerCase().contains("practice arena");
-            boolean hasSecurityShield = Boolean.TRUE.equals(st.getTest().getSecurityShieldEnabled());
             if (isPracticeArena || !hasSecurityShield) {
                 st.setIsSuspended(false);
                 st.setWarningsCount(0);
