@@ -656,6 +656,11 @@ public class CodeExecutionService {
                     ProcessBuilder compilePb;
                     if (compilerCmd.endsWith(".exe")) {
                         compilePb = new ProcessBuilder(compilerCmd, "-O2", sourceFile.getAbsolutePath(), "-o", exeFile.getAbsolutePath());
+                        File binDir = new File(compilerCmd).getParentFile();
+                        if (binDir != null && binDir.exists()) {
+                            String oldPath = compilePb.environment().getOrDefault("PATH", "");
+                            compilePb.environment().put("PATH", binDir.getAbsolutePath() + File.pathSeparator + oldPath);
+                        }
                     } else if (System.getProperty("os.name").toLowerCase().contains("win")) {
                         compilePb = new ProcessBuilder("cmd.exe", "/c", "gcc", "-O2", sourceFile.getAbsolutePath(), "-o", exeFile.getAbsolutePath());
                     } else {
@@ -744,6 +749,11 @@ public class CodeExecutionService {
                     ProcessBuilder compilePb;
                     if (compilerCmd.endsWith(".exe")) {
                         compilePb = new ProcessBuilder(compilerCmd, "-O2", sourceFile.getAbsolutePath(), "-o", exeFile.getAbsolutePath());
+                        File binDir = new File(compilerCmd).getParentFile();
+                        if (binDir != null && binDir.exists()) {
+                            String oldPath = compilePb.environment().getOrDefault("PATH", "");
+                            compilePb.environment().put("PATH", binDir.getAbsolutePath() + File.pathSeparator + oldPath);
+                        }
                     } else if (System.getProperty("os.name").toLowerCase().contains("win")) {
                         compilePb = new ProcessBuilder("cmd.exe", "/c", "g++", "-O2", sourceFile.getAbsolutePath(), "-o", exeFile.getAbsolutePath());
                     } else {
