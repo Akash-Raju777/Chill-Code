@@ -68,7 +68,6 @@ export default function QuestionManagement() {
 
   // Enable Badge Management states
   const [enableBadgeManagement, setEnableBadgeManagement] = useState(false);
-  const [badgeStepActive, setBadgeStepActive] = useState(false);
   const [targetTestId, setTargetTestId] = useState<number | null>(null);
   const [targetTestCode, setTargetTestCode] = useState<string>('');
   const [targetTestName, setTargetTestName] = useState<string>('');
@@ -153,7 +152,6 @@ export default function QuestionManagement() {
     setQuestionCode('');
     setTimer('');
     setEnableBadgeManagement(false);
-    setBadgeStepActive(false);
     setExistingBadgeSetId(null);
     setTargetTestId(null);
 
@@ -194,7 +192,6 @@ export default function QuestionManagement() {
     });
     
     setEnableBadgeManagement(false);
-    setBadgeStepActive(false);
     setExistingBadgeSetId(null);
     setTargetTestId(null);
     setFormSubjectId(q.subjectId);
@@ -242,7 +239,6 @@ export default function QuestionManagement() {
   const handleToggleEnableBadgeManagementInstantly = (checked: boolean) => {
     setEnableBadgeManagement(checked);
     if (!checked) {
-      setBadgeStepActive(false);
       return;
     }
 
@@ -274,7 +270,6 @@ export default function QuestionManagement() {
     }
 
     // Show badge step UI instantly
-    setBadgeStepActive(true);
 
     // Load existing badge data in background (non-blocking)
     (async () => {
@@ -401,7 +396,6 @@ export default function QuestionManagement() {
 
       showToast(editingQuestion ? 'Question updated successfully!' : 'Question uploaded successfully!');
       setShowForm(false);
-      setBadgeStepActive(false);
     } catch (err: any) {
       setError(err.message || 'Failed to save question');
       showToast('Failed to save question', 'error');
@@ -458,7 +452,6 @@ export default function QuestionManagement() {
       }
 
       showToast('Question and Badge Set allocated successfully!', 'success');
-      setBadgeStepActive(false);
       setShowForm(false);
       if (subId) {
         setSelectedSubjectId(subId);
@@ -616,219 +609,6 @@ export default function QuestionManagement() {
             ))}
           </div>
         )
-      ) : badgeStepActive ? (
-        <div className="space-y-6 glass-panel p-6 md:p-8 rounded-2xl border border-amber-500/20 bg-[#11131c]">
-          {/* Header Progress Banner */}
-          <div className="bg-amber-500/10 border border-amber-500/30 p-5 rounded-2xl flex flex-col md:flex-row md:items-center justify-between gap-4">
-            <div className="flex items-center gap-3">
-              <div className="p-3 bg-amber-500/20 rounded-xl text-amber-400">
-                <Trophy className="w-6 h-6" />
-              </div>
-              <div>
-                <h3 className="text-base font-extrabold text-white flex items-center gap-2">
-                  Step 2: Assign Winner Badges
-                </h3>
-                <p className="text-xs text-amber-300">
-                  Target Test ID: <span className="font-mono font-bold text-white bg-amber-500/20 px-2 py-0.5 rounded">{targetTestCode}</span> ({targetTestName})
-                </p>
-              </div>
-            </div>
-            <span className="text-xs font-bold text-emerald-400 bg-emerald-500/10 px-3 py-1 rounded-full border border-emerald-500/20 self-start md:self-auto flex items-center gap-1.5">
-              <Check className="w-3.5 h-3.5" />
-              Question Uploaded
-            </span>
-          </div>
-
-          {/* Auto-Loaded Details */}
-          <div className="p-4 bg-[#181a25] border border-white/10 rounded-xl space-y-2">
-            <div className="text-[10px] text-gray-400 uppercase font-bold tracking-wider">Auto-Loaded Details</div>
-            <div className="text-white font-extrabold text-base flex items-center justify-between gap-2">
-              <span>{targetTestName}</span>
-              <span className="text-xs font-mono font-bold text-emerald-400 bg-emerald-500/10 px-2.5 py-1 rounded-lg border border-emerald-500/20 whitespace-nowrap">
-                Test ID: {targetTestCode}
-              </span>
-            </div>
-            <div className="flex flex-wrap items-center gap-3 text-xs pt-1">
-              <span className="text-indigo-400 font-bold">Subject: {targetSubjectName}</span>
-              <span className="text-emerald-400 font-bold bg-emerald-500/10 px-2.5 py-0.5 rounded-full border border-emerald-500/20">
-                Programming Languages: {Object.keys(allowedLangs).filter(k => allowedLangs[k as keyof typeof allowedLangs]).map(l => l === 'cpp' ? 'C++' : l === 'javascript' ? 'JavaScript' : l.toUpperCase()).join(', ') || 'Java'}
-              </span>
-            </div>
-          </div>
-
-          {/* Badge Set Customizer */}
-          <div className="space-y-5 text-xs">
-            <div className="space-y-1.5">
-              <label className="text-gray-400 font-bold uppercase tracking-wider text-[10px]">Badge Set Name</label>
-              <input
-                type="text"
-                value={badgeSetName}
-                onChange={(e) => setBadgeSetName(e.target.value)}
-                placeholder="e.g. Java Mid-Term Champions"
-                className="w-full bg-[#181a25] border border-white/10 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-amber-400 text-sm font-semibold"
-              />
-            </div>
-
-            <div className="space-y-1.5">
-              <label className="text-gray-400 font-bold uppercase tracking-wider text-[10px]">Number of Winners</label>
-              <div className="grid grid-cols-4 gap-3">
-                {[1, 3, 5, 10].map((num) => (
-                  <button
-                    type="button"
-                    key={num}
-                    onClick={() => handleBadgeWinnersCountChange(num)}
-                    className={`py-2.5 rounded-xl font-bold border transition-all ${
-                      badgeWinnersCount === num ? 'bg-amber-500/20 border-amber-400 text-amber-400 shadow-md shadow-amber-500/10' : 'bg-white/5 border-white/5 text-gray-400 hover:bg-white/10'
-                    }`}
-                  >
-                    Top {num}
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            <div className="space-y-3 pt-2">
-              <label className="text-gray-400 font-bold uppercase tracking-wider text-[10px]">Customize Winner Badges</label>
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-                {badgeDefs.map((def, idx) => (
-                  <div key={def.rankPosition} className="p-4 bg-[#181a25] border border-white/10 rounded-xl space-y-2 text-center">
-                    <div className="text-2xl mb-1">{def.badgeName.includes('🥇') ? '🥇' : def.badgeName.includes('🥈') ? '🥈' : def.badgeName.includes('🥉') ? '🥉' : '🎖️'}</div>
-                    <div className="text-slate-300 font-bold text-xs">Rank {def.rankPosition} Winner</div>
-                    <input
-                      type="text"
-                      value={def.badgeName}
-                      onChange={(e) => {
-                        const updated = [...badgeDefs];
-                        updated[idx].badgeName = e.target.value;
-                        setBadgeDefs(updated);
-                      }}
-                      placeholder="Badge Name"
-                      className="w-full bg-[#11131c] border border-white/10 rounded-lg px-3 py-2 text-white font-bold text-center focus:outline-none focus:border-amber-400 text-xs"
-                    />
-                  </div>
-                ))}
-              </div>
-            </div>
-
-            {/* Language Master Badge Configuration Section */}
-            <div className="p-4 bg-[#181a25] border border-white/10 rounded-xl space-y-4 pt-4">
-              <div className="text-gray-400 font-bold uppercase tracking-wider text-[10px] border-b border-white/10 pb-2 flex items-center justify-between">
-                <span>Language Master Badge</span>
-                {enableLanguageBadge && (
-                  <span className="text-emerald-400 font-mono font-bold text-[10px] bg-emerald-500/10 px-2 py-0.5 rounded border border-emerald-500/20">
-                    Enabled
-                  </span>
-                )}
-              </div>
-
-              <div className="flex items-center justify-between">
-                <label className="text-white font-bold cursor-pointer flex items-center gap-2">
-                  <input
-                    type="checkbox"
-                    checked={enableLanguageBadge}
-                    onChange={(e) => setEnableLanguageBadge(e.target.checked)}
-                    className="w-4 h-4 rounded border-white/10 bg-[#11131c] text-amber-500 focus:ring-0"
-                  />
-                  Enable Language Master Badge
-                </label>
-              </div>
-
-              {enableLanguageBadge && (
-                <div className="space-y-3 pt-2">
-                  <div>
-                    <label className="text-gray-400 font-bold text-[10px] uppercase">Language</label>
-                    <select
-                      value={languageName}
-                      onChange={(e) => {
-                        const lang = e.target.value;
-                        setLanguageName(lang);
-                        if (lang === 'Java') { setLanguageBadgeName('☕ Java Expert'); setLanguageBadgeIcon('☕'); }
-                        else if (lang === 'Python') { setLanguageBadgeName('🐍 Python Master'); setLanguageBadgeIcon('🐍'); }
-                        else if (lang === 'C') { setLanguageBadgeName('⚙️ C Programmer'); setLanguageBadgeIcon('⚙️'); }
-                        else if (lang === 'C++') { setLanguageBadgeName('💻 C++ Expert'); setLanguageBadgeIcon('💻'); }
-                        else if (lang === 'JavaScript') { setLanguageBadgeName('🌐 JavaScript Ninja'); setLanguageBadgeIcon('🌐'); }
-                      }}
-                      className="w-full bg-[#11131c] border border-white/10 rounded-lg px-3 py-2 text-white font-bold mt-1"
-                    >
-                      <option value="Java">☕ Java</option>
-                      <option value="Python">🐍 Python</option>
-                      <option value="C">⚙️ C</option>
-                      <option value="C++">💻 C++</option>
-                      <option value="JavaScript">🌐 JavaScript</option>
-                    </select>
-                  </div>
-
-                  <div className="grid grid-cols-2 gap-3">
-                    <div>
-                      <label className="text-gray-400 font-bold text-[10px] uppercase">Badge Title</label>
-                      <input
-                        type="text"
-                        value={languageBadgeName}
-                        onChange={(e) => setLanguageBadgeName(e.target.value)}
-                        className="w-full bg-[#11131c] border border-white/10 rounded-lg px-3 py-2 text-white font-bold mt-1"
-                      />
-                    </div>
-                    <div>
-                      <label className="text-gray-400 font-bold text-[10px] uppercase">Badge Icon / Emoji</label>
-                      <input
-                        type="text"
-                        value={languageBadgeIcon}
-                        onChange={(e) => setLanguageBadgeIcon(e.target.value)}
-                        className="w-full bg-[#11131c] border border-white/10 rounded-lg px-3 py-2 text-white font-bold mt-1"
-                      />
-                    </div>
-                  </div>
-
-                  <div>
-                    <label className="text-gray-400 font-bold text-[10px] uppercase">Award Rank Cutoff</label>
-                    <select
-                      value={languageAwardRank}
-                      onChange={(e) => setLanguageAwardRank(Number(e.target.value))}
-                      className="w-full bg-[#11131c] border border-white/10 rounded-lg px-3 py-2 text-white font-bold mt-1"
-                    >
-                      <option value={1}>Rank 1 Only</option>
-                      <option value={3}>Top 3</option>
-                      <option value={5}>Top 5</option>
-                      <option value={10}>Top 10</option>
-                    </select>
-                  </div>
-                </div>
-              )}
-            </div>
-          </div>
-
-          <div className="flex justify-end gap-3 border-t border-white/5 pt-6">
-            <button
-              type="button"
-              onClick={() => {
-                setBadgeStepActive(false);
-                setShowForm(false);
-                showToast('Question uploaded cleanly without badge allocation.', 'success');
-              }}
-              className="px-5 py-2.5 border border-white/10 rounded-xl text-xs font-semibold hover:bg-white/5 text-gray-400"
-            >
-              Skip Badge Allocation
-            </button>
-            <button
-              type="button"
-              onClick={handleSaveBadgeSetAndFinish}
-              disabled={savingBadgeSet}
-              className="px-6 py-2.5 rounded-xl bg-gradient-to-r from-amber-500 to-orange-500 hover:brightness-110 text-slate-950 font-black text-xs flex items-center gap-2 shadow-lg shadow-amber-500/20"
-            >
-              {savingBadgeSet ? (
-                <>
-                  <Loader2 className="w-4 h-4 animate-spin" />
-                  Assigning Badges...
-                </>
-              ) : (
-                <>
-                  <Award className="w-4 h-4" />
-                  Assign Badges & Complete Upload
-                </>
-              )}
-            </button>
-          </div>
-        </div>
       ) : (
         /* Form view */
         <form onSubmit={handleSubmit} className="space-y-8 glass-panel p-6 md:p-8 rounded-2xl">
@@ -1127,6 +907,169 @@ export default function QuestionManagement() {
               </label>
             </div>
           </div>
+
+          {enableBadgeManagement && (
+            <div className="space-y-6 glass-panel p-6 md:p-8 rounded-2xl border border-amber-500/20 bg-[#11131c] mt-6">
+          {/* Auto-Loaded Details */}
+          <div className="p-4 bg-[#181a25] border border-white/10 rounded-xl space-y-2">
+            <div className="text-[10px] text-gray-400 uppercase font-bold tracking-wider">Auto-Loaded Details</div>
+            <div className="text-white font-extrabold text-base flex items-center justify-between gap-2">
+              <span>{targetTestName}</span>
+              <span className="text-xs font-mono font-bold text-emerald-400 bg-emerald-500/10 px-2.5 py-1 rounded-lg border border-emerald-500/20 whitespace-nowrap">
+                Test ID: {targetTestCode}
+              </span>
+            </div>
+            <div className="flex flex-wrap items-center gap-3 text-xs pt-1">
+              <span className="text-indigo-400 font-bold">Subject: {targetSubjectName}</span>
+              <span className="text-emerald-400 font-bold bg-emerald-500/10 px-2.5 py-0.5 rounded-full border border-emerald-500/20">
+                Programming Languages: {Object.keys(allowedLangs).filter(k => allowedLangs[k as keyof typeof allowedLangs]).map(l => l === 'cpp' ? 'C++' : l === 'javascript' ? 'JavaScript' : l.toUpperCase()).join(', ') || 'Java'}
+              </span>
+            </div>
+          </div>
+
+          {/* Badge Set Customizer */}
+          <div className="space-y-5 text-xs">
+            <div className="space-y-1.5">
+              <label className="text-gray-400 font-bold uppercase tracking-wider text-[10px]">Badge Set Name</label>
+              <input
+                type="text"
+                value={badgeSetName}
+                onChange={(e) => setBadgeSetName(e.target.value)}
+                placeholder="e.g. Java Mid-Term Champions"
+                className="w-full bg-[#181a25] border border-white/10 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-amber-400 text-sm font-semibold"
+              />
+            </div>
+
+            <div className="space-y-1.5">
+              <label className="text-gray-400 font-bold uppercase tracking-wider text-[10px]">Number of Winners</label>
+              <div className="grid grid-cols-4 gap-3">
+                {[1, 3, 5, 10].map((num) => (
+                  <button
+                    type="button"
+                    key={num}
+                    onClick={() => handleBadgeWinnersCountChange(num)}
+                    className={`py-2.5 rounded-xl font-bold border transition-all ${
+                      badgeWinnersCount === num ? 'bg-amber-500/20 border-amber-400 text-amber-400 shadow-md shadow-amber-500/10' : 'bg-white/5 border-white/5 text-gray-400 hover:bg-white/10'
+                    }`}
+                  >
+                    Top {num}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div className="space-y-3 pt-2">
+              <label className="text-gray-400 font-bold uppercase tracking-wider text-[10px]">Customize Winner Badges</label>
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                {badgeDefs.map((def, idx) => (
+                  <div key={def.rankPosition} className="p-4 bg-[#181a25] border border-white/10 rounded-xl space-y-2 text-center">
+                    <div className="text-2xl mb-1">{def.badgeName.includes('🥇') ? '🥇' : def.badgeName.includes('🥈') ? '🥈' : def.badgeName.includes('🥉') ? '🥉' : '🎖️'}</div>
+                    <div className="text-slate-300 font-bold text-xs">Rank {def.rankPosition} Winner</div>
+                    <input
+                      type="text"
+                      value={def.badgeName}
+                      onChange={(e) => {
+                        const updated = [...badgeDefs];
+                        updated[idx].badgeName = e.target.value;
+                        setBadgeDefs(updated);
+                      }}
+                      placeholder="Badge Name"
+                      className="w-full bg-[#11131c] border border-white/10 rounded-lg px-3 py-2 text-white font-bold text-center focus:outline-none focus:border-amber-400 text-xs"
+                    />
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {/* Language Master Badge Configuration Section */}
+            <div className="p-4 bg-[#181a25] border border-white/10 rounded-xl space-y-4 pt-4">
+              <div className="text-gray-400 font-bold uppercase tracking-wider text-[10px] border-b border-white/10 pb-2 flex items-center justify-between">
+                <span>Language Master Badge</span>
+                {enableLanguageBadge && (
+                  <span className="text-emerald-400 font-mono font-bold text-[10px] bg-emerald-500/10 px-2 py-0.5 rounded border border-emerald-500/20">
+                    Enabled
+                  </span>
+                )}
+              </div>
+
+              <div className="flex items-center justify-between">
+                <label className="text-white font-bold cursor-pointer flex items-center gap-2">
+                  <input
+                    type="checkbox"
+                    checked={enableLanguageBadge}
+                    onChange={(e) => setEnableLanguageBadge(e.target.checked)}
+                    className="w-4 h-4 rounded border-white/10 bg-[#11131c] text-amber-500 focus:ring-0"
+                  />
+                  Enable Language Master Badge
+                </label>
+              </div>
+
+              {enableLanguageBadge && (
+                <div className="space-y-3 pt-2">
+                  <div>
+                    <label className="text-gray-400 font-bold text-[10px] uppercase">Language</label>
+                    <select
+                      value={languageName}
+                      onChange={(e) => {
+                        const lang = e.target.value;
+                        setLanguageName(lang);
+                        if (lang === 'Java') { setLanguageBadgeName('☕ Java Expert'); setLanguageBadgeIcon('☕'); }
+                        else if (lang === 'Python') { setLanguageBadgeName('🐍 Python Master'); setLanguageBadgeIcon('🐍'); }
+                        else if (lang === 'C') { setLanguageBadgeName('⚙️ C Programmer'); setLanguageBadgeIcon('⚙️'); }
+                        else if (lang === 'C++') { setLanguageBadgeName('💻 C++ Expert'); setLanguageBadgeIcon('💻'); }
+                        else if (lang === 'JavaScript') { setLanguageBadgeName('🌐 JavaScript Ninja'); setLanguageBadgeIcon('🌐'); }
+                      }}
+                      className="w-full bg-[#11131c] border border-white/10 rounded-lg px-3 py-2 text-white font-bold mt-1"
+                    >
+                      <option value="Java">☕ Java</option>
+                      <option value="Python">🐍 Python</option>
+                      <option value="C">⚙️ C</option>
+                      <option value="C++">💻 C++</option>
+                      <option value="JavaScript">🌐 JavaScript</option>
+                    </select>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="text-gray-400 font-bold text-[10px] uppercase">Badge Title</label>
+                      <input
+                        type="text"
+                        value={languageBadgeName}
+                        onChange={(e) => setLanguageBadgeName(e.target.value)}
+                        className="w-full bg-[#11131c] border border-white/10 rounded-lg px-3 py-2 text-white font-bold mt-1"
+                      />
+                    </div>
+                    <div>
+                      <label className="text-gray-400 font-bold text-[10px] uppercase">Badge Icon / Emoji</label>
+                      <input
+                        type="text"
+                        value={languageBadgeIcon}
+                        onChange={(e) => setLanguageBadgeIcon(e.target.value)}
+                        className="w-full bg-[#11131c] border border-white/10 rounded-lg px-3 py-2 text-white font-bold mt-1"
+                      />
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="text-gray-400 font-bold text-[10px] uppercase">Award Rank Cutoff</label>
+                    <select
+                      value={languageAwardRank}
+                      onChange={(e) => setLanguageAwardRank(Number(e.target.value))}
+                      className="w-full bg-[#11131c] border border-white/10 rounded-lg px-3 py-2 text-white font-bold mt-1"
+                    >
+                      <option value={1}>Rank 1 Only</option>
+                      <option value={3}>Top 3</option>
+                      <option value={5}>Top 5</option>
+                      <option value={10}>Top 10</option>
+                    </select>
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+
+            </div>
+          )}
 
           {/* Submission options */}
           <div className="flex justify-end gap-3 border-t border-white/5 pt-6">
