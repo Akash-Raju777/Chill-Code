@@ -1245,6 +1245,12 @@ export default function CodingWorkspace() {
               }}
               onMount={(editor, monaco) => {
                 editor.onKeyDown((e: any) => {
+                  if (useTestStore.getState().isViewMode) {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    return;
+                  }
+
                   // Block Windows + V (Clipboard History)
                   if (e.metaKey && (e.keyCode === monaco.KeyCode.KeyV || e.code === 'KeyV')) {
                     e.preventDefault();
