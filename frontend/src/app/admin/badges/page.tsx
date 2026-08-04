@@ -357,21 +357,16 @@ export default function AdminBadgeSetsPage() {
             </div>
 
             <form onSubmit={handleSubmit} className="space-y-4 text-xs">
-              {/* Unique Test ID Select */}
+              {/* Linked Test ID Display */}
               <div className="space-y-1.5">
-                <label className="text-gray-400 font-bold uppercase tracking-wider text-[10px]">Select Target Test / Assessment ID</label>
-                <select
-                  value={selectedTestId}
-                  onChange={(e) => setSelectedTestId(Number(e.target.value))}
-                  className="w-full bg-[#181a25] border border-white/10 rounded-xl px-4 py-2.5 text-emerald-400 font-mono font-bold text-sm focus:outline-none focus:border-amber-400 cursor-pointer"
-                >
-                  <option value="" disabled>-- Select Assessment Test ID --</option>
-                  {tests.map((t) => (
-                    <option key={t.id} value={t.id} className="bg-[#11131c] text-white font-sans font-medium">
-                      [{t.testCode}] {t.name} ({t.subjectName})
-                    </option>
-                  ))}
-                </select>
+                <label className="text-gray-400 font-bold uppercase tracking-wider text-[10px]">Test ID</label>
+                <div className="w-full bg-[#181a25] border border-white/10 rounded-xl px-4 py-3 text-emerald-400 font-mono font-bold text-sm flex items-center justify-between shadow-inner">
+                  <span className="flex items-center gap-2">
+                    <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+                    {editingSet?.testCode || selectedTestObj?.testCode || 'TEST-001'}
+                  </span>
+                  <span className="text-[10px] text-gray-400 font-sans font-semibold bg-white/5 px-2 py-0.5 rounded border border-white/10">Assessment Test</span>
+                </div>
               </div>
 
               {/* Auto-filled details */}
