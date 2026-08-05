@@ -39,6 +39,9 @@ public class BadgeSetService {
     private StudentTestRepository studentTestRepository;
 
     @Autowired
+    private SubmissionRepository submissionRepository;
+
+    @Autowired
     private NotificationRepository notificationRepository;
 
     @Autowired
@@ -330,14 +333,24 @@ public class BadgeSetService {
 
     @Transactional(readOnly = true)
     public List<StudentAchievementDto> getStudentAchievements(Long studentId) {
+        List<Submission> subs = submissionRepository.findAllByStudentIdOrderByCreatedAtDesc(studentId);
         return studentAchievementRepository.findByStudentIdOrderByAwardedAtDesc(studentId).stream()
+                .filter(sa -> sa.getTest() != null && sa.getTest().getQuestions() != null && !sa.getTest().getQuestions().isEmpty())
+                .filter(sa -> subs.stream().anyMatch(sub -> sub.getQuestion() != null && 
+                        sa.getTest().getQuestions().contains(sub.getQuestion()) && 
+                        ("ACCEPTED".equals(sub.getStatus()) || "PASS".equalsIgnoreCase(sub.getOverallResult()))))
                 .map(this::mapAchievementToDto)
                 .collect(Collectors.toList());
     }
 
     @Transactional(readOnly = true)
     public List<LanguageMasterBadgeDto> getStudentLanguageBadges(Long studentId) {
+        List<Submission> subs = submissionRepository.findAllByStudentIdOrderByCreatedAtDesc(studentId);
         return languageMasterBadgeRepository.findByStudentIdOrderByAwardedDateDesc(studentId).stream()
+                .filter(lmb -> lmb.getTest() != null && lmb.getTest().getQuestions() != null && !lmb.getTest().getQuestions().isEmpty())
+                .filter(lmb -> subs.stream().anyMatch(sub -> sub.getQuestion() != null && 
+                        lmb.getTest().getQuestions().contains(sub.getQuestion()) && 
+                        ("ACCEPTED".equals(sub.getStatus()) || "PASS".equalsIgnoreCase(sub.getOverallResult()))))
                 .map(lmb -> LanguageMasterBadgeDto.builder()
                         .id(lmb.getId())
                         .studentId(lmb.getStudent().getId())
@@ -377,6 +390,7 @@ public class BadgeSetService {
         }
 
         return studentAchievementRepository.findAll().stream()
+                .filter(sa -> sa.getTest() != null && sa.getTest().getQuestions() != null && !sa.getTest().getQuestions().isEmpty())
                 .map(sa -> mapAchievementToDtoWithRanks(sa, overallRankMap, subjectRankMap))
                 .collect(Collectors.toList());
     }

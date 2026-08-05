@@ -6,6 +6,8 @@ import com.chillcode.assessment.entity.Question;
 import com.chillcode.assessment.entity.Subject;
 import com.chillcode.assessment.entity.TestCase;
 import com.chillcode.assessment.entity.StudentQuestionStatus;
+import com.chillcode.assessment.entity.StudentTest;
+import com.chillcode.assessment.entity.Submission;
 import com.chillcode.assessment.repository.QuestionRepository;
 import com.chillcode.assessment.repository.SubjectRepository;
 import com.chillcode.assessment.repository.TestCaseRepository;
@@ -45,6 +47,9 @@ public class QuestionService {
     private com.chillcode.assessment.repository.SubmissionRepository submissionRepository;
 
     @Autowired
+    private com.chillcode.assessment.repository.StudentTestRepository studentTestRepository;
+
+    @Autowired
     private com.chillcode.assessment.repository.BadgeSetRepository badgeSetRepository;
 
     @Autowired
@@ -52,6 +57,18 @@ public class QuestionService {
 
     @jakarta.persistence.PersistenceContext
     private jakarta.persistence.EntityManager entityManager;
+
+    @org.springframework.context.event.EventListener(org.springframework.boot.context.event.ApplicationReadyEvent.class)
+    @org.springframework.transaction.annotation.Transactional
+    public void onApplicationReady() {
+        log.info("Application started: Running retroactive cleanup for orphaned deleted questions...");
+        try {
+            cleanupOrphanedRecordsAndEmptyTests();
+            log.info("Retroactive cleanup completed successfully.");
+        } catch (Exception e) {
+            log.error("Failed to run retroactive cleanup: {}", e.getMessage(), e);
+        }
+    }
 
     private com.chillcode.assessment.entity.User getCurrentUserEntity() {
         try {
@@ -339,6 +356,11 @@ public class QuestionService {
             entityManager.clear();
         }
 
+        // Delete from student_question_status
+        entityManager.createNativeQuery("DELETE FROM student_question_status WHERE question_id = :id")
+                .setParameter("id", id)
+                .executeUpdate();
+
         // Clear references in join table test_questions
         entityManager.createNativeQuery("DELETE FROM test_questions WHERE question_id = :id")
                 .setParameter("id", id)
@@ -359,12 +381,140 @@ public class QuestionService {
                 .setParameter("id", id)
                 .executeUpdate();
 
-        // Finally, delete the question
+        // Delete the question
         entityManager.createNativeQuery("DELETE FROM questions WHERE id = :id")
                 .setParameter("id", id)
                 .executeUpdate();
         
-        log.info("Question Deleted: Question ID: {} successfully removed from database", id);
+        // Clean up empty tests and orphaned badges/achievements
+        cleanupOrphanedRecordsAndEmptyTests();
+
+        log.info("Question Deleted: Question ID: {} successfully removed from database along with all dependent status and achievements", id);
+    }
+
+    @Transactional
+    public void cleanupOrphanedRecordsAndEmptyTests() {
+        log.info("Running complete cleanup of orphaned question statuses, submissions, tests, and achievements...");
+
+        // 1. Delete student_question_status for non-existent questions
+        entityManager.createNativeQuery("DELETE FROM student_question_status WHERE question_id NOT IN (SELECT id FROM questions)")
+                .executeUpdate();
+
+        // 2. Delete submission_test_cases for non-existent submissions or non-existent questions
+        entityManager.createNativeQuery("DELETE FROM submission_test_cases WHERE submission_id IN (SELECT id FROM submissions WHERE question_id NOT IN (SELECT id FROM questions))")
+                .executeUpdate();
+
+        // 3. Delete submissions for non-existent questions
+        entityManager.createNativeQuery("DELETE FROM submissions WHERE question_id NOT IN (SELECT id FROM questions)")
+                .executeUpdate();
+
+        // 4. Delete test_questions join entries for non-existent questions or tests
+        entityManager.createNativeQuery("DELETE FROM test_questions WHERE question_id NOT IN (SELECT id FROM questions) OR test_id NOT IN (SELECT id FROM tests)")
+                .executeUpdate();
+
+        // 5. Delete test_cases for non-existent questions
+        entityManager.createNativeQuery("DELETE FROM test_cases WHERE question_id NOT IN (SELECT id FROM questions)")
+                .executeUpdate();
+
+        // 6. Delete student_achievements for non-existent tests or empty tests
+        entityManager.createNativeQuery(
+                "DELETE FROM student_achievements WHERE test_id NOT IN (SELECT id FROM tests) " +
+                "OR test_id IN (SELECT id FROM tests WHERE id NOT IN (SELECT DISTINCT test_id FROM test_questions))"
+        ).executeUpdate();
+
+        // 7. Delete language_master_badges for non-existent tests or empty tests
+        entityManager.createNativeQuery(
+                "DELETE FROM language_master_badges WHERE test_id NOT IN (SELECT id FROM tests) " +
+                "OR test_id IN (SELECT id FROM tests WHERE id NOT IN (SELECT DISTINCT test_id FROM test_questions))"
+        ).executeUpdate();
+
+        // 8. Delete student_badges for non-existent source tests or empty source tests
+        entityManager.createNativeQuery(
+                "DELETE FROM student_badges WHERE source_test_id IS NOT NULL AND (" +
+                "source_test_id NOT IN (SELECT id FROM tests) " +
+                "OR source_test_id IN (SELECT id FROM tests WHERE id NOT IN (SELECT DISTINCT test_id FROM test_questions))" +
+                ")"
+        ).executeUpdate();
+
+        // 9. Find tests with 0 questions and purge their student tests, achievements, and badges
+        List<com.chillcode.assessment.entity.Test> allTests = testRepository.findAll();
+        for (com.chillcode.assessment.entity.Test test : allTests) {
+            if (test.getQuestions() == null || test.getQuestions().isEmpty()) {
+                Long testId = test.getId();
+                log.info("Purging empty test ID: {} and its associated badges/achievements", testId);
+
+                entityManager.createNativeQuery("DELETE FROM student_achievements WHERE test_id = :tId")
+                        .setParameter("tId", testId)
+                        .executeUpdate();
+
+                entityManager.createNativeQuery("DELETE FROM language_master_badges WHERE test_id = :tId")
+                        .setParameter("tId", testId)
+                        .executeUpdate();
+
+                entityManager.createNativeQuery("DELETE FROM student_badges WHERE source_test_id = :tId")
+                        .setParameter("tId", testId)
+                        .executeUpdate();
+
+                entityManager.createNativeQuery("DELETE FROM badge_definitions WHERE badge_set_id IN (SELECT id FROM badge_sets WHERE test_id = :tId)")
+                        .setParameter("tId", testId)
+                        .executeUpdate();
+
+                entityManager.createNativeQuery("DELETE FROM badge_sets WHERE test_id = :tId")
+                        .setParameter("tId", testId)
+                        .executeUpdate();
+
+                entityManager.createNativeQuery("DELETE FROM warnings WHERE student_test_id IN (SELECT id FROM student_tests WHERE test_id = :tId)")
+                        .setParameter("tId", testId)
+                        .executeUpdate();
+
+                entityManager.createNativeQuery("DELETE FROM student_tests WHERE test_id = :tId")
+                        .setParameter("tId", testId)
+                        .executeUpdate();
+
+                entityManager.createNativeQuery("DELETE FROM tests WHERE id = :tId")
+                        .setParameter("tId", testId)
+                        .executeUpdate();
+            } else {
+                // For tests with remaining questions, re-evaluate StudentTest statuses and achievements!
+                Long testId = test.getId();
+                List<StudentTest> studentTests = studentTestRepository.findByTestId(testId);
+                for (StudentTest st : studentTests) {
+                    Long studentId = st.getStudent().getId();
+                    
+                    // Check if student has any valid accepted submission for remaining questions of this test
+                    List<Submission> validSubmissions = submissionRepository.findAllByStudentIdOrderByCreatedAtDesc(studentId).stream()
+                            .filter(sub -> sub.getQuestion() != null && 
+                                           test.getQuestions().contains(sub.getQuestion()) && 
+                                           ("ACCEPTED".equals(sub.getStatus()) || "PASS".equalsIgnoreCase(sub.getOverallResult())))
+                            .collect(Collectors.toList());
+
+                    if (validSubmissions.isEmpty()) {
+                        // Reset student test status if no accepted submissions remain for this test
+                        st.setStatus("ASSIGNED");
+                        st.setScore(0);
+                        st.setPassFailStatus("PENDING");
+                        st.setSubmittedAt(null);
+                        studentTestRepository.save(st);
+
+                        // Delete achievements & badges earned for this student on this test
+                        entityManager.createNativeQuery("DELETE FROM student_achievements WHERE student_id = :sId AND test_id = :tId")
+                                .setParameter("sId", studentId)
+                                .setParameter("tId", testId)
+                                .executeUpdate();
+
+                        entityManager.createNativeQuery("DELETE FROM language_master_badges WHERE student_id = :sId AND test_id = :tId")
+                                .setParameter("sId", studentId)
+                                .setParameter("tId", testId)
+                                .executeUpdate();
+
+                        entityManager.createNativeQuery("DELETE FROM student_badges WHERE student_id = :sId AND source_test_id = :tId")
+                                .setParameter("sId", studentId)
+                                .setParameter("tId", testId)
+                                .executeUpdate();
+                    }
+                }
+            }
+        }
     }
 
     private QuestionDto convertToDto(Question question) {

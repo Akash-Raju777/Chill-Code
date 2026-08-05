@@ -100,6 +100,9 @@ public class SubmissionController {
 
         List<java.util.Map<String, Object>> result = new java.util.ArrayList<>();
         for (Submission sub : submissions) {
+            if (sub.getQuestion() == null) {
+                continue; // Exclude deleted questions
+            }
             java.util.Map<String, Object> map = new java.util.HashMap<>();
             map.put("id", sub.getId());
             map.put("language", sub.getLanguage());
@@ -122,15 +125,14 @@ public class SubmissionController {
             map.put("overallResult", sub.getOverallResult() != null ? sub.getOverallResult() : ("ACCEPTED".equals(sub.getStatus()) ? "PASS" : "FAIL"));
             map.put("createdAt", sub.getCreatedAt());
             
-            if (sub.getQuestion() != null) {
-                map.put("questionId", sub.getQuestion().getId());
-                map.put("questionName", sub.getQuestion().getTitle());
-                if (sub.getQuestion().getSubject() != null) {
-                    map.put("subjectName", sub.getQuestion().getSubject().getName());
-                }
-                com.chillcode.assessment.entity.StudentQuestionStatus sqs = sqsMap.get(sub.getQuestion().getId());
-                map.put("attempts", sqs != null ? sqs.getAttemptCount() : 1);
+            map.put("questionId", sub.getQuestion().getId());
+            map.put("questionName", sub.getQuestion().getTitle());
+            if (sub.getQuestion().getSubject() != null) {
+                map.put("subjectName", sub.getQuestion().getSubject().getName());
             }
+            com.chillcode.assessment.entity.StudentQuestionStatus sqs = sqsMap.get(sub.getQuestion().getId());
+            map.put("attempts", sqs != null ? sqs.getAttemptCount() : 1);
+
             if (sub.getStudentTest() != null && sub.getStudentTest().getTest() != null) {
                 map.put("testId", sub.getStudentTest().getTest().getId());
             }

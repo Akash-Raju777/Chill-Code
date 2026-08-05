@@ -160,6 +160,17 @@ public class SubjectService {
                 .setParameter("subId", id)
                 .executeUpdate();
 
+        // 9.2a Clear language_master_badges referencing this subject
+        entityManager.createNativeQuery("DELETE FROM language_master_badges WHERE subject = :subName OR test_id IN (SELECT id FROM tests WHERE subject_id = :subId)")
+                .setParameter("subName", subject.getName())
+                .setParameter("subId", id)
+                .executeUpdate();
+
+        // 9.2b Clear student_badges referencing tests of this subject
+        entityManager.createNativeQuery("DELETE FROM student_badges WHERE source_test_id IN (SELECT id FROM tests WHERE subject_id = :subId)")
+                .setParameter("subId", id)
+                .executeUpdate();
+
         // 9.3 Clear badge_definitions referencing badge_sets of this subject
         entityManager.createQuery("DELETE FROM BadgeDefinition bd WHERE bd.badgeSet.id IN (SELECT bs.id FROM BadgeSet bs WHERE bs.subject.id = :subId)")
                 .setParameter("subId", id)

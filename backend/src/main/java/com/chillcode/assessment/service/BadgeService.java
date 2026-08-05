@@ -117,6 +117,7 @@ public class BadgeService {
 
     public List<StudentBadgeDto> getStudentBadges(Long studentId) {
         return studentBadgeRepository.findByStudentId(studentId).stream()
+                .filter(sb -> sb.getSourceTest() == null || (sb.getSourceTest().getQuestions() != null && !sb.getSourceTest().getQuestions().isEmpty()))
                 .map(this::mapStudentBadgeToDto)
                 .collect(Collectors.toList());
     }

@@ -48,8 +48,13 @@ public class StudentService {
     @Autowired
     private com.chillcode.assessment.repository.SubjectRepository subjectRepository;
 
+    @Autowired
+    private QuestionService questionService;
+
     @Transactional
     public Map<String, Object> getStudentDashboardStats(Long studentId) {
+        questionService.cleanupOrphanedRecordsAndEmptyTests();
+
         com.chillcode.assessment.entity.User student = userRepository.findById(studentId)
                 .orElseThrow(() -> new RuntimeException("Student not found"));
 
@@ -83,36 +88,18 @@ public class StudentService {
             myTests = studentTestRepository.findByStudentId(studentId);
         }
 
-        // Calculate statistics based on questions and question statuses
-        long totalQuestionsCount = questionRepository.count();
-        long completedQuestionsCount = studentQuestionStatusRepository.countByStudentIdAndStatus(studentId, "COMPLETED");
-        long inProgressQuestionsCount = studentQuestionStatusRepository.countByStudentIdAndAttemptCountGreaterThanAndStatusNot(studentId, "COMPLETED");
-        long unattendedQuestionsCount = totalQuestionsCount - completedQuestionsCount - inProgressQuestionsCount;
-
-        // Calculate average score of all student tests
-        double totalScore = myTests.stream()
-                .filter(st -> "SUBMITTED".equals(st.getStatus()) || "EVALUATED".equals(st.getStatus()) || "COMPLETED".equals(st.getStatus()) || "PENDING".equals(st.getStatus()))
-                .mapToInt(st -> st.getScore() != null ? st.getScore() : 0)
-                .average()
-                .orElse(0.0);
-
-        long completedTestsCount = myTests.stream()
-                .filter(st -> "COMPLETED".equals(st.getStatus()) || "SUBMITTED".equals(st.getStatus()) || "EVALUATED".equals(st.getStatus()) || "PENDING".equals(st.getStatus()))
-                .count();
-
-        Map<String, Object> stats = new HashMap<>();
-        stats.put("unattendedTests", unattendedQuestionsCount);
-        stats.put("completedTests", completedTestsCount);
-        stats.put("inProgressTests", inProgressQuestionsCount);
-        stats.put("totalTests", myTests.size());
-        stats.put("averageScore", Math.round(totalScore * 100.0) / 100.0);
-        stats.put("totalQuestions", totalQuestionsCount);
-        stats.put("completedQuestions", completedQuestionsCount);
+        // Filter out tests that have 0 questions (e.g. after question deletion)
+        List<StudentTest> validMyTests = myTests.stream()
+                .filter(st -> st.getTest() != null && st.getTest().getQuestions() != null && !st.getTest().getQuestions().isEmpty())
+                .collect(Collectors.toList());
 
         // Group questions by Subject using optimized native query
         List<Object[]> dbSubjectStats = subjectRepository.getSubjectStatsForStudent(studentId);
         List<Map<String, Object>> subjectStatsList = new java.util.ArrayList<>();
         
+        long sumTotalQuestions = 0;
+        long sumCompletedQuestions = 0;
+
         for (Object[] row : dbSubjectStats) {
             Long subjectId = ((Number) row[0]).longValue();
             String name = (String) row[1];
@@ -121,6 +108,9 @@ public class StudentService {
             long completed = ((Number) row[4]).longValue();
             long incomplete = total - completed;
 
+            sumTotalQuestions += total;
+            sumCompletedQuestions += completed;
+
             Map<String, Object> subMap = new HashMap<>();
             subMap.put("subjectId", subjectId);
             subMap.put("subjectName", name);
@@ -128,18 +118,52 @@ public class StudentService {
             subMap.put("completedCount", completed);
             subMap.put("incompleteCount", incomplete);
             subMap.put("totalCount", total);
-            subMap.put("status", incomplete == 0 ? "COMPLETED" : "INCOMPLETE");
+            subMap.put("status", incomplete == 0 && total > 0 ? "COMPLETED" : "INCOMPLETE");
 
             subjectStatsList.add(subMap);
         }
+
+        // Calculate test counts based on valid student tests
+        long unattendedTestsCount = validMyTests.stream()
+                .filter(st -> "ASSIGNED".equals(st.getStatus()))
+                .count();
+
+        long inProgressTestsCount = validMyTests.stream()
+                .filter(st -> "STARTED".equals(st.getStatus()) || "IN_PROGRESS".equals(st.getStatus()) || "SUSPENDED".equals(st.getStatus()))
+                .count();
+
+        long completedTestsCount = validMyTests.stream()
+                .filter(st -> "COMPLETED".equals(st.getStatus()) || "SUBMITTED".equals(st.getStatus()) || "EVALUATED".equals(st.getStatus()) || "PENDING".equals(st.getStatus()))
+                .count();
+
+        // Question counts matched with subject stats
+        long totalQuestionsCount = !subjectStatsList.isEmpty() ? sumTotalQuestions : questionRepository.count();
+        long completedQuestionsCount = !subjectStatsList.isEmpty() ? sumCompletedQuestions : 0;
+
+        // Calculate average score of all valid student tests
+        double totalScore = validMyTests.stream()
+                .filter(st -> "SUBMITTED".equals(st.getStatus()) || "EVALUATED".equals(st.getStatus()) || "COMPLETED".equals(st.getStatus()) || "PENDING".equals(st.getStatus()))
+                .mapToInt(st -> st.getScore() != null ? st.getScore() : 0)
+                .average()
+                .orElse(0.0);
+
+        Map<String, Object> stats = new HashMap<>();
+        stats.put("unattendedTests", unattendedTestsCount);
+        stats.put("completedTests", completedTestsCount);
+        stats.put("inProgressTests", inProgressTestsCount);
+        stats.put("totalTests", validMyTests.size());
+        stats.put("averageScore", Math.round(totalScore * 100.0) / 100.0);
+        stats.put("totalQuestions", totalQuestionsCount);
+        stats.put("completedQuestions", completedQuestionsCount);
         stats.put("subjectStats", subjectStatsList);
 
-        // Recent activity logs: fetch latest 5 submissions made by the student using optimized pageable query
+        // Recent activity logs: fetch latest 5 submissions made by the student for existing questions
         List<com.chillcode.assessment.entity.Submission> latestSubmissions = submissionRepository.findTop5ByStudentIdOrderByCreatedAtDesc(
                 studentId, org.springframework.data.domain.PageRequest.of(0, 5));
         List<String> activities = latestSubmissions.stream()
+                .filter(sub -> sub.getQuestion() != null)
                 .map(sub -> String.format("Submitted solution for '%s' - Verdict: %s",
-                        sub.getQuestion() != null ? sub.getQuestion().getTitle() : "Unknown",
+                        sub.getQuestion().getTitle(),
                         sub.getStatus()))
                 .collect(Collectors.toList());
         
