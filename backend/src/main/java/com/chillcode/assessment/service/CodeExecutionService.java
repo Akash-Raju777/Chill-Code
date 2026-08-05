@@ -53,10 +53,10 @@ public class CodeExecutionService {
     @Autowired
     private StudentQuestionStatusRepository studentQuestionStatusRepository;
 
-    @Value("${judge0.api.url}")
+    @Value("${judge0.api.url:http://localhost:2358}")
     private String judge0ApiUrl;
 
-    @Value("${xai.api.key}")
+    @Value("${xai.api.key:gsk_default_key_placeholder}")
     private String xaiApiKey;
 
     private final HttpClient httpClient = HttpClient.newBuilder()

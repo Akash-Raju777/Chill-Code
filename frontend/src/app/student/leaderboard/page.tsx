@@ -104,7 +104,7 @@ export default function StudentLeaderboardPage() {
               Chill Code Hall of Fame
             </span>
             <h1 className="text-3xl font-black text-white tracking-tight">Platform Leaderboard</h1>
-            <p className="text-xs text-gray-400">Live rankings derived from test marks, test cases passed, and speed</p>
+            <p className="text-xs text-gray-400">Live rankings derived from test marks and test cases passed</p>
           </div>
 
           {/* Student Stats Summary Cards */}
@@ -200,7 +200,7 @@ export default function StudentLeaderboardPage() {
                   <th className="py-4 px-6">Register Number</th>
                   <th className="py-4 px-6 text-center">Total Marks</th>
                   <th className="py-4 px-6 text-center">Tests / Test Cases Passed</th>
-                  <th className="py-4 px-6 text-center">Time Taken</th>
+
                   <th className="py-4 px-6 text-center">Badges Earned</th>
                 </tr>
               </thead>
@@ -251,9 +251,7 @@ export default function StudentLeaderboardPage() {
                         {item.totalTestsPassed ?? item.testCasesPassed ?? 0}
                       </td>
 
-                      <td className="py-4 px-6 text-center font-mono text-gray-400">
-                        {item.avgTimeSec ? `${Math.round(item.avgTimeSec)}s avg` : `${item.totalTimeTakenSeconds || 0}s`}
-                      </td>
+
 
                       <td className="py-4 px-6 text-center">
                         <span className="inline-flex items-center gap-1 bg-purple-500/10 border border-purple-500/20 px-3 py-1 rounded-full text-purple-400 font-bold text-xs">

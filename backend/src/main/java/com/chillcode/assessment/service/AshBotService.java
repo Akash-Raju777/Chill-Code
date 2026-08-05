@@ -33,7 +33,7 @@ public class AshBotService {
     @Autowired
     private SubmissionRepository submissionRepository;
 
-    @Value("${xai.api.key}")
+    @Value("${xai.api.key:gsk_default_key_placeholder}")
     private String xaiApiKey;
 
     private final HttpClient httpClient = HttpClient.newBuilder()

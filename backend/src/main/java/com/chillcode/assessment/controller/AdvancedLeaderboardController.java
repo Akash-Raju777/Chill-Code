@@ -70,17 +70,17 @@ public class AdvancedLeaderboardController {
 
     @GetMapping("/admin/leaderboard/export")
     @PreAuthorize("hasRole('ADMIN')")
-    public ResponseEntity<byte[]> exportLeaderboardCsv(
+    public ResponseEntity<byte[]> exportLeaderboardExcel(
             @RequestParam(required = false, defaultValue = "ALL") String timeFilter,
             @RequestParam(required = false, defaultValue = "ALL") String departmentFilter) {
         List<OverallLeaderboardEntry> entries = overallLeaderboardService.getOverallLeaderboard(timeFilter, departmentFilter);
-        String csvData = overallLeaderboardService.generateCsvExport(entries);
+        byte[] excelBytes = overallLeaderboardService.generateExcelExport(entries);
 
-        byte[] bytes = csvData.getBytes(StandardCharsets.UTF_8);
         HttpHeaders headers = new HttpHeaders();
-        headers.setContentType(MediaType.parseMediaType("text/csv"));
-        headers.setContentDisposition(ContentDisposition.attachment().filename("chillcode_leaderboard.csv").build());
+        headers.setContentType(MediaType.parseMediaType("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"));
+        headers.setContentDisposition(ContentDisposition.attachment().filename("chillcode_leaderboard.xlsx").build());
+        headers.setContentLength(excelBytes.length);
 
-        return ResponseEntity.ok().headers(headers).body(bytes);
+        return ResponseEntity.ok().headers(headers).body(excelBytes);
     }
 }

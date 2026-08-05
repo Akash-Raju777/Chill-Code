@@ -100,9 +100,8 @@ export default function AdminLeaderboardPage() {
     }
   };
 
-  const handleExport = async (format: 'csv' | 'pdf' | 'excel') => {
+  const handleExport = async () => {
     try {
-      // In this version we just export CSV since backend returns CSV directly.
       const res = await fetch(`/api/admin/leaderboard/export?departmentFilter=${departmentFilter}`, {
         headers: { 'Authorization': `Bearer ${localStorage.getItem('chillcode_token')}` }
       });
@@ -110,7 +109,7 @@ export default function AdminLeaderboardPage() {
       const url = window.URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
-      a.download = `chillcode_leaderboard.${format}`;
+      a.download = `chillcode_leaderboard.xlsx`;
       document.body.appendChild(a);
       a.click();
       a.remove();
@@ -175,8 +174,8 @@ export default function AdminLeaderboardPage() {
           <p className="text-sm text-gray-400 mt-1">Deep analytics, performance charts, and global rankings</p>
         </div>
         <div className="flex gap-2">
-          <button onClick={() => handleExport('csv')} className="flex items-center gap-2 px-4 py-2 bg-[#1f2937] hover:bg-[#374151] text-white rounded-xl border border-white/10 transition-colors text-sm font-bold">
-            <FileSpreadsheet className="w-4 h-4 text-emerald-400" /> CSV
+          <button onClick={handleExport} className="flex items-center gap-2 px-4 py-2 bg-[#1f2937] hover:bg-[#374151] text-white rounded-xl border border-white/10 transition-colors text-sm font-bold">
+            <FileSpreadsheet className="w-4 h-4 text-emerald-400" /> Download Excel
           </button>
         </div>
       </div>

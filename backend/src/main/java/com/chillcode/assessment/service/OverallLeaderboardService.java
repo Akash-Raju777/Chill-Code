@@ -159,6 +159,72 @@ public class OverallLeaderboardService {
     }
 
 
+    public byte[] generateExcelExport(List<OverallLeaderboardEntry> entries) {
+        try (org.apache.poi.xssf.usermodel.XSSFWorkbook workbook = new org.apache.poi.xssf.usermodel.XSSFWorkbook()) {
+            org.apache.poi.xssf.usermodel.XSSFSheet sheet = workbook.createSheet("Overall Leaderboard");
+
+            // Header styles
+            org.apache.poi.xssf.usermodel.XSSFCellStyle headerStyle = workbook.createCellStyle();
+            org.apache.poi.xssf.usermodel.XSSFFont headerFont = workbook.createFont();
+            headerFont.setBold(true);
+            headerFont.setFontHeightInPoints((short) 11);
+            headerFont.setColor(org.apache.poi.xssf.usermodel.XSSFFont.DEFAULT_FONT_COLOR);
+            headerStyle.setFont(headerFont);
+            headerStyle.setFillForegroundColor(new org.apache.poi.xssf.usermodel.XSSFColor(new byte[]{(byte)45, (byte)55, (byte)72}, null));
+            headerStyle.setFillPattern(org.apache.poi.ss.usermodel.FillPatternType.SOLID_FOREGROUND);
+            headerStyle.setAlignment(org.apache.poi.ss.usermodel.HorizontalAlignment.CENTER);
+            headerStyle.setBorderBottom(org.apache.poi.ss.usermodel.BorderStyle.THIN);
+
+            // Column headers
+            String[] headers = {
+                "Rank", "Register Number", "Student Name", "Department", "Total Marks",
+                "Pass %", "Tests Passed", "Tests Failed", "Tests Attempted", "Not Attended",
+                "Total Attempts", "Total Badges", "Latest Attempt Date", "Malpractice"
+            };
+
+            org.apache.poi.xssf.usermodel.XSSFRow headerRow = sheet.createRow(0);
+            for (int i = 0; i < headers.length; i++) {
+                org.apache.poi.xssf.usermodel.XSSFCell cell = headerRow.createCell(i);
+                cell.setCellValue(headers[i]);
+                cell.setCellStyle(headerStyle);
+            }
+
+            // Freeze header row
+            sheet.createFreezePane(0, 1);
+
+            int rowIdx = 1;
+            for (OverallLeaderboardEntry e : entries) {
+                org.apache.poi.xssf.usermodel.XSSFRow row = sheet.createRow(rowIdx++);
+                row.createCell(0).setCellValue(e.rankPosition);
+                row.createCell(1).setCellValue(e.registerNumber != null ? e.registerNumber : "");
+                row.createCell(2).setCellValue(e.studentName != null ? e.studentName : "");
+                row.createCell(3).setCellValue(e.department != null ? e.department : "");
+                row.createCell(4).setCellValue(e.totalMarks);
+                row.createCell(5).setCellValue(String.format("%.2f%%", e.passPercentage));
+                row.createCell(6).setCellValue(e.totalTestsPassed);
+                row.createCell(7).setCellValue(e.totalTestsFailed);
+                row.createCell(8).setCellValue(e.testsAttempted);
+                row.createCell(9).setCellValue(e.notAttended);
+                row.createCell(10).setCellValue(e.totalAttempts);
+                row.createCell(11).setCellValue(e.totalBadges);
+                row.createCell(12).setCellValue(e.latestAttemptDate != null ? e.latestAttemptDate : "");
+                row.createCell(13).setCellValue(e.malpractice != null ? e.malpractice : "NO");
+            }
+
+            // Auto-size columns
+            for (int i = 0; i < headers.length; i++) {
+                sheet.autoSizeColumn(i);
+            }
+
+            java.io.ByteArrayOutputStream out = new java.io.ByteArrayOutputStream();
+            workbook.write(out);
+            return out.toByteArray();
+        } catch (Exception e) {
+            System.err.println("[OverallLeaderboardService] Error exporting Excel: " + e.getMessage());
+            return new byte[0];
+        }
+    }
+
     public String generateCsvExport(List<OverallLeaderboardEntry> entries) {
         StringBuilder sb = new StringBuilder();
         sb.append("Rank,Register Number,Student Name,Department,Total Marks,Pass %,Tests Passed,Tests Failed,Tests Attempted,Not Attended,Total Attempts,Avg Time (s),Total Badges,Latest Attempt Date,Malpractice\n");
