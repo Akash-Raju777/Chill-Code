@@ -645,63 +645,77 @@ public class QuestionService {
         String qCode = (question.getQuestionCode() != null && !question.getQuestionCode().trim().isEmpty())
                 ? question.getQuestionCode().trim().toUpperCase() : null;
 
-        // 1. Find or create a Test for this subject
-        java.util.List<com.chillcode.assessment.entity.Test> allTests = testRepository.findAll();
-        com.chillcode.assessment.entity.Test subjectTest = null;
+        // 1. Find or create a dedicated Test for THIS specific question
+        // Each question gets its own Test entity (1 Question = 1 Test = 1 BadgeSet)
+        com.chillcode.assessment.entity.Test questionTest = null;
 
+        // Look for an existing test that already contains this question
+        java.util.List<com.chillcode.assessment.entity.Test> allTests = testRepository.findAll();
         for (com.chillcode.assessment.entity.Test test : allTests) {
-            if (test.getSubject() != null && test.getSubject().getId().equals(subject.getId())) {
-                subjectTest = test;
-                // Link question to this test
-                if (!test.getQuestions().contains(question)) {
-                    test.getQuestions().add(question);
-                }
-                testRepository.save(test);
-            } else {
-                // Unlink from tests of other subjects
-                test.getQuestions().remove(question);
-                testRepository.save(test);
+            if (test.getQuestions() != null && test.getQuestions().contains(question)) {
+                questionTest = test;
+                break;
             }
         }
 
-        // If no test exists for this subject, create one
-        if (subjectTest == null) {
-            String prefix = subject.getName().replaceAll("[^a-zA-Z]", "").toUpperCase();
-            if (prefix.length() > 6) prefix = prefix.substring(0, 6);
-            if (prefix.isEmpty()) prefix = "TEST";
+        if (questionTest != null) {
+            // Sync the test name and code from the question
+            questionTest.setName(question.getTitle());
+            questionTest.setSubject(subject);
+            if (qCode != null) {
+                questionTest.setTestCode(qCode);
+            }
+            testRepository.save(questionTest);
+        } else {
+            // Create a new dedicated Test for this question
+            String testCode = qCode;
+            if (testCode == null) {
+                String prefix = subject.getName().replaceAll("[^a-zA-Z]", "").toUpperCase();
+                if (prefix.length() > 6) prefix = prefix.substring(0, 6);
+                if (prefix.isEmpty()) prefix = "TEST";
+                testCode = prefix + "-" + String.format("%03d", question.getId());
+            }
 
-            subjectTest = com.chillcode.assessment.entity.Test.builder()
-                    .name(subject.getName() + " Practice Arena")
+            questionTest = com.chillcode.assessment.entity.Test.builder()
+                    .name(question.getTitle())
                     .subject(subject)
-                    .testCode(qCode != null ? qCode : prefix + "-001")
+                    .testCode(testCode)
+                    .durationMinutes(question.getTimer() != null ? question.getTimer() : 60)
+                    .startTime(java.time.LocalDateTime.now())
+                    .endTime(java.time.LocalDateTime.now().plusYears(10))
                     .build();
-            subjectTest = testRepository.save(subjectTest);
-            subjectTest.getQuestions().add(question);
-            testRepository.save(subjectTest);
-            log.info("Auto-created Test ID: {} for subject '{}'", subjectTest.getId(), subject.getName());
+            questionTest = testRepository.save(questionTest);
+            questionTest.getQuestions().add(question);
+            testRepository.save(questionTest);
+            log.info("Auto-created Test ID: {} for question '{}' (code: {})", questionTest.getId(), question.getTitle(), testCode);
         }
 
         // 2. Find or create a BadgeSet for this test
-        java.util.List<com.chillcode.assessment.entity.BadgeSet> badgeSets = badgeSetRepository.findByTestId(subjectTest.getId());
+        java.util.List<com.chillcode.assessment.entity.BadgeSet> badgeSets = badgeSetRepository.findByTestId(questionTest.getId());
         com.chillcode.assessment.entity.BadgeSet badgeSet;
 
         if (badgeSets != null && !badgeSets.isEmpty()) {
             badgeSet = badgeSets.get(0);
+            // Sync badge set name and testCode from question
+            badgeSet.setName(question.getTitle() + " Badge Set");
+            badgeSet.setSubject(subject);
+            if (qCode != null) {
+                badgeSet.setTestCode(qCode);
+            }
             badgeSetRepository.save(badgeSet);
         } else {
-            String testName = subjectTest.getName() != null ? subjectTest.getName() : subject.getName();
             badgeSet = com.chillcode.assessment.entity.BadgeSet.builder()
-                    .name(testName + " Champions")
-                    .test(subjectTest)
+                    .name(question.getTitle() + " Badge Set")
+                    .test(questionTest)
                     .subject(subject)
-                    .testCode(qCode != null ? qCode : subjectTest.getTestCode())
+                    .testCode(qCode != null ? qCode : questionTest.getTestCode())
                     .numberOfWinners(3)
                     .status("ACTIVE")
                     .build();
             badgeSet = badgeSetRepository.save(badgeSet);
 
             // Seed default badge definitions (Gold, Silver, Bronze)
-            String titlePrefix = question.getTitle() != null ? question.getTitle() : testName;
+            String titlePrefix = question.getTitle() != null ? question.getTitle() : subject.getName();
             String[][] defaults = {
                     {"1", "\uD83E\uDD47 " + titlePrefix + " Gold Winner", "Award", "#f59e0b"},
                     {"2", "\uD83E\uDD48 " + titlePrefix + " Silver Winner", "Award", "#94a3b8"},
@@ -719,7 +733,7 @@ public class QuestionService {
                         .build();
                 badgeDefinitionRepository.save(bd);
             }
-            log.info("Auto-created BadgeSet ID: {} with 3 default badge definitions for test '{}'", badgeSet.getId(), testName);
+            log.info("Auto-created BadgeSet ID: {} with 3 default badge definitions for question '{}'", badgeSet.getId(), question.getTitle());
         }
     }
 }

@@ -11,4 +11,6 @@ public interface StudentAchievementRepository extends JpaRepository<StudentAchie
     List<StudentAchievement> findByStudentIdOrderByAwardedAtDesc(Long studentId);
     List<StudentAchievement> findByStudentIdAndTestId(Long studentId, Long testId);
     Optional<StudentAchievement> findByStudentIdAndTestIdAndRankAchieved(Long studentId, Long testId, String rankAchieved);
+    List<StudentAchievement> findByTestIdOrderByAwardedAtDesc(Long testId);
+    void deleteByTestId(Long testId);
 }

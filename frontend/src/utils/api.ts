@@ -132,6 +132,7 @@ export const createBadgeSet = (data: any) => apiCall('/api/admin/badge-sets', { 
 export const updateBadgeSet = (id: number, data: any) => apiCall(`/api/admin/badge-sets/${id}`, { method: 'PUT', body: JSON.stringify(data) });
 export const deleteBadgeSet = (id: number) => apiCall(`/api/admin/badge-sets/${id}`, { method: 'DELETE' });
 export const toggleBadgeSetStatus = (id: number, status: string) => apiCall(`/api/admin/badge-sets/${id}/status`, { method: 'PATCH', body: JSON.stringify({ status }) });
+export const fetchBadgeSetWinners = (id: number) => apiCall(`/api/admin/badge-sets/${id}/winners`);
 
 // Leaderboard APIs
 export const fetchSubjectLeaderboard = (subjectId: number) => apiCall(`/api/student/leaderboard/subject/${subjectId}`);

@@ -158,6 +158,17 @@ public class BadgeSetService {
 
     @Transactional
     public void deleteBadgeSet(Long id) {
+        BadgeSet set = badgeSetRepository.findById(id).orElse(null);
+        if (set != null && set.getTest() != null) {
+            // Cascade-delete all student achievements linked to this test
+            try {
+                studentAchievementRepository.deleteByTestId(set.getTest().getId());
+            } catch (Exception ignored) {}
+            // Cascade-delete language master badges linked to this test
+            try {
+                languageMasterBadgeRepository.deleteByTestId(set.getTest().getId());
+            } catch (Exception ignored) {}
+        }
         badgeSetRepository.deleteById(id);
     }
 
@@ -172,25 +183,22 @@ public class BadgeSetService {
     @Transactional
     public List<BadgeSetDto> getAllBadgeSets() {
         List<BadgeSet> sets = badgeSetRepository.findAll();
+        
+        // Orphan cleanup: remove badge sets whose test has no questions (question was deleted)
+        List<BadgeSet> validSets = new ArrayList<>();
         for (BadgeSet bs : sets) {
-            if (bs.getTest() != null && bs.getTest().getQuestions() != null) {
-                for (Question q : bs.getTest().getQuestions()) {
-                    if (q.getQuestionCode() != null && !q.getQuestionCode().trim().isEmpty()) {
-                        String qCode = q.getQuestionCode().trim().toUpperCase();
-                        if (!qCode.equals(bs.getTestCode())) {
-                            bs.setTestCode(qCode);
-                            if (bs.getTest() != null) {
-                                bs.getTest().setTestCode(qCode);
-                                testRepository.save(bs.getTest());
-                            }
-                            badgeSetRepository.save(bs);
-                        }
-                        break;
-                    }
-                }
+            if (bs.getTest() == null || bs.getTest().getQuestions() == null || bs.getTest().getQuestions().isEmpty()) {
+                // Orphan badge set — delete it and its achievements
+                try {
+                    studentAchievementRepository.deleteByTestId(bs.getTest() != null ? bs.getTest().getId() : -1L);
+                } catch (Exception ignored) {}
+                badgeSetRepository.delete(bs);
+            } else {
+                validSets.add(bs);
             }
         }
-        return sets.stream().map(this::mapBadgeSetToDto).collect(Collectors.toList());
+        
+        return validSets.stream().map(this::mapBadgeSetToDto).collect(Collectors.toList());
     }
 
     @Transactional(readOnly = true)
@@ -198,6 +206,18 @@ public class BadgeSetService {
         BadgeSet set = badgeSetRepository.findById(id)
                 .orElseThrow(() -> new RuntimeException("Badge Set not found: " + id));
         return mapBadgeSetToDto(set);
+    }
+
+    @Transactional(readOnly = true)
+    public List<StudentAchievementDto> getBadgeSetWinners(Long badgeSetId) {
+        BadgeSet set = badgeSetRepository.findById(badgeSetId)
+                .orElseThrow(() -> new RuntimeException("Badge Set not found: " + badgeSetId));
+        if (set.getTest() == null) return Collections.emptyList();
+
+        List<StudentAchievement> achievements = studentAchievementRepository.findByTestIdOrderByAwardedAtDesc(set.getTest().getId());
+        return achievements.stream()
+                .map(this::mapAchievementToDto)
+                .collect(Collectors.toList());
     }
 
     // --- Automatic Badge Allocation Engine ---
@@ -430,39 +450,36 @@ public class BadgeSetService {
                         .build())
                 .collect(Collectors.toList());
 
+        // Resolve effective testCode from Question's questionCode (the admin-entered Unique ID)
         String effectiveTestCode = null;
+        String effectiveTestName = null;
 
-        // Top Priority: Custom Question ID (questionCode, e.g. "JAVA-2") set on any question linked to this test
         if (set.getTest() != null && set.getTest().getQuestions() != null) {
             for (Question q : set.getTest().getQuestions()) {
+                // Use the Question's questionCode as the authoritative Test ID
                 if (q.getQuestionCode() != null && !q.getQuestionCode().trim().isEmpty()) {
                     effectiveTestCode = q.getQuestionCode().trim().toUpperCase();
-                    break;
                 }
+                // Use the Question's title as the test name
+                if (q.getTitle() != null && !q.getTitle().trim().isEmpty()) {
+                    effectiveTestName = q.getTitle();
+                }
+                break; // One question per test in the new model
             }
         }
 
-        // Second Priority: Test Code set on BadgeSet or Test
-        if ((effectiveTestCode == null || effectiveTestCode.trim().isEmpty()) && set.getTestCode() != null && !set.getTestCode().trim().isEmpty()) {
-            effectiveTestCode = set.getTestCode().trim().toUpperCase();
+        // Fallback to stored testCode on the BadgeSet/Test
+        if (effectiveTestCode == null || effectiveTestCode.trim().isEmpty()) {
+            effectiveTestCode = set.getTestCode();
+        }
+        if (effectiveTestCode == null || effectiveTestCode.trim().isEmpty()) {
+            effectiveTestCode = set.getTest() != null ? set.getTest().getTestCode() : "N/A";
         }
 
-        if ((effectiveTestCode == null || effectiveTestCode.trim().isEmpty()) && set.getTest() != null && set.getTest().getTestCode() != null && !set.getTest().getTestCode().trim().isEmpty()) {
-            effectiveTestCode = set.getTest().getTestCode().trim().toUpperCase();
+        if (effectiveTestName == null || effectiveTestName.trim().isEmpty()) {
+            effectiveTestName = (set.getTest() != null && set.getTest().getName() != null)
+                    ? set.getTest().getName() : set.getName();
         }
-
-        // Fallback: Subject name prefix + Test ID
-        if (effectiveTestCode == null || effectiveTestCode.trim().isEmpty() || effectiveTestCode.startsWith("TEST-")) {
-            String subName = set.getSubject() != null ? set.getSubject().getName() : (set.getTest() != null && set.getTest().getSubject() != null ? set.getTest().getSubject().getName() : "JAVA");
-            String prefix = subName.replaceAll("[^a-zA-Z]", "").toUpperCase();
-            if (prefix.length() > 6) prefix = prefix.substring(0, 6);
-            if (prefix.isEmpty()) prefix = "JAVA";
-            effectiveTestCode = prefix + "-" + String.format("%03d", (set.getTest() != null ? set.getTest().getId() : set.getId()));
-        }
-
-        String effectiveTestName = (set.getTest() != null && set.getTest().getName() != null && !set.getTest().getName().trim().isEmpty())
-                ? set.getTest().getName()
-                : "";
 
         return BadgeSetDto.builder()
                 .id(set.getId())

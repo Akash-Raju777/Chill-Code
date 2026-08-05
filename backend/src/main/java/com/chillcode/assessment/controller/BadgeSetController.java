@@ -75,4 +75,10 @@ public class BadgeSetController {
     public ResponseEntity<List<StudentAchievementDto>> getAllStudentAchievements() {
         return ResponseEntity.ok(badgeSetService.getAllStudentAchievements());
     }
+
+    @GetMapping("/admin/badge-sets/{id}/winners")
+    @PreAuthorize("hasRole('ADMIN')")
+    public ResponseEntity<List<StudentAchievementDto>> getBadgeSetWinners(@PathVariable Long id) {
+        return ResponseEntity.ok(badgeSetService.getBadgeSetWinners(id));
+    }
 }
