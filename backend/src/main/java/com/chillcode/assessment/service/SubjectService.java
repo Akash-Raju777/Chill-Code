@@ -97,6 +97,9 @@ public class SubjectService {
     @Autowired
     private com.chillcode.assessment.repository.StudentQuestionStatusRepository studentQuestionStatusRepository;
 
+    @Autowired
+    private com.chillcode.assessment.repository.StudentBadgeRepository studentBadgeRepository;
+
     @jakarta.persistence.PersistenceContext
     private jakarta.persistence.EntityManager entityManager;
 
@@ -201,76 +204,171 @@ public class SubjectService {
         Subject subject = subjectRepository.findById(subjectId)
                 .orElseThrow(() -> new RuntimeException("Subject not found with id: " + subjectId));
 
-        java.util.List<com.chillcode.assessment.entity.Question> questions = questionRepository.findBySubjectId(subjectId);
-        long questionsCount = questions.size();
-
         java.util.List<com.chillcode.assessment.entity.Test> tests = testRepository.findBySubjectId(subjectId);
 
+        java.util.List<com.chillcode.assessment.entity.Question> subjectQuestions = questionRepository.findBySubjectId(subjectId);
+        subjectQuestions.sort(java.util.Comparator.comparing(com.chillcode.assessment.entity.Question::getTitle)); // Sort questions alphabetically
+
+        long questionsCount = subjectQuestions.size();
+
+        // Feed active questions into the testDtos list for the frontend dropdown
+        java.util.List<com.chillcode.assessment.dto.SubjectStatsDto.TestDto> testDtos = subjectQuestions.stream()
+                .map(q -> new com.chillcode.assessment.dto.SubjectStatsDto.TestDto(q.getId(), q.getTitle()))
+                .collect(java.util.stream.Collectors.toList());
+
+        java.util.List<com.chillcode.assessment.entity.User> students = userRepository.findAll().stream()
+                .filter(u -> u.getRole() == com.chillcode.assessment.entity.Role.STUDENT)
+                .collect(java.util.stream.Collectors.toList());
+
+        java.util.Set<Long> assignedStudentIds = new java.util.HashSet<>();
+        java.util.Set<Long> attendedStudentIds = new java.util.HashSet<>();
+        java.util.Set<Long> passedStudentIds = new java.util.HashSet<>();
         int totalScore = 0;
         int studentTestCount = 0;
-        int passedCount = 0;
-        double rankScore = 0.0;
-        String rankHolder = "N/A";
-        long attendedCount = 0;
-        long notAttendedCount = 0;
+        
+        java.util.Map<Long, Integer> studentTotalScores = new java.util.HashMap<>();
         java.util.List<com.chillcode.assessment.dto.SubjectStatsDto.StudentMarkDto> studentMarks = new java.util.ArrayList<>();
 
         for (com.chillcode.assessment.entity.Test test : tests) {
             java.util.List<com.chillcode.assessment.entity.StudentTest> studentTests = studentTestRepository.findByTestId(test.getId());
             for (com.chillcode.assessment.entity.StudentTest st : studentTests) {
-                com.chillcode.assessment.entity.User student = st.getStudent();
-                String studentName = student != null ? student.getName() : "Unknown";
+                Long sId = st.getStudent().getId();
+                assignedStudentIds.add(sId);
+
+                // Consider attended if status is not ASSIGNED or has started
+                if (!"ASSIGNED".equals(st.getStatus()) || st.getStartedAt() != null) {
+                    attendedStudentIds.add(sId);
+                }
+
                 int score = st.getScore() != null ? st.getScore() : 0;
                 int maxMarks = test.getMaxMarks() != null ? test.getMaxMarks() : 100;
+                
+                studentTestCount++;
+                totalScore += score;
+                studentTotalScores.put(sId, studentTotalScores.getOrDefault(sId, 0) + score);
+                
+                if (score >= maxMarks * 0.4) {
+                    passedStudentIds.add(sId);
+                }
+            }
+        } // End of tests loop for metrics
 
-                if ("SUBMITTED".equals(st.getStatus()) || "EVALUATED".equals(st.getStatus()) || "COMPLETED".equals(st.getStatus()) || "PENDING".equals(st.getStatus())) {
-                    attendedCount++;
-                    String status = (score >= maxMarks * 0.4) ? "PASSED" : "FAILED";
-                    if (score > rankScore) {
-                        rankScore = score;
-                        rankHolder = studentName;
+        // Pre-fetch data for all students to avoid N+1 queries
+        java.util.Map<Long, java.util.List<com.chillcode.assessment.entity.StudentTest>> stByStudent = new java.util.HashMap<>();
+        java.util.List<com.chillcode.assessment.entity.StudentTest> allStudentTestsForTests = new java.util.ArrayList<>();
+        for (com.chillcode.assessment.entity.Test test : tests) {
+            allStudentTestsForTests.addAll(studentTestRepository.findByTestId(test.getId()));
+        }
+        for (com.chillcode.assessment.entity.StudentTest st : allStudentTestsForTests) {
+            if (st.getStudent() != null) {
+                stByStudent.computeIfAbsent(st.getStudent().getId(), k -> new java.util.ArrayList<>()).add(st);
+            }
+        }
+
+        java.util.Map<Long, java.util.List<com.chillcode.assessment.entity.Submission>> subsByStudent = new java.util.HashMap<>();
+        java.util.Map<Long, java.util.List<com.chillcode.assessment.entity.StudentQuestionStatus>> sqsByStudent = new java.util.HashMap<>();
+        java.util.Map<Long, java.util.List<com.chillcode.assessment.entity.StudentBadge>> badgesByStudent = new java.util.HashMap<>();
+        
+        for (com.chillcode.assessment.entity.User student : students) {
+            Long sId = student.getId();
+            subsByStudent.put(sId, submissionRepository.findAllByStudentIdOrderByCreatedAtDesc(sId));
+            sqsByStudent.put(sId, studentQuestionStatusRepository.findByStudentId(sId));
+            badgesByStudent.put(sId, studentBadgeRepository.findByStudentId(sId));
+        }
+
+        // Loop over each Question once to avoid duplicates
+        for (com.chillcode.assessment.entity.Question question : subjectQuestions) {
+            java.util.List<Long> testIdsWithQuestion = tests.stream()
+                    .filter(t -> t.getQuestions() != null && t.getQuestions().contains(question))
+                    .map(com.chillcode.assessment.entity.Test::getId)
+                    .collect(java.util.stream.Collectors.toList());
+
+            if (testIdsWithQuestion.isEmpty()) continue;
+
+            for (com.chillcode.assessment.entity.User student : students) {
+                Long sId = student.getId();
+                
+                java.util.List<com.chillcode.assessment.entity.StudentTest> assignedTestRecords = stByStudent.getOrDefault(sId, java.util.Collections.emptyList())
+                        .stream().filter(st -> testIdsWithQuestion.contains(st.getTest().getId()))
+                        .collect(java.util.stream.Collectors.toList());
+
+                if (!assignedTestRecords.isEmpty()) {
+                    boolean hasAttended = assignedTestRecords.stream().anyMatch(st -> !"ASSIGNED".equals(st.getStatus()) || st.getStartedAt() != null);
+                    boolean hasMalpractice = assignedTestRecords.stream().anyMatch(st -> (st.getIsSuspended() != null && st.getIsSuspended()) || (st.getWarningsCount() != null && st.getWarningsCount() > 0));
+                    
+                    boolean hasPassed = false;
+                    if (hasAttended) {
+                        hasPassed = subsByStudent.getOrDefault(sId, java.util.Collections.emptyList()).stream()
+                                .filter(sub -> sub.getQuestion() != null && sub.getQuestion().getId().equals(question.getId()))
+                                .filter(sub -> sub.getActive() == null || sub.getActive())
+                                .anyMatch(sub -> "ACCEPTED".equals(sub.getStatus()));
                     }
-                    totalScore += score;
-                    studentTestCount++;
-                    if ("PASSED".equals(status)) {
-                        passedCount++;
+
+                    String resultStatus = "N/A";
+                    if (hasAttended) {
+                        resultStatus = hasPassed ? "Pass" : "Fail";
                     }
-                } else {
-                    notAttendedCount++;
+
+                    int attempts = 0;
+                    com.chillcode.assessment.entity.StudentQuestionStatus sqs = sqsByStudent.getOrDefault(sId, java.util.Collections.emptyList()).stream()
+                            .filter(s -> s.getQuestionId().equals(question.getId()))
+                            .findFirst().orElse(null);
+                    if (sqs != null && sqs.getAttemptCount() != null) {
+                        attempts = sqs.getAttemptCount();
+                    }
+
+                    java.util.List<com.chillcode.assessment.dto.BadgeDto> badgeDtos = new java.util.ArrayList<>();
+                    for (com.chillcode.assessment.entity.StudentBadge sb : badgesByStudent.getOrDefault(sId, java.util.Collections.emptyList())) {
+                        if (sb.getSourceTest() != null && testIdsWithQuestion.contains(sb.getSourceTest().getId())) {
+                            badgeDtos.add(com.chillcode.assessment.dto.BadgeDto.builder()
+                                    .id(sb.getBadge().getId())
+                                    .name(sb.getBadge().getName())
+                                    .icon(sb.getBadge().getIcon())
+                                    .description(sb.getBadge().getDescription())
+                                    .type(sb.getBadge().getType())
+                                    .build());
+                        }
+                    }
+
+                    String rollNo = student.getRegisterNumber() != null ? student.getRegisterNumber() : student.getUsername();
+
+                    studentMarks.add(new com.chillcode.assessment.dto.SubjectStatsDto.StudentMarkDto(
+                            question.getId(),
+                            question.getTitle(),
+                            student.getName(),
+                            rollNo,
+                            0, 
+                            100, 
+                            resultStatus,
+                            badgeDtos,
+                            subjectId, 
+                            "Subject Arena", 
+                            attempts,
+                            hasMalpractice ? "YES" : "NO"
+                    ));
                 }
             }
         }
 
-        // Populate question-wise results
-        java.util.List<com.chillcode.assessment.entity.User> students = userRepository.findAll().stream()
-                .filter(u -> u.getRole() == com.chillcode.assessment.entity.Role.STUDENT)
-                .collect(java.util.stream.Collectors.toList());
+        long attendedCount = attendedStudentIds.size();
+        long notAttendedCount = Math.max(0, assignedStudentIds.size() - attendedCount);
+        long passedCount = passedStudentIds.size();
 
-        for (com.chillcode.assessment.entity.Question question : questions) {
-            for (com.chillcode.assessment.entity.User student : students) {
-                List<Submission> studentSubs = submissionRepository.findAllByStudentIdOrderByCreatedAtDesc(student.getId());
-                boolean hasPassed = studentSubs.stream()
-                        .filter(sub -> sub.getQuestion() != null && sub.getQuestion().getId().equals(question.getId()))
-                        .filter(sub -> sub.getActive() == null || sub.getActive())
-                        .anyMatch(sub -> "ACCEPTED".equals(sub.getStatus()));
-                
-                String resultStatus = hasPassed ? "PASSED" : "FAILED";
-                String rollNo = student.getRegisterNumber() != null ? student.getRegisterNumber() : student.getUsername();
-                
-                studentMarks.add(new com.chillcode.assessment.dto.SubjectStatsDto.StudentMarkDto(
-                        question.getTitle(),
-                        student.getName(),
-                        rollNo,
-                        0,
-                        100,
-                        resultStatus
-                ));
+        String rankHolder = "N/A";
+        double rankScore = 0.0;
+        for (java.util.Map.Entry<Long, Integer> entry : studentTotalScores.entrySet()) {
+            if (entry.getValue() > rankScore) {
+                rankScore = entry.getValue();
+                com.chillcode.assessment.entity.User u = userRepository.findById(entry.getKey()).orElse(null);
+                if (u != null) {
+                    rankHolder = u.getName();
+                }
             }
         }
 
         double avgScore = studentTestCount > 0 ? (double) totalScore / studentTestCount : 0.0;
-        double passRate = studentTestCount > 0 ? (double) passedCount / studentTestCount * 100 : 0.0;
-        double failRate = studentTestCount > 0 ? 100.0 - passRate : 0.0;
+        double passRate = attendedCount > 0 ? (double) passedCount / attendedCount * 100 : 0.0;
+        double failRate = attendedCount > 0 ? 100.0 - passRate : 0.0;
 
         return new com.chillcode.assessment.dto.SubjectStatsDto(
                 questionsCount,
@@ -281,6 +379,7 @@ public class SubjectService {
                 rankScore,
                 attendedCount,
                 notAttendedCount,
+                testDtos,
                 studentMarks
         );
     }

@@ -29,6 +29,8 @@ export default function SubjectManagement() {
   const [selectedSubject, setSelectedSubject] = useState<Subject | null>(null);
   const [subjectStats, setSubjectStats] = useState<any>(null);
   const [statsLoading, setStatsLoading] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [selectedTestFilter, setSelectedTestFilter] = useState('All');
 
   const handleSelectSubject = async (sub: Subject) => {
     setSelectedSubject(sub);
@@ -36,6 +38,8 @@ export default function SubjectManagement() {
     try {
       const data = await apiCall(`/api/admin/subjects/${sub.id}/stats`);
       setSubjectStats(data);
+      setSearchQuery('');
+      setSelectedTestFilter('All');
     } catch (e) {
       console.error(e);
     } finally {
@@ -121,6 +125,23 @@ export default function SubjectManagement() {
   useEffect(() => {
     fetchSubjects(true);
   }, []);
+
+  useEffect(() => {
+    let interval: NodeJS.Timeout;
+    if (selectedSubject) {
+      interval = setInterval(async () => {
+        try {
+          const data = await apiCall(`/api/admin/subjects/${selectedSubject.id}/stats`);
+          setSubjectStats(data);
+        } catch (e) {
+          console.error('Failed to sync subject stats', e);
+        }
+      }, 5000);
+    }
+    return () => {
+      if (interval) clearInterval(interval);
+    };
+  }, [selectedSubject]);
 
   const handleCreate = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -330,14 +351,10 @@ export default function SubjectManagement() {
             {!statsLoading && subjectStats && (
               <div className="space-y-6">
                 {/* Metrics Cards row */}
-                <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                   <div className="bg-[#0b0c10] border border-white/5 p-4 rounded-xl">
                     <div className="text-[10px] text-gray-500 font-bold uppercase">Topics/Questions</div>
                     <div className="text-lg font-black text-white mt-1">{subjectStats.questionsCount}</div>
-                  </div>
-                  <div className="bg-[#0b0c10] border border-white/5 p-4 rounded-xl">
-                    <div className="text-[10px] text-gray-500 font-bold uppercase">Average Score</div>
-                    <div className="text-lg font-black text-white mt-1">{subjectStats.avgScore}</div>
                   </div>
                   <div className="bg-[#0b0c10] border border-white/5 p-4 rounded-xl">
                     <div className="text-[10px] text-gray-500 font-bold uppercase">Rank Holder</div>
@@ -369,7 +386,30 @@ export default function SubjectManagement() {
 
                 {/* Registry Table */}
                 <div className="space-y-3">
-                  <h3 className="text-xs font-bold text-white uppercase tracking-wider">Student Performance Registry</h3>
+                  <div className="flex justify-between items-center">
+                    <h3 className="text-xs font-bold text-white uppercase tracking-wider">Student Performance Registry</h3>
+                    <div className="flex items-center gap-3">
+                      <select
+                        value={selectedTestFilter}
+                        onChange={(e) => setSelectedTestFilter(e.target.value)}
+                        className="bg-[#0b0c10] border border-white/10 rounded-xl px-4 py-2 text-xs text-white focus:outline-none focus:border-indigo-500/50 appearance-none min-w-[150px]"
+                      >
+                        <option value="All">All Tests</option>
+                        {(subjectStats.tests || []).map((test: any) => (
+                          <option key={test.id} value={test.id.toString()}>{test.name}</option>
+                        ))}
+                      </select>
+                      <div className="relative w-64">
+                        <input 
+                          type="text"
+                          placeholder="Search student, roll no, or test..."
+                          value={searchQuery}
+                          onChange={(e) => setSearchQuery(e.target.value)}
+                          className="w-full bg-[#0b0c10] border border-white/10 rounded-xl px-4 py-2 text-xs text-white placeholder-gray-500 focus:outline-none focus:border-indigo-500/50"
+                        />
+                      </div>
+                    </div>
+                  </div>
                   <div className="bg-[#0b0c10] border border-white/5 rounded-xl overflow-hidden">
                     <table className="w-full text-left text-xs border-collapse">
                       <thead>
@@ -377,21 +417,66 @@ export default function SubjectManagement() {
                           <th className="p-3">Question Name</th>
                           <th className="p-3">Roll No</th>
                           <th className="p-3">Student Name</th>
+                          <th className="p-3 text-center">Attempts</th>
+                          <th className="p-3">Badges</th>
+                          <th className="p-3 text-center">Malpractice</th>
                           <th className="p-3">Result</th>
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-white/5 text-gray-400">
-                        {subjectStats.studentMarks.map((sm: any, idx: number) => (
+                        {(subjectStats.studentMarks || [])
+                          .filter((sm: any) => {
+                            if (selectedTestFilter !== 'All') {
+                              if (sm.questionId?.toString() !== selectedTestFilter) {
+                                return false;
+                              }
+                            }
+                            if (!searchQuery) return true;
+                            const query = searchQuery.toLowerCase();
+                            return (
+                              (sm.name && sm.name.toLowerCase().includes(query)) ||
+                              (sm.registerNumber && sm.registerNumber.toLowerCase().includes(query)) ||
+                              (sm.questionName && sm.questionName.toLowerCase().includes(query)) ||
+                              (sm.testName && sm.testName.toLowerCase().includes(query))
+                            );
+                          })
+                          .map((sm: any, idx: number) => (
                           <tr key={idx} className="hover:bg-white/5">
                             <td className="p-3 font-semibold text-white">{sm.questionName || 'N/A'}</td>
                             <td className="p-3 font-mono">{sm.registerNumber}</td>
                             <td className="p-3">{sm.name}</td>
+                            <td className="p-3 text-center font-bold text-gray-300">{sm.attempts}</td>
+                            <td className="p-3">
+                              {sm.badges && sm.badges.length > 0 ? (
+                                <div className="flex flex-col gap-1">
+                                  {sm.badges.map((b: any, bIdx: number) => (
+                                    <div key={bIdx} title={b.description} className="flex items-center gap-1.5 px-2 py-1 rounded-md bg-white/5 border border-white/10 w-fit">
+                                      <span className="text-[12px]">{b.icon || '🏅'}</span>
+                                      <div className="flex flex-col leading-tight">
+                                        <span className="text-[9px] font-bold text-gray-200">{b.name}</span>
+                                        <span className="text-[8px] text-gray-400 capitalize">{b.type ? b.type.toLowerCase().replace('_', ' ') : 'Award'}</span>
+                                      </div>
+                                    </div>
+                                  ))}
+                                </div>
+                              ) : (
+                                <span className="text-[10px] text-gray-600 font-bold ml-2">-</span>
+                              )}
+                            </td>
+                            <td className="p-3 text-center">
+                              {sm.malpractice === 'YES' ? (
+                                <span className="px-2 py-0.5 rounded bg-red-500/20 text-red-400 text-[10px] font-bold border border-red-500/30">YES</span>
+                              ) : (
+                                <span className="text-[10px] text-gray-500 font-bold">NO</span>
+                              )}
+                            </td>
                             <td className="p-3">
                               <span className={`px-2.5 py-0.5 rounded-full text-[9px] font-bold ${
-                                sm.status === 'PASSED' ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20' :
-                                'bg-red-500/10 text-red-400 border border-red-500/20'
+                                sm.status === 'Pass' ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20' :
+                                sm.status === 'Fail' ? 'bg-red-500/10 text-red-400 border border-red-500/20' :
+                                'bg-gray-500/10 text-gray-400 border border-gray-500/20'
                               }`}>
-                                {sm.status === 'PASSED' ? 'PASS' : 'FAIL'}
+                                {sm.status}
                               </span>
                             </td>
                           </tr>

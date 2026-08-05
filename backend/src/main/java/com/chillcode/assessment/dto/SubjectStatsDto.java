@@ -1,6 +1,7 @@
 package com.chillcode.assessment.dto;
 
 import java.util.List;
+import com.chillcode.assessment.dto.BadgeDto;
 
 public class SubjectStatsDto {
     private long questionsCount;
@@ -11,13 +12,14 @@ public class SubjectStatsDto {
     private double rankScore;
     private long attendedCount;
     private long notAttendedCount;
+    private List<TestDto> tests;
     private List<StudentMarkDto> studentMarks;
 
     public SubjectStatsDto() {}
 
     public SubjectStatsDto(long questionsCount, double avgScore, double passRate, double failRate, 
                            String rankHolder, double rankScore, long attendedCount, long notAttendedCount, 
-                           List<StudentMarkDto> studentMarks) {
+                           List<TestDto> tests, List<StudentMarkDto> studentMarks) {
         this.questionsCount = questionsCount;
         this.avgScore = avgScore;
         this.passRate = passRate;
@@ -26,6 +28,7 @@ public class SubjectStatsDto {
         this.rankScore = rankScore;
         this.attendedCount = attendedCount;
         this.notAttendedCount = notAttendedCount;
+        this.tests = tests;
         this.studentMarks = studentMarks;
     }
 
@@ -53,26 +56,69 @@ public class SubjectStatsDto {
     public long getNotAttendedCount() { return notAttendedCount; }
     public void setNotAttendedCount(long notAttendedCount) { this.notAttendedCount = notAttendedCount; }
 
+    public List<TestDto> getTests() { return tests; }
+    public void setTests(List<TestDto> tests) { this.tests = tests; }
+
     public List<StudentMarkDto> getStudentMarks() { return studentMarks; }
     public void setStudentMarks(List<StudentMarkDto> studentMarks) { this.studentMarks = studentMarks; }
 
+    public static class TestDto {
+        private Long id;
+        private String name;
+
+        public TestDto() {}
+
+        public TestDto(Long id, String name) {
+            this.id = id;
+            this.name = name;
+        }
+
+        public Long getId() { return id; }
+        public void setId(Long id) { this.id = id; }
+
+        public String getName() { return name; }
+        public void setName(String name) { this.name = name; }
+    }
+
     public static class StudentMarkDto {
+        private Long questionId;
         private String questionName;
         private String name;
         private String registerNumber;
         private int score;
         private int maxMarks;
         private String status;
+        private List<BadgeDto> badges;
+        private Long testId;
+        private String testName;
+        private int attempts;
+        private String malpractice;
 
         public StudentMarkDto() {}
 
-        public StudentMarkDto(String questionName, String name, String registerNumber, int score, int maxMarks, String status) {
+        public StudentMarkDto(Long questionId, String questionName, String name, String registerNumber, int score, int maxMarks, String status) {
+            this.questionId = questionId;
             this.questionName = questionName;
             this.name = name;
             this.registerNumber = registerNumber;
             this.score = score;
             this.maxMarks = maxMarks;
             this.status = status;
+        }
+
+        public StudentMarkDto(Long questionId, String questionName, String name, String registerNumber, int score, int maxMarks, String status, List<BadgeDto> badges, Long testId, String testName, int attempts, String malpractice) {
+            this.questionId = questionId;
+            this.questionName = questionName;
+            this.name = name;
+            this.registerNumber = registerNumber;
+            this.score = score;
+            this.maxMarks = maxMarks;
+            this.status = status;
+            this.badges = badges;
+            this.testId = testId;
+            this.testName = testName;
+            this.attempts = attempts;
+            this.malpractice = malpractice;
         }
 
         public StudentMarkDto(String name, String registerNumber, int score, int maxMarks, String status) {
@@ -83,6 +129,9 @@ public class SubjectStatsDto {
             this.maxMarks = maxMarks;
             this.status = status;
         }
+
+        public Long getQuestionId() { return questionId; }
+        public void setQuestionId(Long questionId) { this.questionId = questionId; }
 
         public String getQuestionName() { return questionName; }
         public void setQuestionName(String questionName) { this.questionName = questionName; }
@@ -101,5 +150,20 @@ public class SubjectStatsDto {
 
         public String getStatus() { return status; }
         public void setStatus(String status) { this.status = status; }
+
+        public List<BadgeDto> getBadges() { return badges; }
+        public void setBadges(List<BadgeDto> badges) { this.badges = badges; }
+
+        public Long getTestId() { return testId; }
+        public void setTestId(Long testId) { this.testId = testId; }
+
+        public String getTestName() { return testName; }
+        public void setTestName(String testName) { this.testName = testName; }
+
+        public int getAttempts() { return attempts; }
+        public void setAttempts(int attempts) { this.attempts = attempts; }
+
+        public String getMalpractice() { return malpractice; }
+        public void setMalpractice(String malpractice) { this.malpractice = malpractice; }
     }
 }
