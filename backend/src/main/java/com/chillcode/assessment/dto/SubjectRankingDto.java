@@ -23,4 +23,5 @@ public class SubjectRankingDto {
     private Long totalTimeTakenSeconds;
     private LocalDateTime lastSubmissionTime;
     private String badgeIcon; // 🥇, 🥈, 🥉
+    private String resultStatus;
 }

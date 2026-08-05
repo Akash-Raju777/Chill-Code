@@ -17,7 +17,8 @@ import {
   X,
   User as UserIcon,
   Megaphone,
-  MessageSquare
+  MessageSquare,
+  Trophy
 } from 'lucide-react';
 import Link from 'next/link';
 import BackendStatusBanner from '../../components/BackendStatusBanner';
@@ -53,6 +54,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
     { name: 'Dashboard', path: '/admin/dashboard', icon: LayoutDashboard },
     { name: 'Subject Management', path: '/admin/subjects', icon: BookOpen },
     { name: 'Question Management', path: '/admin/questions', icon: Code2 },
+    { name: 'Leaderboard', path: '/admin/leaderboard', icon: Trophy },
     { name: 'Badge Management', path: '/admin/badges', icon: Award },
     { name: 'Student Achievements', path: '/admin/achievements', icon: TrendingUp },
     { name: 'Send Instructions', path: '/admin/instructions', icon: Megaphone },

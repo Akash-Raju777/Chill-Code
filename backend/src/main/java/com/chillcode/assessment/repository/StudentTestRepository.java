@@ -18,5 +18,8 @@ public interface StudentTestRepository extends JpaRepository<StudentTest, Long> 
     // Eager-load student to avoid N+1 lazy loading in leaderboard
     @Query("SELECT st FROM StudentTest st JOIN FETCH st.student WHERE st.status IN ('SUBMITTED', 'EVALUATED', 'COMPLETED')")
     List<StudentTest> findAllCompletedWithStudents();
+
+    @Query("SELECT st FROM StudentTest st JOIN FETCH st.student JOIN FETCH st.test")
+    List<StudentTest> findAllWithStudents();
 }
 

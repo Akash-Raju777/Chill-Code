@@ -234,6 +234,7 @@ public class RankingService {
                 .totalTimeTakenSeconds(ranking.getTotalTimeTakenSeconds())
                 .lastSubmissionTime(ranking.getLastSubmissionTime())
                 .badgeIcon(icon)
+                .resultStatus(ranking.getTotalScore() > 0 ? "Pass" : "Not Attended")
                 .build();
     }
 

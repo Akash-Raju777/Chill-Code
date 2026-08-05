@@ -139,6 +139,10 @@ export const fetchTopSubjectRankings = (subjectId: number, limit = 10) => apiCal
 export const fetchOverallLeaderboard = (timeFilter = 'ALL', departmentFilter = 'ALL') => apiCall(`/api/student/leaderboard/overall?timeFilter=${timeFilter}&departmentFilter=${departmentFilter}`);
 export const fetchStudentLeaderboardSummary = () => apiCall('/api/student/leaderboard/summary');
 
+// Admin Analytics APIs
+export const fetchAdminAnalyticsOverview = () => apiCall('/api/admin/analytics/overview');
+export const fetchAdminAnalyticsCharts = () => apiCall('/api/admin/analytics/charts');
+
 /**
  * Format ISO/UTC date-time strings to Indian Standard Time (IST - Asia/Kolkata).
  */

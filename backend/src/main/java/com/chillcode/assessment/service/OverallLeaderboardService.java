@@ -40,7 +40,7 @@ public class OverallLeaderboardService {
             }
 
             // Use eager JOIN FETCH query to avoid N+1 lazy loading of student field
-            List<StudentTest> allStudentTests = studentTestRepository.findAllCompletedWithStudents();
+            List<StudentTest> allStudentTests = studentTestRepository.findAllWithStudents();
 
             List<OverallLeaderboardEntry> entries = new ArrayList<>();
 
@@ -50,9 +50,37 @@ public class OverallLeaderboardService {
                         .collect(Collectors.toList());
 
                 int totalMarks = myTests.stream().mapToInt(st -> st.getScore() != null ? st.getScore() : 0).sum();
+                
+                long testsAttempted = myTests.stream()
+                        .filter(st -> !"ASSIGNED".equalsIgnoreCase(st.getStatus()) || st.getStartedAt() != null)
+                        .count();
+                
                 long totalTestsPassed = myTests.stream()
                         .filter(st -> "PASS".equalsIgnoreCase(st.getPassFailStatus()) || "COMPLETED".equalsIgnoreCase(st.getStatus()))
                         .count();
+                        
+                long totalTestsFailed = Math.max(0, testsAttempted - totalTestsPassed);
+                long notAttended = Math.max(0, myTests.size() - testsAttempted);
+                double passPercentage = testsAttempted > 0 ? ((double) totalTestsPassed / testsAttempted) * 100 : 0.0;
+                
+                String resultStatus;
+                if (testsAttempted == 0) {
+                    resultStatus = "Not Attended";
+                } else if (passPercentage >= 50.0) {
+                    resultStatus = "Pass";
+                } else {
+                    resultStatus = "Fail";
+                }
+                
+                boolean hasMalpractice = myTests.stream().anyMatch(st -> (st.getIsSuspended() != null && st.getIsSuspended()) || (st.getWarningsCount() != null && st.getWarningsCount() > 0));
+                String malpracticeStr = hasMalpractice ? "YES" : "NO";
+                
+                java.time.LocalDateTime latestAttempt = myTests.stream()
+                        .map(st -> st.getSubmittedAt() != null ? st.getSubmittedAt() : st.getStartedAt())
+                        .filter(Objects::nonNull)
+                        .max(java.time.LocalDateTime::compareTo)
+                        .orElse(null);
+                String latestAttemptDate = latestAttempt != null ? latestAttempt.toString() : "N/A";
 
                 int totalBadges = 0;
                 try {
@@ -65,6 +93,14 @@ public class OverallLeaderboardService {
                 double avgTimeSec = myTests.isEmpty() ? 0.0 :
                         myTests.stream().mapToLong(st -> st.getTimeTakenSeconds() != null ? st.getTimeTakenSeconds() : 0L).average().orElse(0.0);
 
+                // Collect test names for this student
+                String testNames = myTests.stream()
+                        .filter(st -> st.getTest() != null && st.getTest().getName() != null)
+                        .map(st -> st.getTest().getName())
+                        .distinct()
+                        .collect(Collectors.joining(", "));
+                if (testNames.isEmpty()) testNames = "N/A";
+
                 entries.add(new OverallLeaderboardEntry(
                         student.getId(),
                         student.getName(),
@@ -72,13 +108,23 @@ public class OverallLeaderboardService {
                         student.getDepartment(),
                         totalMarks,
                         (int) totalTestsPassed,
+                        (int) totalTestsFailed,
+                        (int) testsAttempted,
+                        (int) notAttended,
                         totalBadges,
                         avgScore,
-                        avgTimeSec
+                        avgTimeSec,
+                        passPercentage,
+                        (int) testsAttempted, // Using testsAttempted for totalAttempts in this context
+                        latestAttemptDate,
+                        malpracticeStr,
+                        resultStatus,
+                        latestAttempt,
+                        testNames
                 ));
             }
 
-            // Sort priority: 1. Total Marks, 2. Total Tests Passed, 3. Total Badges, 4. Average Score, 5. Lowest Avg Completion Time
+            // Sort priority: 1. Highest Total Score, 2. Highest Tests Passed, 3. Lowest Avg Completion Time (internal), 4. Earliest Completion Time (internal)
             entries.sort((a, b) -> {
                 int scoreComp = Integer.compare(b.totalMarks, a.totalMarks);
                 if (scoreComp != 0) return scoreComp;
@@ -86,13 +132,18 @@ public class OverallLeaderboardService {
                 int passComp = Integer.compare(b.totalTestsPassed, a.totalTestsPassed);
                 if (passComp != 0) return passComp;
 
-                int badgeComp = Integer.compare(b.totalBadges, a.totalBadges);
-                if (badgeComp != 0) return badgeComp;
+                int avgTimeComp = Double.compare(a.avgTimeSec, b.avgTimeSec);
+                if (avgTimeComp != 0) return avgTimeComp;
 
-                int avgComp = Double.compare(b.avgScore, a.avgScore);
-                if (avgComp != 0) return avgComp;
+                if (a.latestAttemptRaw != null && b.latestAttemptRaw != null) {
+                    return a.latestAttemptRaw.compareTo(b.latestAttemptRaw);
+                } else if (a.latestAttemptRaw != null) {
+                    return -1;
+                } else if (b.latestAttemptRaw != null) {
+                    return 1;
+                }
 
-                return Double.compare(a.avgTimeSec, b.avgTimeSec);
+                return 0;
             });
 
             int rank = 1;
@@ -110,17 +161,23 @@ public class OverallLeaderboardService {
 
     public String generateCsvExport(List<OverallLeaderboardEntry> entries) {
         StringBuilder sb = new StringBuilder();
-        sb.append("Rank,Register Number,Student Name,Department,Total Marks,Tests Passed,Total Badges,Avg Score,Avg Time (s)\n");
+        sb.append("Rank,Register Number,Student Name,Department,Total Marks,Pass %,Tests Passed,Tests Failed,Tests Attempted,Not Attended,Total Attempts,Avg Time (s),Total Badges,Latest Attempt Date,Malpractice\n");
         for (OverallLeaderboardEntry e : entries) {
             sb.append(e.rankPosition).append(",")
               .append("\"").append(e.registerNumber != null ? e.registerNumber : "").append("\",")
               .append("\"").append(e.studentName != null ? e.studentName : "").append("\",")
               .append("\"").append(e.department != null ? e.department : "").append("\",")
               .append(e.totalMarks).append(",")
+              .append(String.format("%.2f", e.passPercentage)).append("%,")
               .append(e.totalTestsPassed).append(",")
+              .append(e.totalTestsFailed).append(",")
+              .append(e.testsAttempted).append(",")
+              .append(e.notAttended).append(",")
+              .append(e.totalAttempts).append(",")
+              .append(String.format("%.2f", e.avgTimeSec)).append(",")
               .append(e.totalBadges).append(",")
-              .append(String.format("%.2f", e.avgScore)).append(",")
-              .append(String.format("%.2f", e.avgTimeSec)).append("\n");
+              .append("\"").append(e.latestAttemptDate != null ? e.latestAttemptDate : "").append("\",")
+              .append("\"").append(e.malpractice != null ? e.malpractice : "NO").append("\"\n");
         }
         return sb.toString();
     }
@@ -133,20 +190,40 @@ public class OverallLeaderboardService {
         public String department;
         public int totalMarks;
         public int totalTestsPassed;
+        public int totalTestsFailed;
+        public int testsAttempted;
+        public int notAttended;
         public int totalBadges;
         public double avgScore;
         public double avgTimeSec;
+        public double passPercentage;
+        public int totalAttempts;
+        public String latestAttemptDate;
+        public String malpractice;
+        public String resultStatus;
+        public String testNames;
+        public transient java.time.LocalDateTime latestAttemptRaw;
 
-        public OverallLeaderboardEntry(Long studentId, String studentName, String registerNumber, String department, int totalMarks, int totalTestsPassed, int totalBadges, double avgScore, double avgTimeSec) {
+        public OverallLeaderboardEntry(Long studentId, String studentName, String registerNumber, String department, int totalMarks, int totalTestsPassed, int totalTestsFailed, int testsAttempted, int notAttended, int totalBadges, double avgScore, double avgTimeSec, double passPercentage, int totalAttempts, String latestAttemptDate, String malpractice, String resultStatus, java.time.LocalDateTime latestAttemptRaw, String testNames) {
             this.studentId = studentId;
             this.studentName = studentName;
             this.registerNumber = registerNumber;
             this.department = department;
             this.totalMarks = totalMarks;
             this.totalTestsPassed = totalTestsPassed;
+            this.totalTestsFailed = totalTestsFailed;
+            this.testsAttempted = testsAttempted;
+            this.notAttended = notAttended;
             this.totalBadges = totalBadges;
             this.avgScore = avgScore;
             this.avgTimeSec = avgTimeSec;
+            this.passPercentage = passPercentage;
+            this.totalAttempts = totalAttempts;
+            this.latestAttemptDate = latestAttemptDate;
+            this.malpractice = malpractice;
+            this.resultStatus = resultStatus;
+            this.latestAttemptRaw = latestAttemptRaw;
+            this.testNames = testNames;
         }
     }
 }
