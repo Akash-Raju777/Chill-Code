@@ -34,7 +34,8 @@ import {
   ChevronDown,
   Sparkles,
   Eye,
-  Lock
+  Lock,
+  Timer
 } from 'lucide-react';
 
 import Link from 'next/link';
@@ -202,7 +203,8 @@ function CodingWorkspaceInner() {
           }
 
           // Calculate remaining time
-          const totalSeconds = activeTest.test.durationMinutes * 60;
+          const baseMinutes = targetQuestions[0]?.timer || activeTest.test.durationMinutes || 60;
+          const totalSeconds = baseMinutes * 60;
           let remainingSeconds = totalSeconds;
           if (activeTest.startedAt) {
             const startTime = new Date(activeTest.startedAt).getTime();
@@ -311,12 +313,16 @@ function CodingWorkspaceInner() {
   // Set up Timer interval (without subscribing to time changes here to avoid re-renders)
   useEffect(() => {
     if (!mounted || !isSessionActive || isViewMode) return;
+    
+    // Turn off the timer only for security status off (NO_SECURITY)
+    if (user?.status === 'NO_SECURITY') return;
+
     const interval = setInterval(() => {
       decrementTime();
     }, 1000);
 
     return () => clearInterval(interval);
-  }, [mounted, isSessionActive, isViewMode, decrementTime]);
+  }, [mounted, isSessionActive, isViewMode, decrementTime, user?.status]);
 
   // Check Timer finish & warning checkpoints -> Auto submit & warnings
   const timerStartedRef = useRef<boolean>(false);
@@ -1040,6 +1046,12 @@ function CodingWorkspaceInner() {
         {/* Right Tools: Timer, Warnings, Submit */}
         <div className="flex items-center gap-6">
 
+          {/* Timer Display */}
+          <div className="flex items-center gap-2 px-3 py-1.5 bg-[#0b0c10] border border-white/5 rounded-xl">
+            <Timer className="w-3.5 h-3.5 text-gray-400" />
+            <TimerDisplay isViewMode={isViewMode} userStatus={user?.status} />
+          </div>
+
           {/* Security Status Indicator */}
           <div className="flex items-center gap-2 px-3 py-1.5 bg-[#0b0c10] border border-white/5 rounded-xl">
             <span className="text-[10px] text-gray-500 uppercase font-bold tracking-wider">
@@ -1093,6 +1105,11 @@ function CodingWorkspaceInner() {
                 <span className="text-[10px] font-bold px-2 py-0.5 rounded-md bg-white/5 text-gray-400">
                   Attempts: {currentQuestion.attemptCount ?? 0}
                 </span>
+                {currentQuestion.timer && (
+                  <span className="text-[10px] font-bold px-2 py-0.5 rounded-md bg-indigo-500/10 text-indigo-400 border border-indigo-500/20">
+                    ⏱ {currentQuestion.timer} Mins Limit
+                  </span>
+                )}
                 <h2 className="text-2xl font-bold text-white leading-tight font-sans">
                   {currentQuestion.title}
                 </h2>
@@ -1568,7 +1585,7 @@ export default function CodingWorkspace() {
   );
 }
 
-const TimerDisplay = React.memo(function TimerDisplay({ isViewMode }: { isViewMode: boolean }) {
+const TimerDisplay = React.memo(function TimerDisplay({ isViewMode, userStatus }: { isViewMode: boolean, userStatus?: string }) {
   const timeLeftSeconds = useTestStore((s) => s.timeLeftSeconds);
 
   const formatTime = (secs: number) => {
@@ -1580,7 +1597,7 @@ const TimerDisplay = React.memo(function TimerDisplay({ isViewMode }: { isViewMo
 
   return (
     <span className={`font-mono text-sm font-bold ${!isViewMode && timeLeftSeconds < 300 ? 'text-red-400 animate-pulse' : 'text-white'}`}>
-      {isViewMode ? 'COMPLETED' : formatTime(timeLeftSeconds)}
+      {isViewMode ? 'COMPLETED' : (userStatus === 'NO_SECURITY' ? 'NO TIME LIMIT' : formatTime(timeLeftSeconds))}
     </span>
   );
 });

@@ -286,7 +286,7 @@ export default function TestsWorkspace() {
         updatedSt.id,
         selectedQuestion.title,
         [selectedQuestion],
-        selectedTest.test.durationMinutes,
+        selectedQuestion.timer || selectedTest.test.durationMinutes,
         false, // isViewMode = false
         selectedTest.test.securityShieldEnabled ?? false
       );

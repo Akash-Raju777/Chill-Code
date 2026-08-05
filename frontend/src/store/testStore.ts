@@ -20,6 +20,7 @@ interface Question {
   tags?: string;
   testCases: TestCase[];
   attemptCount?: number;
+  timer?: number;
 }
 
 interface TestState {
