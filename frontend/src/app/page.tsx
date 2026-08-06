@@ -297,40 +297,10 @@ export default function LoginPage() {
               </FloatingChip>
             </div>
 
-            {/* Stats row */}
-            <div className="flex gap-8 mt-10">
-              <div>
-                <p className="text-2xl font-bold text-white">120<span className="text-cyan-400 text-lg">+</span></p>
-                <p className="text-[11px] text-gray-500 uppercase tracking-wider">Live test papers</p>
-              </div>
-              <div>
-                <p className="text-2xl font-bold text-white">12<span className="text-cyan-400 text-lg">K+</span></p>
-                <p className="text-[11px] text-gray-500 uppercase tracking-wider">Students enrolled</p>
-              </div>
-              <div>
-                <p className="text-2xl font-bold text-white">99<span className="text-cyan-400 text-lg">.9%</span></p>
-                <p className="text-[11px] text-gray-500 uppercase tracking-wider">Uptime last term</p>
-              </div>
-            </div>
 
-            {/* Rank badge */}
-            <div className="mt-6">
-              <span className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 text-xs font-semibold">
-                <Sparkles className="w-3 h-3" />
-                rank #42 • 98.4%
-              </span>
-            </div>
           </div>
 
-          {/* Bottom — footer */}
-          <div className="flex items-center justify-between text-[11px] text-gray-600">
-            <span>© 2026 ChillCode · Department of Examinations</span>
-            <div className="flex gap-4">
-              <span className="hover:text-gray-400 cursor-pointer transition-colors">Support</span>
-              <span className="hover:text-gray-400 cursor-pointer transition-colors">Privacy</span>
-              <span className="hover:text-gray-400 cursor-pointer transition-colors">Terms</span>
-            </div>
-          </div>
+
         </div>
       </section>
 
@@ -581,11 +551,7 @@ export default function LoginPage() {
             )}
           </div>
 
-          {/* Security footer */}
-          <div className="flex items-center justify-center gap-1.5 mt-6 text-[11px] text-gray-600">
-            <Shield className="w-3 h-3" />
-            <span>Secure 256-bit encrypted session · For authorized students only</span>
-          </div>
+
         </div>
       </section>
 
