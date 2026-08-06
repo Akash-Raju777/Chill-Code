@@ -180,21 +180,7 @@ export default function AdminLeaderboardPage() {
         </div>
       </div>
 
-      {/* Analytics Overview Cards */}
-      {analyticsStats && (
-        <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-5 gap-4">
-          <StatCard icon={<Users />} title="Total Students" value={analyticsStats.totalStudents} color="blue" />
-          <StatCard icon={<BookOpen />} title="Total Tests" value={analyticsStats.totalTests} color="purple" />
-          <StatCard icon={<Activity />} title="Total Attempts" value={analyticsStats.totalAttempts} color="indigo" />
-          <StatCard icon={<CheckCircle />} title="Passed" value={analyticsStats.totalPassed} color="emerald" />
-          <StatCard icon={<XCircle />} title="Failed" value={analyticsStats.totalFailed} color="red" />
-          <StatCard icon={<AlertTriangle />} title="Not Attended" value={analyticsStats.totalNotAttended} color="orange" />
-          <StatCard icon={<TrendingUp />} title="Pass Rate" value={`${analyticsStats.overallPassRate}%`} color="emerald" />
-          <StatCard icon={<TrendingUp />} title="Fail Rate" value={`${analyticsStats.overallFailRate}%`} color="red" />
-          <StatCard icon={<Award />} title="Badges Awarded" value={analyticsStats.totalBadgesAwarded} color="amber" />
-          <StatCard icon={<User />} title="Active Today" value={analyticsStats.activeStudentsToday} color="cyan" />
-        </div>
-      )}
+
 
       {/* Leaderboard Controls */}
       <div className="bg-[#11131c] border border-white/10 p-4 rounded-2xl flex flex-col lg:flex-row gap-4 items-center justify-between">
