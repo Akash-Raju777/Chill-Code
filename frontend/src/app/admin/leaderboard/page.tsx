@@ -374,7 +374,7 @@ function StatCard({ icon, title, value, color }: { icon: React.ReactNode, title:
     <div className={`bg-gradient-to-br ${bgGradient} border border-white/5 p-4 rounded-2xl flex flex-col justify-between hover:scale-[1.02] transition-transform`}>
       <div className="flex items-center justify-between mb-3">
         <div className={`w-8 h-8 rounded-lg bg-white/5 flex items-center justify-center ${textColor}`}>
-          {React.cloneElement(icon as React.ReactElement, { className: 'w-4 h-4' })}
+          {React.cloneElement(icon as React.ReactElement<{ className?: string }>, { className: 'w-4 h-4' })}
         </div>
       </div>
       <div>
