@@ -941,6 +941,7 @@ public class CodeExecutionService {
 
     private String getCompilerExecutable(String defaultCmd) {
         if (System.getProperty("os.name").toLowerCase().contains("win")) {
+            // Windows: check bundled w64devkit first
             String userDir = System.getProperty("user.dir");
             File localW64 = new File(userDir, "tools/w64devkit/bin/" + defaultCmd + ".exe");
             if (localW64.exists()) {
@@ -954,9 +955,38 @@ public class CodeExecutionService {
             if (hardcodedW64.exists()) {
                 return hardcodedW64.getAbsolutePath();
             }
+            // Try system PATH on Windows
+            try {
+                Process p = new ProcessBuilder("where.exe", defaultCmd).start();
+                boolean done = p.waitFor(3, java.util.concurrent.TimeUnit.SECONDS);
+                if (done && p.exitValue() == 0) {
+                    String path = new String(p.getInputStream().readAllBytes(), StandardCharsets.UTF_8).trim().split("\\r?\\n")[0];
+                    if (!path.isEmpty()) return path;
+                }
+            } catch (Exception ignored) {}
+        } else {
+            // Linux/Docker (Render, Railway, Heroku): check standard paths
+            File usrBin = new File("/usr/bin/" + defaultCmd);
+            if (usrBin.exists() && usrBin.canExecute()) {
+                return usrBin.getAbsolutePath();
+            }
+            File usrLocalBin = new File("/usr/local/bin/" + defaultCmd);
+            if (usrLocalBin.exists() && usrLocalBin.canExecute()) {
+                return usrLocalBin.getAbsolutePath();
+            }
+            // Try 'which' as last resort
+            try {
+                Process p = new ProcessBuilder("which", defaultCmd).start();
+                boolean done = p.waitFor(3, java.util.concurrent.TimeUnit.SECONDS);
+                if (done && p.exitValue() == 0) {
+                    String path = new String(p.getInputStream().readAllBytes(), StandardCharsets.UTF_8).trim();
+                    if (!path.isEmpty()) return path;
+                }
+            } catch (Exception ignored) {}
         }
         return defaultCmd;
     }
+
 
     private String getPythonExecutable() {
         if (System.getProperty("os.name").toLowerCase().contains("win")) {
@@ -967,9 +997,28 @@ public class CodeExecutionService {
             if (backendPy.exists()) return backendPy.getAbsolutePath();
             File hardcodedPy = new File("c:/Users/Administrator/Desktop/Chill-Code3/backend/tools/python/python.exe");
             if (hardcodedPy.exists()) return hardcodedPy.getAbsolutePath();
+            // Try system PATH
+            try {
+                Process p = new ProcessBuilder("where.exe", "python").start();
+                boolean done = p.waitFor(3, java.util.concurrent.TimeUnit.SECONDS);
+                if (done && p.exitValue() == 0) {
+                    String path = new String(p.getInputStream().readAllBytes(), StandardCharsets.UTF_8).trim().split("\\r?\\n")[0];
+                    if (!path.isEmpty()) return path;
+                }
+            } catch (Exception ignored) {}
+        } else {
+            // Linux/Docker: check standard paths
+            File python3 = new File("/usr/bin/python3");
+            if (python3.exists() && python3.canExecute()) return python3.getAbsolutePath();
+            File python3Local = new File("/usr/local/bin/python3");
+            if (python3Local.exists() && python3Local.canExecute()) return python3Local.getAbsolutePath();
+            // Symlink created by Dockerfile: /usr/bin/python -> python3
+            File python = new File("/usr/bin/python");
+            if (python.exists() && python.canExecute()) return python.getAbsolutePath();
         }
         return "python3";
     }
+
 
     private String getStatusDescription(int statusId) {
         switch (statusId) {
