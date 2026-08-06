@@ -2,6 +2,7 @@ package com.chillcode.assessment.service;
 
 import com.chillcode.assessment.dto.DashboardMetricsDto;
 import com.chillcode.assessment.entity.Role;
+import com.chillcode.assessment.entity.StudentTest;
 import com.chillcode.assessment.repository.*;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
@@ -68,23 +69,29 @@ public class AdminService {
 
         // Student participation chart using actual data
         List<Map<String, Object>> studentParticipation = new ArrayList<>();
-        testRepository.findAll().stream()
-                .filter(t -> studentTestRepository.findByTestId(t.getId()).size() > 0)
-                .limit(5)
-                .forEach(t -> {
-                    Map<String, Object> data = new HashMap<>();
-                    data.put("name", t.getName());
-                    long assigned = studentTestRepository.findByTestId(t.getId()).stream()
-                            .filter(st -> st.getStudent() != null && (com.chillcode.assessment.entity.UserStatus.ACTIVE.equals(st.getStudent().getStatus()) || com.chillcode.assessment.entity.UserStatus.NO_SECURITY.equals(st.getStudent().getStatus())))
-                            .count();
-                    long attended = studentTestRepository.findByTestId(t.getId()).stream()
-                            .filter(st -> st.getStudent() != null && (com.chillcode.assessment.entity.UserStatus.ACTIVE.equals(st.getStudent().getStatus()) || com.chillcode.assessment.entity.UserStatus.NO_SECURITY.equals(st.getStudent().getStatus())))
-                            .filter(st -> !"ASSIGNED".equals(st.getStatus()))
-                            .count();
-                    data.put("assigned", assigned);
-                    data.put("attended", attended);
-                    studentParticipation.add(data);
-                });
+        List<com.chillcode.assessment.entity.Test> allTestsList = testRepository.findAll();
+        for (com.chillcode.assessment.entity.Test t : allTestsList) {
+            if (studentParticipation.size() >= 5) break;
+            List<StudentTest> sts = studentTestRepository.findByTestId(t.getId());
+            if (sts != null && !sts.isEmpty()) {
+                long assigned = sts.stream()
+                        .filter(st -> st.getStudent() != null && 
+                                (com.chillcode.assessment.entity.UserStatus.ACTIVE.equals(st.getStudent().getStatus()) || 
+                                 com.chillcode.assessment.entity.UserStatus.NO_SECURITY.equals(st.getStudent().getStatus())))
+                        .count();
+                long attended = sts.stream()
+                        .filter(st -> st.getStudent() != null && 
+                                (com.chillcode.assessment.entity.UserStatus.ACTIVE.equals(st.getStudent().getStatus()) || 
+                                 com.chillcode.assessment.entity.UserStatus.NO_SECURITY.equals(st.getStudent().getStatus())))
+                        .filter(st -> !"ASSIGNED".equals(st.getStatus()))
+                        .count();
+                Map<String, Object> data = new HashMap<>();
+                data.put("name", t.getName());
+                data.put("assigned", assigned);
+                data.put("attended", attended);
+                studentParticipation.add(data);
+            }
+        }
 
         // Language wise performance chart calculated dynamically from database counts
         List<Map<String, Object>> languagePerformance = new ArrayList<>();
@@ -99,20 +106,20 @@ public class AdminService {
             languagePerformance.add(data);
         }
 
-        // Recent activity logs
+        // Recent activity logs (Top 5 latest warnings)
         List<Map<String, Object>> recentActivities = new ArrayList<>();
-        warningRepository.findAll().stream()
-                .sorted(Comparator.comparing(com.chillcode.assessment.entity.Warning::getTimestamp).reversed())
-                .limit(5)
-                .forEach(w -> {
-                    Map<String, Object> activity = new HashMap<>();
-                    activity.put("time", w.getTimestamp().toString());
-                    activity.put("user", w.getStudentTest().getStudent().getName());
-                    activity.put("registerNumber", w.getStudentTest().getStudent().getRegisterNumber());
-                    activity.put("details", "Triggered warning: " + w.getType() + " - " + w.getReason());
-                    activity.put("type", "warning");
-                    recentActivities.add(activity);
-                });
+        List<com.chillcode.assessment.entity.Warning> latestWarnings = warningRepository.findTop5ByOrderByTimestampDesc();
+        for (com.chillcode.assessment.entity.Warning w : latestWarnings) {
+            if (w.getStudentTest() != null && w.getStudentTest().getStudent() != null) {
+                Map<String, Object> activity = new HashMap<>();
+                activity.put("time", w.getTimestamp() != null ? w.getTimestamp().toString() : now.toString());
+                activity.put("user", w.getStudentTest().getStudent().getName());
+                activity.put("registerNumber", w.getStudentTest().getStudent().getRegisterNumber());
+                activity.put("details", "Triggered warning: " + w.getType() + " - " + w.getReason());
+                activity.put("type", "warning");
+                recentActivities.add(activity);
+            }
+        }
 
         if (recentActivities.isEmpty()) {
             Map<String, Object> sampleAct = new HashMap<>();

@@ -12,9 +12,11 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import java.util.stream.Collectors;
 
 @lombok.extern.slf4j.Slf4j
@@ -98,30 +100,42 @@ public class StudentService {
             subjectStatsList.add(subMap);
         }
 
-        // Calculate test counts based on valid student tests
-        long unattendedTestsCount = validMyTests.stream()
-                .filter(st -> "ASSIGNED".equals(st.getStatus()) && st.getStartedAt() == null)
-                .count();
-
-        long inProgressTestsCount = validMyTests.stream()
-                .filter(st -> st.getSubmittedAt() == null && 
-                             ("STARTED".equals(st.getStatus()) || "IN_PROGRESS".equals(st.getStatus()) || "SUSPENDED".equals(st.getStatus())))
-                .count();
-
-        long completedTestsCount = validMyTests.stream()
-                .filter(st -> st.getSubmittedAt() != null || 
-                             "COMPLETED".equals(st.getStatus()) || "SUBMITTED".equals(st.getStatus()) || "EVALUATED".equals(st.getStatus()))
-                .count();
-
-        long pendingTestsCount = validMyTests.stream()
-                .filter(st -> "PENDING".equals(st.getStatus()) || "FAIL".equalsIgnoreCase(st.getPassFailStatus()))
-                .count();
-
-        // Question counts matched with subject stats
-        long totalQuestionsCount = sumTotalQuestions;
+        // Calculate question-level status counts matching Practice Page categories
+        long totalQuestionsCount = sumTotalQuestions > 0 ? sumTotalQuestions : questionRepository.count();
         long completedQuestionsCount = sumCompletedQuestions;
 
-        // Calculate average score of all submitted/completed tests
+        // Fetch completed question IDs to exclude them from pending/unattended
+        List<Long> completedQIdsFromSqs = studentQuestionStatusRepository.findByStudentIdAndStatus(studentId, "COMPLETED")
+                .stream().map(com.chillcode.assessment.entity.StudentQuestionStatus::getQuestionId).collect(Collectors.toList());
+        List<Long> completedQIdsFromSub = submissionRepository.findSolvedQuestionIdsByStudentId(studentId);
+        
+        Set<Long> completedQIds = new HashSet<>();
+        if (completedQIdsFromSqs != null) completedQIds.addAll(completedQIdsFromSqs);
+        if (completedQIdsFromSub != null) completedQIds.addAll(completedQIdsFromSub);
+        if (completedQuestionsCount < completedQIds.size()) {
+            completedQuestionsCount = completedQIds.size();
+        }
+
+        // Pending = questions attempted but not yet completed
+        List<com.chillcode.assessment.entity.StudentQuestionStatus> allStudentStatuses = studentQuestionStatusRepository.findByStudentId(studentId);
+        Set<Long> pendingQIds = new HashSet<>();
+        for (com.chillcode.assessment.entity.StudentQuestionStatus sqs : allStudentStatuses) {
+            if (!completedQIds.contains(sqs.getQuestionId())) {
+                boolean hasAttempted = (sqs.getAttemptCount() != null && sqs.getAttemptCount() > 0) ||
+                        ("IN_PROGRESS".equals(sqs.getStatus()) || "FAILED".equals(sqs.getStatus()) ||
+                         "SUSPENDED".equals(sqs.getStatus()) || "PENDING".equals(sqs.getStatus()) ||
+                         "PENDING_REATTEMPT".equals(sqs.getStatus()));
+                if (hasAttempted && !"NOT_STARTED".equals(sqs.getStatus())) {
+                    pendingQIds.add(sqs.getQuestionId());
+                }
+            }
+        }
+        long pendingQuestionsCount = pendingQIds.size();
+
+        // Unattended = remaining unattempted questions
+        long unattendedQuestionsCount = Math.max(0, totalQuestionsCount - (completedQuestionsCount + pendingQuestionsCount));
+
+        // Calculate average score of all valid student tests
         double totalScore = validMyTests.stream()
                 .filter(st -> st.getSubmittedAt() != null || "SUBMITTED".equals(st.getStatus()) || "EVALUATED".equals(st.getStatus()) || "COMPLETED".equals(st.getStatus()))
                 .mapToInt(st -> st.getScore() != null ? st.getScore() : 0)
@@ -129,10 +143,10 @@ public class StudentService {
                 .orElse(0.0);
 
         Map<String, Object> stats = new HashMap<>();
-        stats.put("unattendedTests", unattendedTestsCount);
-        stats.put("completedTests", completedTestsCount);
-        stats.put("inProgressTests", inProgressTestsCount);
-        stats.put("pendingTests", pendingTestsCount);
+        stats.put("unattendedTests", unattendedQuestionsCount);
+        stats.put("completedTests", completedQuestionsCount);
+        stats.put("inProgressTests", pendingQuestionsCount);
+        stats.put("pendingTests", pendingQuestionsCount);
         stats.put("totalTests", validMyTests.size());
         stats.put("averageScore", Math.round(totalScore * 100.0) / 100.0);
         stats.put("totalQuestions", totalQuestionsCount);

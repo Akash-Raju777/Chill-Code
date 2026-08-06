@@ -9,4 +9,5 @@ import java.util.List;
 public interface WarningRepository extends JpaRepository<Warning, Long> {
     List<Warning> findByStudentTestId(Long studentTestId);
     long countByStudentTestId(Long studentTestId);
+    List<Warning> findTop5ByOrderByTimestampDesc();
 }
