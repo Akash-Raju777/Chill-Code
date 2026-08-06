@@ -72,7 +72,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
         <div className="p-6 border-b border-white/5 flex justify-between items-center">
           <div className="flex items-center gap-2.5">
             {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src="/logo.png" alt="Chill Code Logo" className="w-7 h-7 object-contain filter invert brightness-150 drop-shadow-[0_0_8px_rgba(124,58,237,0.5)]" />
+            <img src="/Logobg.png" alt="Chill Code Logo" className="w-14 h-14 object-contain" />
             <span className="text-xl font-bold tracking-tight text-white">
               Chill <span className="gradient-text">Code</span>
             </span>
@@ -156,3 +156,4 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
     </div>
   );
 }
+

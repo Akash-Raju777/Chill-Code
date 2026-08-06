@@ -116,7 +116,9 @@ export default function StudentLayout({ children }: { children: React.ReactNode 
           <div className="flex justify-between items-center">
             <Link href="/student/dashboard" className="flex items-center gap-2.5 text-indigo-400 font-bold text-xl tracking-wider">
               {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img src="/logo.png" alt="Chill Code Logo" className="w-7 h-7 object-contain filter invert brightness-150 drop-shadow-[0_0_8px_rgba(124,58,237,0.5)]" />
+              <div className="w-9 h-9 rounded-full overflow-hidden flex-shrink-0">
+                <img src="/Logobg.png" alt="Chill Code Logo" className="w-full h-full object-cover scale-100 object-center" />
+              </div>
               Chill Code
             </Link>
             <button className="md:hidden text-gray-400 hover:text-white" onClick={() => setSidebarOpen(false)}>
@@ -257,3 +259,4 @@ export default function StudentLayout({ children }: { children: React.ReactNode 
     </div>
   );
 }
+

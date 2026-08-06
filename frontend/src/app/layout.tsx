@@ -16,7 +16,9 @@ export const metadata: Metadata = {
   title: "Chill Code - AI Coding Assessment Platform",
   description: "AI Powered Coding Assessment and Evaluation Platform",
   icons: {
-    icon: "/logo.png",
+    icon: "/Logobg.png",
+    shortcut: "/Logobg.png",
+    apple: "/Logobg.png",
   },
 };
 

@@ -1026,7 +1026,9 @@ function CodingWorkspaceInner() {
           {/* Logo */}
           <div className="flex items-center gap-2">
             {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src="/logo.png" alt="Chill Code Logo" className="w-5 h-5 object-contain filter invert brightness-150 drop-shadow-[0_0_6px_rgba(139,92,246,0.5)]" />
+            <div className="w-8 h-8 rounded-full overflow-hidden flex-shrink-0">
+              <img src="/Logobg.png" alt="Chill Code Logo" className="w-full h-full object-cover scale-100 object-center" />
+            </div>
             <span className="text-base font-extrabold text-white font-sans tracking-tight">
               Chill <span className="text-[#8b5cf6]">Code</span>
             </span>
