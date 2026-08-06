@@ -53,6 +53,9 @@ public class BadgeSetService {
     @Autowired
     private SubjectRankingRepository subjectRankingRepository;
 
+    @Autowired
+    private QuestionService questionService;
+
     // --- Admin Badge Set CRUD ---
 
     @Transactional
@@ -182,18 +185,14 @@ public class BadgeSetService {
 
     @Transactional
     public List<BadgeSetDto> getAllBadgeSets() {
+        try {
+            questionService.cleanupOrphanedRecordsAndEmptyTests();
+        } catch (Exception ignored) {}
+
         List<BadgeSet> sets = badgeSetRepository.findAll();
-        
-        // Orphan cleanup: remove badge sets whose test has no questions (question was deleted)
         List<BadgeSet> validSets = new ArrayList<>();
         for (BadgeSet bs : sets) {
-            if (bs.getTest() == null || bs.getTest().getQuestions() == null || bs.getTest().getQuestions().isEmpty()) {
-                // Orphan badge set — delete it and its achievements
-                try {
-                    studentAchievementRepository.deleteByTestId(bs.getTest() != null ? bs.getTest().getId() : -1L);
-                } catch (Exception ignored) {}
-                badgeSetRepository.delete(bs);
-            } else {
+            if (bs.getTest() != null && bs.getTest().getQuestions() != null && !bs.getTest().getQuestions().isEmpty()) {
                 validSets.add(bs);
             }
         }
