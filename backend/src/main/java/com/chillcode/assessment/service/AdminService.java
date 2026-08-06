@@ -40,11 +40,11 @@ public class AdminService {
     public DashboardMetricsDto getDashboardMetrics() {
         long totalStudents = userRepository.countByRole(Role.STUDENT);
         long totalSubjects = subjectRepository.count();
-        long totalTests = testRepository.count();
+        long totalTests = testRepository.countAvailableTests();
         long totalQuestions = questionRepository.count();
 
         LocalDateTime now = LocalDateTime.now();
-        long todayActiveTests = testRepository.countActiveTests(now);
+        long todayActiveTests = testRepository.countActiveAvailableTests(now);
 
         long pendingEvaluations = studentTestRepository.countByStatus("SUBMITTED");
 
