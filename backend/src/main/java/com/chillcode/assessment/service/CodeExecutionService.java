@@ -219,7 +219,10 @@ public class CodeExecutionService {
                     } else { // Process finished successfully. Run comparison
                         String expectedOut = tc.getExpectedOutput();
                         tcResult.setActualOutput(stdout);
-                        if (expectedOut != null && !expectedOut.trim().isEmpty()) {
+                        
+                        boolean hasValidExpected = (expectedOut != null && !expectedOut.trim().isEmpty() && !"N/A".equalsIgnoreCase(expectedOut.trim()));
+                        
+                        if (hasValidExpected) {
                             boolean match = compareOutputs(expectedOut, stdout);
                             if (match) {
                                 tcResult.setStatus("PASSED");
@@ -245,8 +248,17 @@ public class CodeExecutionService {
                                 }
                             }
                         } else {
-                            tcResult.setStatus("FINISHED");
-                            tcResult.setMessage("Executed successfully");
+                            // No valid expected output present: mark as FAILED (Wrong Output) so incorrect outputs are never falsely accepted
+                            tcResult.setStatus("FAILED");
+                            tcResult.setMarksAwarded(0);
+                            tcResult.setMessage("Output verification failed: Output does not match expected result for given input.");
+                            overallVerdict = updateVerdict(overallVerdict, "WRONG_ANSWER");
+                            if (failedTestCaseIndex == -1) {
+                                failedTestCaseIndex = i + 1;
+                                firstFailedJudge0Status = "Wrong Answer";
+                                firstFailedExpected = "Valid expected output data";
+                                firstFailedActual = stdout;
+                            }
                         }
                     }
                 } catch (Exception e) {
@@ -1489,11 +1501,21 @@ public class CodeExecutionService {
 
     private String getExpectedOutputForCustomInput(List<TestCase> allTestCases, List<TestCase> sampleTestCases, String customInput, int index) {
         String matched = findMatchingExpectedOutput(allTestCases, customInput);
-        if (matched != null) {
+        if (matched != null && !matched.trim().isEmpty() && !"N/A".equalsIgnoreCase(matched.trim())) {
             return matched;
         }
         if (sampleTestCases != null && index < sampleTestCases.size()) {
-            return sampleTestCases.get(index).getExpectedOutput();
+            String sampleExp = sampleTestCases.get(index).getExpectedOutput();
+            if (sampleExp != null && !sampleExp.trim().isEmpty() && !"N/A".equalsIgnoreCase(sampleExp.trim())) {
+                return sampleExp;
+            }
+        }
+        if (allTestCases != null && !allTestCases.isEmpty()) {
+            for (TestCase tc : allTestCases) {
+                if (tc.getExpectedOutput() != null && !tc.getExpectedOutput().trim().isEmpty() && !"N/A".equalsIgnoreCase(tc.getExpectedOutput().trim())) {
+                    return tc.getExpectedOutput();
+                }
+            }
         }
         return null;
     }
