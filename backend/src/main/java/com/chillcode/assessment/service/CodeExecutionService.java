@@ -156,7 +156,9 @@ public class CodeExecutionService {
                 tcResult.setMarksAwarded(0);
 
                 try {
-                    JsonNode res = executeOnJudge0(request.getCode(), languageId, tc.getInputData(), null);
+                    String sanitizedInput = sanitizeInputData(tc.getInputData());
+                    tcResult.setInputData(sanitizedInput);
+                    JsonNode res = executeOnJudge0(request.getCode(), languageId, sanitizedInput, null);
                     int statusId = res.path("status").path("id").asInt();
 
                     double time = res.path("time").asDouble();
@@ -1481,6 +1483,41 @@ public class CodeExecutionService {
             return "Your code allocated more memory than allowed by the platform limits. Optimize your data structure allocations and check for memory leaks.";
         }
         return "An issue occurred during evaluation. Please inspect the logs to diagnose.";
+    }
+
+    private String sanitizeInputData(String inputData) {
+        if (inputData == null || inputData.trim().isEmpty()) {
+            return inputData;
+        }
+        try {
+            String clean = inputData.replace("\r\n", "\n").replace("\r", "\n").trim();
+            String[] lines = clean.split("\n");
+            if (lines.length >= 2) {
+                String firstLine = lines[0].trim();
+                // Check if first line is a single integer N
+                if (firstLine.matches("^\\d+$")) {
+                    int declaredN = Integer.parseInt(firstLine);
+                    List<String> tokens = new ArrayList<>();
+                    for (int i = 1; i < lines.length; i++) {
+                        String[] parts = lines[i].trim().split("\\s+");
+                        for (String p : parts) {
+                            if (!p.isEmpty()) {
+                                tokens.add(p);
+                            }
+                        }
+                    }
+                    if (!tokens.isEmpty() && declaredN != tokens.size()) {
+                        // Automatically adjust declared N to match the actual token count
+                        int actualN = tokens.size();
+                        StringBuilder sb = new StringBuilder();
+                        sb.append(actualN).append("\n");
+                        sb.append(String.join(" ", tokens));
+                        return sb.toString();
+                    }
+                }
+            }
+        } catch (Exception ignored) {}
+        return inputData;
     }
 
     private String findMatchingExpectedOutput(List<TestCase> allTestCases, String customInput) {
