@@ -471,23 +471,7 @@ export default function LoginPage() {
               </div>
             </div>
 
-            {/* Remember + Forgot */}
-            {!isRegister && (
-              <div className="flex items-center justify-between text-sm">
-                <label className="flex items-center gap-2 cursor-pointer text-gray-400 hover:text-gray-300 transition-colors">
-                  <input
-                    type="checkbox"
-                    checked={rememberMe}
-                    onChange={() => setRememberMe(!rememberMe)}
-                    className="login-checkbox"
-                  />
-                  Remember me
-                </label>
-                <button type="button" className="text-cyan-400 hover:text-cyan-300 font-medium transition-colors text-sm">
-                  Forgot password?
-                </button>
-              </div>
-            )}
+
 
             {/* Submit */}
             <button
