@@ -15,7 +15,7 @@ public interface SubjectRepository extends JpaRepository<Subject, Long> {
         "COUNT(DISTINCT q.id) AS total_count, " +
         "COUNT(DISTINCT CASE WHEN (sqs.status = 'COMPLETED' OR sub.question_id IS NOT NULL) THEN q.id END) AS completed_count " +
         "FROM subjects s " +
-        "JOIN questions q ON q.subject_id = s.id " +
+        "LEFT JOIN questions q ON q.subject_id = s.id " +
         "LEFT JOIN student_question_status sqs ON sqs.question_id = q.id AND sqs.student_id = :studentId " +
         "LEFT JOIN (" +
         "    SELECT DISTINCT sub_inner.question_id " +
@@ -23,7 +23,8 @@ public interface SubjectRepository extends JpaRepository<Subject, Long> {
         "    JOIN student_tests st_inner ON sub_inner.student_test_id = st_inner.id " +
         "    WHERE st_inner.student_id = :studentId AND (sub_inner.status = 'ACCEPTED' OR sub_inner.overall_result = 'PASS')" +
         ") sub ON sub.question_id = q.id " +
-        "GROUP BY s.id, s.name, s.color", 
+        "GROUP BY s.id, s.name, s.color " +
+        "ORDER BY s.id ASC", 
         nativeQuery = true)
     java.util.List<Object[]> getSubjectStatsForStudent(@org.springframework.data.repository.query.Param("studentId") Long studentId);
 }

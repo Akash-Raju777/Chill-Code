@@ -53,40 +53,15 @@ public class StudentService {
 
     @Transactional
     public Map<String, Object> getStudentDashboardStats(Long studentId) {
-        questionService.cleanupOrphanedRecordsAndEmptyTests();
-
-        com.chillcode.assessment.entity.User student = userRepository.findById(studentId)
-                .orElseThrow(() -> new RuntimeException("Student not found"));
-
-        List<StudentTest> myTests = studentTestRepository.findByStudentId(studentId);
-        java.util.Set<Long> existingTestIds = myTests.stream()
-                .map(st -> st.getTest().getId())
-                .collect(Collectors.toSet());
-
-        List<com.chillcode.assessment.entity.Test> allTests = testRepository.findAll();
-        boolean savedAny = false;
-        for (com.chillcode.assessment.entity.Test test : allTests) {
-            if (!existingTestIds.contains(test.getId()) && !studentTestRepository.existsByStudentIdAndTestId(studentId, test.getId())) {
-                try {
-                    com.chillcode.assessment.entity.StudentTest st = com.chillcode.assessment.entity.StudentTest.builder()
-                            .student(student)
-                            .test(test)
-                            .status("ASSIGNED")
-                            .score(0)
-                            .warningsCount(0)
-                            .isSuspended(false)
-                            .build();
-                    studentTestRepository.save(st);
-                    savedAny = true;
-                } catch (Exception e) {
-                    log.warn("StudentTest for studentId={} and testId={} already created concurrently: {}", studentId, test.getId(), e.getMessage());
-                }
-            }
+        // Fast one-pass native insert for any newly added tests
+        try {
+            studentTestRepository.assignMissingTestsForStudent(studentId);
+        } catch (Exception e) {
+            log.warn("Auto-assignment query skipped or already executed concurrently: {}", e.getMessage());
         }
 
-        if (savedAny) {
-            myTests = studentTestRepository.findByStudentId(studentId);
-        }
+        // Fetch student tests with eagerness for tests and questions
+        List<StudentTest> myTests = studentTestRepository.findByStudentIdWithTestAndQuestions(studentId);
 
         // Filter out tests that have 0 questions (e.g. after question deletion)
         List<StudentTest> validMyTests = myTests.stream()
@@ -106,7 +81,7 @@ public class StudentService {
             String color = (String) row[2];
             long total = ((Number) row[3]).longValue();
             long completed = ((Number) row[4]).longValue();
-            long incomplete = total - completed;
+            long incomplete = Math.max(0, total - completed);
 
             sumTotalQuestions += total;
             sumCompletedQuestions += completed;
@@ -125,24 +100,30 @@ public class StudentService {
 
         // Calculate test counts based on valid student tests
         long unattendedTestsCount = validMyTests.stream()
-                .filter(st -> "ASSIGNED".equals(st.getStatus()))
+                .filter(st -> "ASSIGNED".equals(st.getStatus()) && st.getStartedAt() == null)
                 .count();
 
         long inProgressTestsCount = validMyTests.stream()
-                .filter(st -> "STARTED".equals(st.getStatus()) || "IN_PROGRESS".equals(st.getStatus()) || "SUSPENDED".equals(st.getStatus()))
+                .filter(st -> st.getSubmittedAt() == null && 
+                             ("STARTED".equals(st.getStatus()) || "IN_PROGRESS".equals(st.getStatus()) || "SUSPENDED".equals(st.getStatus())))
                 .count();
 
         long completedTestsCount = validMyTests.stream()
-                .filter(st -> "COMPLETED".equals(st.getStatus()) || "SUBMITTED".equals(st.getStatus()) || "EVALUATED".equals(st.getStatus()) || "PENDING".equals(st.getStatus()))
+                .filter(st -> st.getSubmittedAt() != null || 
+                             "COMPLETED".equals(st.getStatus()) || "SUBMITTED".equals(st.getStatus()) || "EVALUATED".equals(st.getStatus()))
+                .count();
+
+        long pendingTestsCount = validMyTests.stream()
+                .filter(st -> "PENDING".equals(st.getStatus()) || "FAIL".equalsIgnoreCase(st.getPassFailStatus()))
                 .count();
 
         // Question counts matched with subject stats
-        long totalQuestionsCount = !subjectStatsList.isEmpty() ? sumTotalQuestions : questionRepository.count();
-        long completedQuestionsCount = !subjectStatsList.isEmpty() ? sumCompletedQuestions : 0;
+        long totalQuestionsCount = sumTotalQuestions;
+        long completedQuestionsCount = sumCompletedQuestions;
 
-        // Calculate average score of all valid student tests
+        // Calculate average score of all submitted/completed tests
         double totalScore = validMyTests.stream()
-                .filter(st -> "SUBMITTED".equals(st.getStatus()) || "EVALUATED".equals(st.getStatus()) || "COMPLETED".equals(st.getStatus()) || "PENDING".equals(st.getStatus()))
+                .filter(st -> st.getSubmittedAt() != null || "SUBMITTED".equals(st.getStatus()) || "EVALUATED".equals(st.getStatus()) || "COMPLETED".equals(st.getStatus()))
                 .mapToInt(st -> st.getScore() != null ? st.getScore() : 0)
                 .average()
                 .orElse(0.0);
@@ -151,13 +132,14 @@ public class StudentService {
         stats.put("unattendedTests", unattendedTestsCount);
         stats.put("completedTests", completedTestsCount);
         stats.put("inProgressTests", inProgressTestsCount);
+        stats.put("pendingTests", pendingTestsCount);
         stats.put("totalTests", validMyTests.size());
         stats.put("averageScore", Math.round(totalScore * 100.0) / 100.0);
         stats.put("totalQuestions", totalQuestionsCount);
         stats.put("completedQuestions", completedQuestionsCount);
         stats.put("subjectStats", subjectStatsList);
 
-        // Recent activity logs: fetch latest 5 submissions made by the student for existing questions
+        // Recent activity logs: fetch latest 5 submissions made by the student
         List<com.chillcode.assessment.entity.Submission> latestSubmissions = submissionRepository.findTop5ByStudentIdOrderByCreatedAtDesc(
                 studentId, org.springframework.data.domain.PageRequest.of(0, 5));
         List<String> activities = latestSubmissions.stream()

@@ -33,28 +33,42 @@ export default function StudentDashboard() {
   const [error, setError] = useState('');
   const { user } = useAuthStore();
 
-  const fetchDashboardData = async () => {
-    setLoading(true);
+  const fetchDashboardData = async (isSilent = false) => {
+    if (!isSilent) setLoading(true);
     try {
       const statsRes = await apiCall('/api/student/dashboard/stats');
       setStats(statsRes);
     } catch (err: any) {
-      setError('Failed to load dashboard metrics');
+      if (!isSilent) setError('Failed to load dashboard metrics');
     } finally {
-      setLoading(false);
+      if (!isSilent) setLoading(false);
     }
   };
 
   useEffect(() => {
     fetchDashboardData();
+
+    // Automatic synchronization on window focus or tab activation
+    const handleFocus = () => fetchDashboardData(true);
+    const handleVisibility = () => {
+      if (document.visibilityState === 'visible') fetchDashboardData(true);
+    };
+
+    window.addEventListener('focus', handleFocus);
+    document.addEventListener('visibilitychange', handleVisibility);
+
+    return () => {
+      window.removeEventListener('focus', handleFocus);
+      document.removeEventListener('visibilitychange', handleVisibility);
+    };
   }, []);
 
   if (loading) {
     return (
       <div className="space-y-6">
         <div className="h-8 w-48 bg-white/5 rounded-lg animate-pulse" />
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-          {[...Array(3)].map((_, i) => (
+        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4">
+          {[...Array(4)].map((_, i) => (
             <div key={i} className="h-28 bg-white/5 rounded-xl animate-pulse" />
           ))}
         </div>
@@ -70,7 +84,7 @@ export default function StudentDashboard() {
     return (
       <div className="glass-panel p-6 rounded-xl border border-red-500/20 text-center space-y-4">
         <p className="text-red-400 font-semibold">{error}</p>
-        <button onClick={fetchDashboardData} className="px-4 py-2 bg-indigo-600 rounded-lg text-white text-sm">
+        <button onClick={() => fetchDashboardData()} className="px-4 py-2 bg-indigo-600 rounded-lg text-white text-sm">
           Refresh
         </button>
       </div>
@@ -82,6 +96,7 @@ export default function StudentDashboard() {
   const cardData = [
     { label: 'Unattended Tests', value: stats.unattendedTests ?? 0, icon: BookOpen, color: 'text-indigo-400', bg: 'bg-indigo-500/10', sub: 'Not started yet' },
     { label: 'In Progress', value: stats.inProgressTests ?? 0, icon: Timer, color: 'text-amber-400', bg: 'bg-amber-500/10', sub: 'Currently active' },
+    { label: 'Completed Tests', value: stats.completedTests ?? 0, icon: CheckSquare, color: 'text-emerald-400', bg: 'bg-emerald-500/10', sub: 'Submitted attempts' },
     { label: 'Questions Solved', value: `${stats.completedQuestions ?? 0}/${stats.totalQuestions ?? 0}`, icon: Sparkles, color: 'text-purple-400', bg: 'bg-purple-500/10', sub: 'Problems completed' },
   ];
 
@@ -94,7 +109,7 @@ export default function StudentDashboard() {
       </div>
 
       {/* Cards Row */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4">
         {cardData.map((card) => {
           const Icon = card.icon;
           return (
