@@ -136,7 +136,12 @@ export default function AdminDashboard() {
       message: 'Are you sure you want to forgive all listed security warnings for all students at once?',
       onConfirm: async () => {
         const studentKeys = Array.from(
-          new Set(data.recentActivities.map(act => act.registerNumber || act.user).filter(Boolean))
+          new Set(
+            data.recentActivities
+              .filter(act => act.user !== 'System Admin' && act.type !== 'info')
+              .map(act => act.registerNumber || act.user)
+              .filter(Boolean)
+          )
         );
 
         for (const key of studentKeys) {
@@ -521,18 +526,26 @@ export default function AdminDashboard() {
                       </div>
                       <p className="text-gray-400 text-xs">{act.details}</p>
 
-                      <div className="mt-2.5 flex items-center justify-between border-t border-white/5 pt-2">
-                        <span className="text-[10px] text-red-400 font-semibold uppercase tracking-wider flex items-center gap-1">
-                          <span className="w-1.5 h-1.5 rounded-full bg-red-400 animate-ping"></span>
-                          Security Violation Recorded
-                        </span>
-                        <button
-                          onClick={() => handleForgive(act.registerNumber || act.user, act.user)}
-                          className="px-3 py-1 text-[10px] bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400 border border-emerald-500/20 rounded-lg font-bold transition-all uppercase tracking-wider select-none cursor-pointer"
-                        >
-                          Forgive Student
-                        </button>
-                      </div>
+                      {act.user !== 'System Admin' && act.type !== 'info' ? (
+                        <div className="mt-2.5 flex items-center justify-between border-t border-white/5 pt-2">
+                          <span className="text-[10px] text-red-400 font-semibold uppercase tracking-wider flex items-center gap-1">
+                            <span className="w-1.5 h-1.5 rounded-full bg-red-400 animate-ping"></span>
+                            Security Violation Recorded
+                          </span>
+                          <button
+                            onClick={() => handleForgive(act.registerNumber || act.user, act.user)}
+                            className="px-3 py-1 text-[10px] bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400 border border-emerald-500/20 rounded-lg font-bold transition-all uppercase tracking-wider select-none cursor-pointer"
+                          >
+                            Forgive Student
+                          </button>
+                        </div>
+                      ) : (
+                        <div className="mt-2.5 flex items-center justify-between border-t border-white/5 pt-2">
+                          <span className="text-[10px] text-indigo-400 font-semibold uppercase tracking-wider flex items-center gap-1">
+                            System Activity Logged
+                          </span>
+                        </div>
+                      )}
                     </div>
                   </div>
                 ))}

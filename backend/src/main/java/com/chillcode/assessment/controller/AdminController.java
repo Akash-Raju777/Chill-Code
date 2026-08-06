@@ -148,7 +148,7 @@ public class AdminController {
                     .findFirst();
         }
         if (studentOpt.isEmpty()) {
-            return ResponseEntity.badRequest().body("Student not found with register number/name: " + registerNumber);
+            return ResponseEntity.ok("No student security logs found to forgive for: " + registerNumber);
         }
 
         User student = studentOpt.get();
