@@ -37,6 +37,9 @@ public class AdminController {
     @Autowired
     private com.chillcode.assessment.repository.StudentQuestionStatusRepository studentQuestionStatusRepository;
 
+    @jakarta.persistence.PersistenceContext
+    private jakarta.persistence.EntityManager entityManager;
+
     @GetMapping("/dashboard")
     public ResponseEntity<DashboardMetricsDto> getDashboardMetrics() {
         return ResponseEntity.ok(adminService.getDashboardMetrics());
@@ -133,6 +136,7 @@ public class AdminController {
     }
 
     @PostMapping("/student/forgive")
+    @org.springframework.transaction.annotation.Transactional
     public ResponseEntity<?> forgiveStudent(@RequestParam String registerNumber) {
         java.util.Optional<User> studentOpt = userRepository.findByRegisterNumber(registerNumber);
         if (studentOpt.isEmpty()) {
@@ -154,15 +158,14 @@ public class AdminController {
         student.setSuspensionEndTime(null);
         userRepository.save(student);
 
-        // Find all student tests for this student, delete their warnings, and reset their suspension state
+        // Delete all warnings permanently from database for this student
+        entityManager.createQuery("DELETE FROM Warning w WHERE w.studentTest.student.id = :stuId")
+                .setParameter("stuId", student.getId())
+                .executeUpdate();
+
+        // Reset student tests suspension flags
         java.util.List<com.chillcode.assessment.entity.StudentTest> studentTests = studentTestRepository.findByStudentId(student.getId());
         for (com.chillcode.assessment.entity.StudentTest st : studentTests) {
-            // Delete warnings from Warning table so they disappear from the admin dashboard activities feed
-            java.util.List<com.chillcode.assessment.entity.Warning> warnings = warningRepository.findByStudentTestId(st.getId());
-            if (warnings != null && !warnings.isEmpty()) {
-                warningRepository.deleteAll(warnings);
-            }
-
             st.setWarningsCount(0);
             st.setIsSuspended(false);
             if ("SUSPENDED".equals(st.getStatus())) {
