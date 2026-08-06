@@ -156,9 +156,7 @@ public class CodeExecutionService {
                 tcResult.setMarksAwarded(0);
 
                 try {
-                    String sanitizedInput = sanitizeInputData(tc.getInputData());
-                    tcResult.setInputData(sanitizedInput);
-                    JsonNode res = executeOnJudge0(request.getCode(), languageId, sanitizedInput, null);
+                    JsonNode res = executeOnJudge0(request.getCode(), languageId, tc.getInputData(), null);
                     int statusId = res.path("status").path("id").asInt();
 
                     double time = res.path("time").asDouble();
@@ -1524,11 +1522,11 @@ public class CodeExecutionService {
         if (customInput == null || allTestCases == null) {
             return null;
         }
-        List<String> customLines = getFilteredLines(customInput);
+        List<String> customTokens = getFilteredTokens(customInput);
         for (TestCase tc : allTestCases) {
             if (tc.getInputData() != null) {
-                List<String> tcLines = getFilteredLines(tc.getInputData());
-                if (customLines.equals(tcLines)) {
+                List<String> tcTokens = getFilteredTokens(tc.getInputData());
+                if (customTokens.equals(tcTokens)) {
                     return tc.getExpectedOutput();
                 }
             }
@@ -1541,20 +1539,20 @@ public class CodeExecutionService {
         if (matched != null && !matched.trim().isEmpty() && !"N/A".equalsIgnoreCase(matched.trim())) {
             return matched;
         }
-        if (sampleTestCases != null && index < sampleTestCases.size()) {
-            String sampleExp = sampleTestCases.get(index).getExpectedOutput();
-            if (sampleExp != null && !sampleExp.trim().isEmpty() && !"N/A".equalsIgnoreCase(sampleExp.trim())) {
-                return sampleExp;
-            }
-        }
-        if (allTestCases != null && !allTestCases.isEmpty()) {
-            for (TestCase tc : allTestCases) {
-                if (tc.getExpectedOutput() != null && !tc.getExpectedOutput().trim().isEmpty() && !"N/A".equalsIgnoreCase(tc.getExpectedOutput().trim())) {
-                    return tc.getExpectedOutput();
-                }
-            }
-        }
+        // Strict match: if input doesn't match any sample testcase, no expected output is assigned
         return null;
+    }
+
+    private List<String> getFilteredTokens(String str) {
+        List<String> tokens = new ArrayList<>();
+        if (str == null) return tokens;
+        String[] parts = str.trim().split("\\s+");
+        for (String p : parts) {
+            if (!p.trim().isEmpty()) {
+                tokens.add(p.trim());
+            }
+        }
+        return tokens;
     }
 
     private List<String> getFilteredLines(String str) {
