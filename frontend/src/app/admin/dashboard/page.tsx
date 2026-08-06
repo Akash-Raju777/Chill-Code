@@ -178,8 +178,8 @@ export default function AdminDashboard() {
           <div className="h-8 w-48 bg-white/5 rounded-lg animate-pulse" />
           <div className="h-10 w-28 bg-white/5 rounded-lg animate-pulse" />
         </div>
-        <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-5 gap-4">
-          {[...Array(5)].map((_, i) => (
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          {[...Array(3)].map((_, i) => (
             <div key={i} className="h-28 bg-white/5 rounded-xl animate-pulse" />
           ))}
         </div>
@@ -207,9 +207,7 @@ export default function AdminDashboard() {
   const cardData = [
     { label: 'Total Students', value: data.totalStudents, icon: Users, color: 'text-blue-400', bg: 'bg-blue-500/10' },
     { label: 'Total Subjects', value: data.totalSubjects, icon: BookOpen, color: 'text-emerald-400', bg: 'bg-emerald-500/10' },
-    { label: 'Total Tests', value: data.totalTests, icon: Timer, color: 'text-purple-400', bg: 'bg-purple-500/10' },
     { label: 'Total Questions', value: data.totalQuestions, icon: Code2, color: 'text-amber-400', bg: 'bg-amber-500/10' },
-    { label: 'Active Tests', value: data.todayActiveTests, icon: Clock, color: 'text-pink-400', bg: 'bg-pink-500/10' },
   ];
 
   return (
@@ -231,7 +229,7 @@ export default function AdminDashboard() {
       </div>
 
       {/* Cards Panel */}
-      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4">
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
         {cardData.map((card) => {
           const Icon = card.icon;
           return (
