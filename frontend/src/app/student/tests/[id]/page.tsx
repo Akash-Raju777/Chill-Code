@@ -547,16 +547,15 @@ function CodingWorkspaceInner() {
   const handleRunCode = async () => {
     if (!currentQuestion) return;
 
-    // Check if question has input and user has not populated customInput
     const sampleTestcases = currentQuestion.testCases?.filter((tc: any) => !tc.isHidden) || [];
-    if (sampleTestcases.length > 0 && !customInput.trim() && !customInput2.trim() && !customInput3.trim()) {
-      if (sampleTestcases[0]) setCustomInput(sampleTestcases[0].inputData || '');
-      if (sampleTestcases[1]) setCustomInput2(sampleTestcases[1].inputData || '');
-      if (sampleTestcases[2]) setCustomInput3(sampleTestcases[2].inputData || '');
-      setConsoleOpen(true);
-      setConsoleTab('TESTCASE');
-      toast.info('This question requires input. We have pre-populated the input methods with the sample inputs. Review them, then click "Compile & Run" again.');
-      return;
+    let curInput1 = customInput;
+    let curInput2 = customInput2;
+    let curInput3 = customInput3;
+
+    if (sampleTestcases.length > 0 && !curInput1.trim() && !curInput2.trim() && !curInput3.trim()) {
+      if (sampleTestcases[0]) { curInput1 = sampleTestcases[0].inputData || ''; setCustomInput(curInput1); }
+      if (sampleTestcases[1]) { curInput2 = sampleTestcases[1].inputData || ''; setCustomInput2(curInput2); }
+      if (sampleTestcases[2]) { curInput3 = sampleTestcases[2].inputData || ''; setCustomInput3(curInput3); }
     }
 
     setExecuting(true);
@@ -569,9 +568,9 @@ function CodingWorkspaceInner() {
       language: languages[currentQuestion.id],
       questionId: currentQuestion.id,
       studentTestId: useTestStore.getState().activeStudentTestId,
-      customInput: customInput,
-      customInput2: customInput2,
-      customInput3: customInput3,
+      customInput: curInput1,
+      customInput2: curInput2,
+      customInput3: curInput3,
       runOnly: true,
     };
 
@@ -830,21 +829,7 @@ function CodingWorkspaceInner() {
             </span>
           </div>
 
-          {/* Run Time */}
-          <div className="p-3 bg-[#11131c] border border-white/5 rounded-xl flex flex-col gap-1">
-            <span className="text-[10px] text-gray-400 uppercase font-bold tracking-wider">Execution Time</span>
-            <span className="text-base font-extrabold text-white font-mono">
-              {executionTime !== null && executionTime !== undefined ? `${executionTime} ms` : 'N/A'}
-            </span>
-          </div>
 
-          {/* Memory Used */}
-          <div className="p-3 bg-[#11131c] border border-white/5 rounded-xl flex flex-col gap-1">
-            <span className="text-[10px] text-gray-400 uppercase font-bold tracking-wider">Memory Used</span>
-            <span className="text-base font-extrabold text-white font-mono">
-              {memoryUsed !== null && memoryUsed !== undefined ? `${memoryUsed} KB` : 'N/A'}
-            </span>
-          </div>
         </div>
 
         {/* Output Console for successful runs (ACCEPTED or FINISHED) */}

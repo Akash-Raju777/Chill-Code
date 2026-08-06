@@ -164,9 +164,7 @@ export default function SubmissionResultPage() {
           <ArrowLeft className="w-3.5 h-3.5" />
           Results
         </button>
-        <span className="text-[10px] text-gray-500 font-bold uppercase tracking-wider">
-          Submission ID: #{submission.id}
-        </span>
+
       </div>
 
       {/* Verdict Panel Card */}
@@ -241,25 +239,7 @@ export default function SubmissionResultPage() {
 
       {/* Performance Stats */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-        <div className="bg-[#11131c] border border-white/5 p-4 rounded-xl flex items-center gap-3">
-          <div className="p-2.5 rounded-lg bg-indigo-500/10 text-indigo-400">
-            <Clock className="w-5 h-5" />
-          </div>
-          <div>
-            <div className="text-[10px] text-gray-500 font-bold uppercase tracking-wider">Execution Time</div>
-            <div className="text-sm font-bold text-white font-mono">{submission.runTimeMs !== null ? `${submission.runTimeMs} ms` : 'N/A'}</div>
-          </div>
-        </div>
 
-        <div className="bg-[#11131c] border border-white/5 p-4 rounded-xl flex items-center gap-3">
-          <div className="p-2.5 rounded-lg bg-purple-500/10 text-purple-400">
-            <Database className="w-5 h-5" />
-          </div>
-          <div>
-            <div className="text-[10px] text-gray-500 font-bold uppercase tracking-wider">Memory Used</div>
-            <div className="text-sm font-bold text-white font-mono">{submission.memoryUsedKb !== null ? `${submission.memoryUsedKb} KB` : 'N/A'}</div>
-          </div>
-        </div>
 
         <div className="bg-[#11131c] border border-white/5 p-4 rounded-xl flex items-center gap-3">
           <div className="p-2.5 rounded-lg bg-blue-500/10 text-blue-400">

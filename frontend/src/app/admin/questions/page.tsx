@@ -785,8 +785,12 @@ export default function QuestionManagement() {
                       type="number"
                       min="1"
                       required
-                      value={tc.marks ?? 5}
-                      onChange={(e) => handleTestCaseChange(index, 'marks', Math.max(0, parseInt(e.target.value) || 0))}
+                      value={tc.marks !== undefined && tc.marks !== null ? String(tc.marks).replace(/^0+(?=\d)/, '') : ''}
+                      onChange={(e) => {
+                        const cleanVal = e.target.value.replace(/^0+(?=\d)/, '');
+                        const parsed = parseInt(cleanVal, 10);
+                        handleTestCaseChange(index, 'marks', isNaN(parsed) ? 0 : Math.max(0, parsed));
+                      }}
                       className="w-full glass-input p-2 rounded-lg text-xs font-mono text-center font-bold text-indigo-300"
                     />
                   </div>
@@ -841,8 +845,12 @@ export default function QuestionManagement() {
                 min="0"
                 max={computedTotalMarks}
                 required
-                value={passingMarks}
-                onChange={(e) => setPassingMarks(parseInt(e.target.value) || 0)}
+                value={passingMarks !== undefined && passingMarks !== null ? String(passingMarks).replace(/^0+(?=\d)/, '') : ''}
+                onChange={(e) => {
+                  const cleanVal = e.target.value.replace(/^0+(?=\d)/, '');
+                  const parsed = parseInt(cleanVal, 10);
+                  setPassingMarks(isNaN(parsed) ? 0 : Math.max(0, parsed));
+                }}
                 className={`w-full glass-input p-3 rounded-xl text-sm font-bold font-mono ${
                   passingMarks > computedTotalMarks || passingMarks < 0 
                     ? 'border-red-500 text-red-400 bg-red-500/10' 

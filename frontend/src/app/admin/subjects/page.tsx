@@ -372,17 +372,7 @@ export default function SubjectManagement() {
                   </div>
                 </div>
 
-                {/* Pass/Fail bar layout */}
-                <div className="bg-[#0b0c10] border border-white/5 p-5 rounded-xl space-y-2">
-                  <div className="flex justify-between text-xs font-bold">
-                    <span className="text-emerald-400">Pass Rate: {subjectStats.passRate}%</span>
-                    <span className="text-red-400">Fail Rate: {subjectStats.failRate}%</span>
-                  </div>
-                  <div className="w-full h-3 bg-white/5 rounded-full overflow-hidden flex">
-                    <div className="h-full bg-emerald-500" style={{ width: `${subjectStats.passRate}%` }} />
-                    <div className="h-full bg-red-500" style={{ width: `${subjectStats.failRate}%` }} />
-                  </div>
-                </div>
+
 
                 {/* Registry Table */}
                 <div className="space-y-3">
