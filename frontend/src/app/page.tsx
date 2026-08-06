@@ -259,13 +259,7 @@ export default function LoginPage() {
         }} />
 
         <div className="relative z-10 flex flex-col justify-between h-full p-8 lg:p-12">
-          {/* Top — floating chip */}
-          <div className="flex justify-center">
-            <FloatingChip delay="0s">
-              <Terminal className="w-3.5 h-3.5 text-emerald-400" />
-              <span className="text-emerald-400 font-mono text-xs">exam_2026 started</span>
-            </FloatingChip>
-          </div>
+
 
           {/* Center — branding */}
           <div className="flex-1 flex flex-col justify-center max-w-lg">
