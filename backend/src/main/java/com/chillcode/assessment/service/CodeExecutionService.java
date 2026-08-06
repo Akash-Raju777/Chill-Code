@@ -105,7 +105,7 @@ public class CodeExecutionService {
                 TestCase customTc1 = new TestCase();
                 customTc1.setId(-999L);
                 customTc1.setInputData(request.getCustomInput());
-                customTc1.setExpectedOutput(findMatchingExpectedOutput(allTestCases, request.getCustomInput()));
+                customTc1.setExpectedOutput(getExpectedOutputForCustomInput(allTestCases, sampleTestCases, request.getCustomInput(), 0));
                 customTc1.setIsHidden(false);
                 testCases.add(customTc1);
                 hasCustom = true;
@@ -114,7 +114,7 @@ public class CodeExecutionService {
                 TestCase customTc2 = new TestCase();
                 customTc2.setId(-998L);
                 customTc2.setInputData(request.getCustomInput2());
-                customTc2.setExpectedOutput(findMatchingExpectedOutput(allTestCases, request.getCustomInput2()));
+                customTc2.setExpectedOutput(getExpectedOutputForCustomInput(allTestCases, sampleTestCases, request.getCustomInput2(), 1));
                 customTc2.setIsHidden(false);
                 testCases.add(customTc2);
                 hasCustom = true;
@@ -123,7 +123,7 @@ public class CodeExecutionService {
                 TestCase customTc3 = new TestCase();
                 customTc3.setId(-997L);
                 customTc3.setInputData(request.getCustomInput3());
-                customTc3.setExpectedOutput(findMatchingExpectedOutput(allTestCases, request.getCustomInput3()));
+                customTc3.setExpectedOutput(getExpectedOutputForCustomInput(allTestCases, sampleTestCases, request.getCustomInput3(), 2));
                 customTc3.setIsHidden(false);
                 testCases.add(customTc3);
                 hasCustom = true;
@@ -217,33 +217,36 @@ public class CodeExecutionService {
                             firstFailedJudge0Status = "Runtime Error";
                         }
                     } else { // Process finished successfully. Run comparison
-                        boolean match = true;
-                        if (tc.getExpectedOutput() != null) {
-                            match = compareOutputs(tc.getExpectedOutput(), stdout);
-                        }
+                        String expectedOut = tc.getExpectedOutput();
                         tcResult.setActualOutput(stdout);
-                        if (match) {
-                            tcResult.setStatus("PASSED");
-                            tcResult.setMarksAwarded(tcMaxMarks);
-                            tcResult.setMessage("Test Case Passed");
-                            passedCount++;
-                        } else {
-                            tcResult.setStatus("FAILED");
-                            tcResult.setMarksAwarded(0);
-                            if (tc.getIsHidden() != null && tc.getIsHidden()) {
-                                tcResult.setMessage("Output doesn't match expected output. (Hidden testcase failed)");
+                        if (expectedOut != null && !expectedOut.trim().isEmpty()) {
+                            boolean match = compareOutputs(expectedOut, stdout);
+                            if (match) {
+                                tcResult.setStatus("PASSED");
+                                tcResult.setMarksAwarded(tcMaxMarks);
+                                tcResult.setMessage("Test Case Passed");
+                                passedCount++;
                             } else {
-                                tcResult.setMessage("Output doesn't match expected output.\nExpected:\n" + tc.getExpectedOutput().trim() + "\nYour Output:\n" + stdout.trim());
-                            }
-                            overallVerdict = updateVerdict(overallVerdict, "WRONG_ANSWER");
-                            if (failedTestCaseIndex == -1) {
-                                failedTestCaseIndex = i + 1;
-                                firstFailedJudge0Status = "Wrong Answer";
-                                if (tc.getIsHidden() == null || !tc.getIsHidden()) {
-                                    firstFailedExpected = tc.getExpectedOutput();
-                                    firstFailedActual = stdout;
+                                tcResult.setStatus("FAILED");
+                                tcResult.setMarksAwarded(0);
+                                if (tc.getIsHidden() != null && tc.getIsHidden()) {
+                                    tcResult.setMessage("Output doesn't match expected output. (Hidden testcase failed)");
+                                } else {
+                                    tcResult.setMessage("Output doesn't match expected output.\nExpected:\n" + expectedOut.trim() + "\nYour Output:\n" + stdout.trim());
+                                }
+                                overallVerdict = updateVerdict(overallVerdict, "WRONG_ANSWER");
+                                if (failedTestCaseIndex == -1) {
+                                    failedTestCaseIndex = i + 1;
+                                    firstFailedJudge0Status = "Wrong Answer";
+                                    if (tc.getIsHidden() == null || !tc.getIsHidden()) {
+                                        firstFailedExpected = expectedOut;
+                                        firstFailedActual = stdout;
+                                    }
                                 }
                             }
+                        } else {
+                            tcResult.setStatus("FINISHED");
+                            tcResult.setMessage("Executed successfully");
                         }
                     }
                 } catch (Exception e) {

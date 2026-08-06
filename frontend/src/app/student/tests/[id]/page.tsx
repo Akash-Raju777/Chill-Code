@@ -926,12 +926,7 @@ function CodingWorkspaceInner() {
                         <span className="font-bold text-white font-sans text-xs">Test Case {index + 1}</span>
                       </div>
                       <div className="flex items-center gap-2">
-                        {tc.runTimeMs !== null && tc.runTimeMs !== undefined && (
-                          <span className="text-gray-500 font-mono text-[10px]">{tc.runTimeMs} ms</span>
-                        )}
-                        {tc.memoryUsedKb !== null && tc.memoryUsedKb !== undefined && (
-                          <span className="text-gray-500 font-mono text-[10px]">{tc.memoryUsedKb} KB</span>
-                        )}
+
                         <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full uppercase ${
                           isPassed ? 'bg-[#10b981]/10 text-[#10b981]' : 'bg-[#ef4444]/10 text-[#ef4444]'
                         }`}>
