@@ -503,6 +503,29 @@ public class QuestionService {
                 "OR test_id IN (SELECT id FROM tests WHERE id NOT IN (SELECT DISTINCT test_id FROM test_questions))"
         ).executeUpdate();
 
+        // 10b. De-duplicate badge_definitions for duplicate badge sets
+        entityManager.createNativeQuery(
+                "DELETE FROM badge_definitions WHERE badge_set_id IN (" +
+                "SELECT id FROM badge_sets bs1 WHERE bs1.id > (" +
+                "SELECT MIN(bs2.id) FROM badge_sets bs2 WHERE bs2.test_id = bs1.test_id" +
+                ")" +
+                ")"
+        ).executeUpdate();
+
+        // 10c. De-duplicate badge_sets for the same test_id
+        entityManager.createNativeQuery(
+                "DELETE FROM badge_sets bs1 WHERE bs1.id > (" +
+                "SELECT MIN(bs2.id) FROM badge_sets bs2 WHERE bs2.test_id = bs1.test_id" +
+                ")"
+        ).executeUpdate();
+
+        // 10d. De-duplicate tests with identical names in the same subject that have no questions
+        entityManager.createNativeQuery(
+                "DELETE FROM tests t1 WHERE t1.id > (" +
+                "SELECT MIN(t2.id) FROM tests t2 WHERE LOWER(t2.name) = LOWER(t1.name) AND t2.subject_id = t1.subject_id" +
+                ") AND t1.id NOT IN (SELECT DISTINCT test_id FROM test_questions)"
+        ).executeUpdate();
+
         // 11. Delete warnings for student_tests of non-existent or empty tests
         entityManager.createNativeQuery(
                 "DELETE FROM warnings WHERE student_test_id IN (" +
@@ -658,26 +681,39 @@ public class QuestionService {
                 ? question.getQuestionCode().trim().toUpperCase() : null;
 
         // 1. Find or create a dedicated Test for THIS specific question
-        // Each question gets its own Test entity (1 Question = 1 Test = 1 BadgeSet)
         com.chillcode.assessment.entity.Test questionTest = null;
+        try {
+            @SuppressWarnings("unchecked")
+            List<Number> existingTestIds = (List<Number>) entityManager.createNativeQuery(
+                    "SELECT DISTINCT test_id FROM test_questions WHERE question_id = :qId")
+                    .setParameter("qId", question.getId())
+                    .getResultList();
+            if (existingTestIds != null && !existingTestIds.isEmpty()) {
+                questionTest = testRepository.findById(existingTestIds.get(0).longValue()).orElse(null);
+            }
+        } catch (Exception ignored) {}
 
-        // Look for an existing test that already contains this question
-        java.util.List<com.chillcode.assessment.entity.Test> allTests = testRepository.findAll();
-        for (com.chillcode.assessment.entity.Test test : allTests) {
-            if (test.getQuestions() != null && test.getQuestions().contains(question)) {
-                questionTest = test;
-                break;
+        // If not linked yet, search for existing test by Title & Subject to prevent duplicate tests
+        if (questionTest == null) {
+            List<com.chillcode.assessment.entity.Test> matchingTests = testRepository.findBySubjectId(subject.getId()).stream()
+                    .filter(t -> t.getName() != null && t.getName().equalsIgnoreCase(question.getTitle()))
+                    .collect(Collectors.toList());
+            if (!matchingTests.isEmpty()) {
+                questionTest = matchingTests.get(0);
             }
         }
 
         if (questionTest != null) {
-            // Sync the test name and code from the question
+            // Sync test properties
             questionTest.setName(question.getTitle());
             questionTest.setSubject(subject);
             if (qCode != null) {
                 questionTest.setTestCode(qCode);
             }
-            testRepository.save(questionTest);
+            if (!questionTest.getQuestions().contains(question)) {
+                questionTest.getQuestions().add(question);
+            }
+            questionTest = testRepository.save(questionTest);
         } else {
             // Create a new dedicated Test for this question
             String testCode = qCode;
@@ -698,17 +734,22 @@ public class QuestionService {
                     .build();
             questionTest = testRepository.save(questionTest);
             questionTest.getQuestions().add(question);
-            testRepository.save(questionTest);
+            questionTest = testRepository.save(questionTest);
             log.info("Auto-created Test ID: {} for question '{}' (code: {})", questionTest.getId(), question.getTitle(), testCode);
         }
 
-        // 2. Find or create a BadgeSet for this test
-        java.util.List<com.chillcode.assessment.entity.BadgeSet> badgeSets = badgeSetRepository.findByTestId(questionTest.getId());
+        // 2. Find or create single BadgeSet for this test (purge duplicates if any exist)
+        List<com.chillcode.assessment.entity.BadgeSet> badgeSets = badgeSetRepository.findByTestId(questionTest.getId());
         com.chillcode.assessment.entity.BadgeSet badgeSet;
 
         if (badgeSets != null && !badgeSets.isEmpty()) {
             badgeSet = badgeSets.get(0);
-            // Sync badge set name and testCode from question
+            // Delete any duplicate badge sets for this same test ID
+            for (int i = 1; i < badgeSets.size(); i++) {
+                try {
+                    badgeSetRepository.delete(badgeSets.get(i));
+                } catch (Exception ignored) {}
+            }
             badgeSet.setName(question.getTitle() + " Badge Set");
             badgeSet.setSubject(subject);
             if (qCode != null) {
