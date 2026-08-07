@@ -6,7 +6,9 @@ import lombok.*;
 import java.time.LocalDateTime;
 
 @Entity
-@Table(name = "subjects")
+@Table(name = "subjects", uniqueConstraints = {
+    @UniqueConstraint(columnNames = {"admin_id", "name"})
+})
 @Getter
 @Setter
 @NoArgsConstructor
@@ -19,8 +21,13 @@ public class Subject {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
-    @Column(nullable = false, unique = true, length = 100)
+    @Column(nullable = false, length = 100)
     private String name;
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "admin_id")
+    @com.fasterxml.jackson.annotation.JsonIgnore
+    private User admin;
 
     @Column(columnDefinition = "TEXT")
     private String description;

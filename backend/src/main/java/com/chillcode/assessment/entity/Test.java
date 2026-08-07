@@ -25,6 +25,11 @@ public class Test {
     @JoinColumn(name = "subject_id", nullable = false)
     private Subject subject;
 
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "admin_id")
+    @com.fasterxml.jackson.annotation.JsonIgnore
+    private User admin;
+
     @Column(nullable = false, length = 150)
     private String name;
 

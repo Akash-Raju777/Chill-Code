@@ -40,6 +40,11 @@ public class User {
     @Column(nullable = false)
     private String password;
 
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "admin_id")
+    @com.fasterxml.jackson.annotation.JsonIgnore
+    private User admin;
+
     @Enumerated(EnumType.STRING)
     @Column(nullable = false, length = 20)
     private Role role;

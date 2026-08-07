@@ -30,6 +30,12 @@ public interface SubmissionRepository extends JpaRepository<Submission, Long> {
     @org.springframework.data.jpa.repository.Query("SELECT COUNT(s) FROM Submission s WHERE LOWER(s.language) = LOWER(:lang)")
     long countSubmissionsByLanguage(@org.springframework.data.repository.query.Param("lang") String lang);
 
+    @org.springframework.data.jpa.repository.Query("SELECT COUNT(s) FROM Submission s JOIN s.studentTest st JOIN st.test t WHERE LOWER(s.language) = LOWER(:lang) AND t.admin.id = :adminId")
+    long countSubmissionsByLanguageAndAdminId(@org.springframework.data.repository.query.Param("lang") String lang, @org.springframework.data.repository.query.Param("adminId") Long adminId);
+
     @org.springframework.data.jpa.repository.Query("SELECT COUNT(s) FROM Submission s WHERE LOWER(s.language) = LOWER(:lang) AND s.status = 'ACCEPTED'")
     long countAcceptedSubmissionsByLanguage(@org.springframework.data.repository.query.Param("lang") String lang);
+
+    @org.springframework.data.jpa.repository.Query("SELECT COUNT(s) FROM Submission s JOIN s.studentTest st JOIN st.test t WHERE LOWER(s.language) = LOWER(:lang) AND s.status = 'ACCEPTED' AND t.admin.id = :adminId")
+    long countAcceptedSubmissionsByLanguageAndAdminId(@org.springframework.data.repository.query.Param("lang") String lang, @org.springframework.data.repository.query.Param("adminId") Long adminId);
 }

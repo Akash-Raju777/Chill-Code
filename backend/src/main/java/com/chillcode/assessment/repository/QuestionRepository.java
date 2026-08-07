@@ -10,4 +10,10 @@ public interface QuestionRepository extends JpaRepository<Question, Long> {
     List<Question> findBySubjectId(Long subjectId);
     java.util.Optional<Question> findBySubjectIdAndTitle(Long subjectId, String title);
     java.util.Optional<Question> findByQuestionCode(String questionCode);
+
+    List<Question> findByAdminId(Long adminId);
+    List<Question> findBySubjectIdAndAdminId(Long subjectId, Long adminId);
+    java.util.Optional<Question> findByIdAndAdminId(Long id, Long adminId);
+    long countByAdminId(Long adminId);
+    java.util.Optional<Question> findByQuestionCodeAndAdminId(String questionCode, Long adminId);
 }

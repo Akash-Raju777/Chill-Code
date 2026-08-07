@@ -27,14 +27,18 @@ public class SubjectService {
     private com.chillcode.assessment.repository.UserRepository userRepository;
 
     public List<Subject> getAllSubjects() {
-        return subjectRepository.findAll();
+        Long adminId = com.chillcode.assessment.security.SecurityUtils.getCurrentAdminId();
+        if (adminId == null) return java.util.Collections.emptyList();
+        return subjectRepository.findByAdminId(adminId);
     }
 
     @org.springframework.transaction.annotation.Transactional
     public Subject createSubject(Subject subject) {
-        if (subjectRepository.existsByName(subject.getName())) {
+        Long adminId = com.chillcode.assessment.security.SecurityUtils.getCurrentAdminId();
+        if (subjectRepository.existsByNameAndAdminId(subject.getName(), adminId)) {
             throw new RuntimeException("Subject with name " + subject.getName() + " already exists.");
         }
+        subject.setAdmin(com.chillcode.assessment.security.SecurityUtils.getCurrentUser());
         Subject savedSubject = subjectRepository.save(subject);
 
         // Auto-create Practice Arena test for the new subject
@@ -51,13 +55,12 @@ public class SubjectService {
                 .autoSubmit(true)
                 .negativeMarking(false)
                 .questions(new java.util.HashSet<>())
+                .admin(com.chillcode.assessment.security.SecurityUtils.getCurrentUser())
                 .build();
         test = testRepository.save(test);
 
         // Assign test to all existing students
-        java.util.List<com.chillcode.assessment.entity.User> students = userRepository.findAll().stream()
-                .filter(u -> u.getRole() == com.chillcode.assessment.entity.Role.STUDENT)
-                .collect(java.util.stream.Collectors.toList());
+        java.util.List<com.chillcode.assessment.entity.User> students = userRepository.findByRoleAndAdminId(com.chillcode.assessment.entity.Role.STUDENT, adminId);
 
         for (com.chillcode.assessment.entity.User student : students) {
             com.chillcode.assessment.entity.StudentTest st = com.chillcode.assessment.entity.StudentTest.builder()
@@ -75,7 +78,8 @@ public class SubjectService {
     }
 
     public Subject updateSubject(Long id, Subject subjectDetails) {
-        Subject subject = subjectRepository.findById(id)
+        Long adminId = com.chillcode.assessment.security.SecurityUtils.getCurrentAdminId();
+        Subject subject = subjectRepository.findByIdAndAdminId(id, adminId)
                 .orElseThrow(() -> new RuntimeException("Subject not found with id: " + id));
         subject.setName(subjectDetails.getName());
         subject.setDescription(subjectDetails.getDescription());
@@ -105,7 +109,8 @@ public class SubjectService {
 
     @org.springframework.transaction.annotation.Transactional
     public void deleteSubject(Long id) {
-        Subject subject = subjectRepository.findById(id)
+        Long adminId = com.chillcode.assessment.security.SecurityUtils.getCurrentAdminId();
+        Subject subject = subjectRepository.findByIdAndAdminId(id, adminId)
                 .orElseThrow(() -> new RuntimeException("Subject not found with id: " + id));
 
         // 1. Delete submission test cases for submissions of student tests belonging to tests in this subject
@@ -201,7 +206,8 @@ public class SubjectService {
     }
 
     public com.chillcode.assessment.dto.SubjectStatsDto getSubjectStats(Long subjectId) {
-        Subject subject = subjectRepository.findById(subjectId)
+        Long adminId = com.chillcode.assessment.security.SecurityUtils.getCurrentAdminId();
+        Subject subject = subjectRepository.findByIdAndAdminId(subjectId, adminId)
                 .orElseThrow(() -> new RuntimeException("Subject not found with id: " + subjectId));
 
         java.util.List<com.chillcode.assessment.entity.Test> tests = testRepository.findBySubjectId(subjectId);
@@ -216,9 +222,7 @@ public class SubjectService {
                 .map(q -> new com.chillcode.assessment.dto.SubjectStatsDto.TestDto(q.getId(), q.getTitle()))
                 .collect(java.util.stream.Collectors.toList());
 
-        java.util.List<com.chillcode.assessment.entity.User> students = userRepository.findAll().stream()
-                .filter(u -> u.getRole() == com.chillcode.assessment.entity.Role.STUDENT)
-                .collect(java.util.stream.Collectors.toList());
+        java.util.List<com.chillcode.assessment.entity.User> students = userRepository.findByRoleAndAdminId(com.chillcode.assessment.entity.Role.STUDENT, adminId);
 
         java.util.Set<Long> assignedStudentIds = new java.util.HashSet<>();
         java.util.Set<Long> attendedStudentIds = new java.util.HashSet<>();
@@ -390,13 +394,12 @@ public class SubjectService {
      *          Attempt Date, Marks, Passing Marks, Percentage, PASS/FAIL, Time Taken, Rank, Attendance Status
      */
     public byte[] generateSubjectExcelReport(Long subjectId) {
-        Subject subject = subjectRepository.findById(subjectId)
+        Long adminId = com.chillcode.assessment.security.SecurityUtils.getCurrentAdminId();
+        Subject subject = subjectRepository.findByIdAndAdminId(subjectId, adminId)
                 .orElseThrow(() -> new RuntimeException("Subject not found with id: " + subjectId));
 
         java.util.List<com.chillcode.assessment.entity.Test> tests = testRepository.findBySubjectId(subjectId);
-        java.util.List<com.chillcode.assessment.entity.User> allStudents = userRepository.findAll().stream()
-                .filter(u -> u.getRole() == com.chillcode.assessment.entity.Role.STUDENT)
-                .collect(java.util.stream.Collectors.toList());
+        java.util.List<com.chillcode.assessment.entity.User> allStudents = userRepository.findByRoleAndAdminId(com.chillcode.assessment.entity.Role.STUDENT, adminId);
 
         try (org.apache.poi.xssf.usermodel.XSSFWorkbook workbook = new org.apache.poi.xssf.usermodel.XSSFWorkbook()) {
             org.apache.poi.xssf.usermodel.XSSFSheet sheet = workbook.createSheet(subject.getName() + " Report");

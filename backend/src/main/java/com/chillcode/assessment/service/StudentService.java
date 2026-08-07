@@ -100,8 +100,8 @@ public class StudentService {
             subjectStatsList.add(subMap);
         }
 
-        // Calculate question-level status counts matching Practice Page categories
-        long totalQuestionsCount = sumTotalQuestions > 0 ? sumTotalQuestions : questionRepository.count();
+        Long adminId = com.chillcode.assessment.security.SecurityUtils.getCurrentAdminId();
+        long totalQuestionsCount = sumTotalQuestions > 0 ? sumTotalQuestions : (adminId != null ? questionRepository.countByAdminId(adminId) : questionRepository.count());
         long completedQuestionsCount = sumCompletedQuestions;
 
         // Fetch completed question IDs to exclude them from pending/unattended
@@ -193,9 +193,12 @@ public class StudentService {
 
     @Transactional
     public void broadcastNotification(String title, String message) {
-        List<com.chillcode.assessment.entity.User> students = userRepository.findAll().stream()
-                .filter(u -> u.getRole() == com.chillcode.assessment.entity.Role.STUDENT)
-                .collect(Collectors.toList());
+        Long adminId = com.chillcode.assessment.security.SecurityUtils.getCurrentAdminId();
+        List<com.chillcode.assessment.entity.User> students = adminId != null ? 
+                userRepository.findByRoleAndAdminId(com.chillcode.assessment.entity.Role.STUDENT, adminId) :
+                userRepository.findAll().stream()
+                        .filter(u -> u.getRole() == com.chillcode.assessment.entity.Role.STUDENT)
+                        .collect(Collectors.toList());
         
         for (com.chillcode.assessment.entity.User student : students) {
             Notification notification = Notification.builder()

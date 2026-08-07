@@ -487,47 +487,9 @@ export default function LoginPage() {
             </button>
           </form>
 
-          {/* Demo Quick Access */}
-          {!isRegister && (
-            <div className="space-y-3 mt-6 pt-5 border-t border-white/5">
-              <div className="text-center text-[11px] font-semibold uppercase text-gray-500 tracking-wider">Demo Quick Access</div>
-              <div className="grid grid-cols-2 gap-3">
-                <button
-                  type="button"
-                  onClick={() => handleDemoLogin('STUDENT')}
-                  className="login-demo-btn"
-                >
-                  Demo Student
-                </button>
-                <button
-                  type="button"
-                  onClick={() => handleDemoLogin('ADMIN')}
-                  className="login-demo-btn"
-                >
-                  Demo Admin
-                </button>
-              </div>
-            </div>
-          )}
 
-          {/* Toggle Login / Register */}
-          <div className="text-center mt-5 text-sm text-gray-500">
-            {isRegister ? (
-              <p>
-                Already registered?{' '}
-                <button type="button" className="text-cyan-400 font-semibold hover:underline" onClick={() => setIsRegister(false)}>
-                  Log In
-                </button>
-              </p>
-            ) : (
-              <p>
-                Don&apos;t have an account?{' '}
-                <button type="button" className="text-cyan-400 font-semibold hover:underline" onClick={() => setIsRegister(true)}>
-                  Contact your examination cell
-                </button>
-              </p>
-            )}
-          </div>
+
+
 
 
         </div>

@@ -190,8 +190,13 @@ public class BadgeSetService {
         } catch (Exception ignored) {}
 
         List<BadgeSet> sets = badgeSetRepository.findAll();
+        Long adminId = com.chillcode.assessment.security.SecurityUtils.getCurrentAdminId();
+        
         List<BadgeSet> validSets = new ArrayList<>();
         for (BadgeSet bs : sets) {
+            if (bs.getTest() != null && bs.getTest().getAdmin() != null && adminId != null && !bs.getTest().getAdmin().getId().equals(adminId)) {
+                continue;
+            }
             if (bs.getTest() != null && bs.getTest().getQuestions() != null && !bs.getTest().getQuestions().isEmpty()) {
                 validSets.add(bs);
             }
@@ -408,7 +413,10 @@ public class BadgeSetService {
             }
         }
 
+        Long adminId = com.chillcode.assessment.security.SecurityUtils.getCurrentAdminId();
+
         return studentAchievementRepository.findAll().stream()
+                .filter(sa -> adminId == null || (sa.getTest() != null && sa.getTest().getAdmin() != null && sa.getTest().getAdmin().getId().equals(adminId)))
                 .filter(sa -> sa.getTest() != null && sa.getTest().getQuestions() != null && !sa.getTest().getQuestions().isEmpty())
                 .map(sa -> mapAchievementToDtoWithRanks(sa, overallRankMap, subjectRankMap))
                 .collect(Collectors.toList());

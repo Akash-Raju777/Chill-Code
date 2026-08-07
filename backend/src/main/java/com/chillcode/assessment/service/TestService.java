@@ -60,7 +60,9 @@ public class TestService {
 
     @Transactional
     public List<Test> getAllTests() {
-        List<Test> tests = testRepository.findAll();
+        Long adminId = com.chillcode.assessment.security.SecurityUtils.getCurrentAdminId();
+        if (adminId == null) return java.util.Collections.emptyList();
+        List<Test> tests = testRepository.findByAdminId(adminId);
         for (Test t : tests) {
             String foundQCode = null;
             if (t.getQuestions() != null) {
@@ -108,12 +110,13 @@ public class TestService {
         // Validate unique testCode if provided
         if (dto.getTestCode() != null && !dto.getTestCode().trim().isEmpty()) {
             String normalizedCode = dto.getTestCode().trim().toUpperCase();
-            if (testRepository.existsByTestCode(normalizedCode)) {
+            if (testRepository.findByTestCodeAndAdminId(normalizedCode, com.chillcode.assessment.security.SecurityUtils.getCurrentAdminId()).isPresent()) {
                 throw new RuntimeException("Test ID '" + normalizedCode + "' already exists. Please choose a unique Test ID.");
             }
         }
 
         Test test = Test.builder()
+                .admin(com.chillcode.assessment.security.SecurityUtils.getCurrentUser())
                 .subject(subject)
                 .name(dto.getName())
                 .durationMinutes(dto.getDurationMinutes())
@@ -147,10 +150,9 @@ public class TestService {
         if (dto.getStudentIds() != null && !dto.getStudentIds().isEmpty()) {
             studentsToAssign = userRepository.findAllById(dto.getStudentIds());
         } else {
-            // Assign to all students
-            studentsToAssign = userRepository.findAll().stream()
-                    .filter(u -> u.getRole() == Role.STUDENT)
-                    .collect(Collectors.toList());
+            // Assign to all students of the current admin
+            Long adminId = com.chillcode.assessment.security.SecurityUtils.getCurrentAdminId();
+            studentsToAssign = userRepository.findByRoleAndAdminId(Role.STUDENT, adminId);
         }
 
         for (User student : studentsToAssign) {
@@ -545,7 +547,8 @@ public class TestService {
                 .map(st -> st.getTest().getId())
                 .collect(Collectors.toSet());
 
-        List<com.chillcode.assessment.entity.Test> allTests = testRepository.findAll();
+        Long adminId = com.chillcode.assessment.security.SecurityUtils.getCurrentAdminId();
+        List<com.chillcode.assessment.entity.Test> allTests = adminId != null ? testRepository.findByAdminId(adminId) : testRepository.findAll();
         boolean savedAny = false;
         for (com.chillcode.assessment.entity.Test test : allTests) {
             if (!assignedTestIds.contains(test.getId())) {
@@ -698,6 +701,9 @@ public class TestService {
 
     @Transactional(readOnly = true)
     public List<com.chillcode.assessment.dto.StudentTestDto> getPendingReattempts() {
+        Long adminId = com.chillcode.assessment.security.SecurityUtils.getCurrentAdminId();
+        if (adminId == null) return java.util.Collections.emptyList();
+        
         List<StudentQuestionStatus> pendingStatusList = studentQuestionStatusRepository.findByStatus("PENDING_REATTEMPT");
         List<com.chillcode.assessment.dto.StudentTestDto> dtos = new ArrayList<>();
         java.util.Set<String> processedKeys = new java.util.HashSet<>();
@@ -705,15 +711,17 @@ public class TestService {
         for (StudentQuestionStatus sqs : pendingStatusList) {
             List<StudentTest> studentTests = studentTestRepository.findByStudentId(sqs.getStudentId());
             for (StudentTest st : studentTests) {
-                if (st.getTest().getQuestions().stream().anyMatch(q -> q.getId().equals(sqs.getQuestionId()))) {
-                    String key = st.getStudent().getId() + "_" + sqs.getQuestionId();
-                    if (!processedKeys.contains(key)) {
-                        processedKeys.add(key);
-                        com.chillcode.assessment.dto.StudentTestDto dto = convertToStudentTestDto(st);
-                        dto.setReattemptStatus("PENDING");
-                        dto.setReattemptQuestionId(sqs.getQuestionId());
-                        questionRepository.findById(sqs.getQuestionId()).ifPresent(q -> dto.setReattemptQuestionTitle(q.getTitle()));
-                        dtos.add(dto);
+                if (st.getTest().getAdmin() != null && st.getTest().getAdmin().getId().equals(adminId)) {
+                    if (st.getTest().getQuestions().stream().anyMatch(q -> q.getId().equals(sqs.getQuestionId()))) {
+                        String key = st.getStudent().getId() + "_" + sqs.getQuestionId();
+                        if (!processedKeys.contains(key)) {
+                            processedKeys.add(key);
+                            com.chillcode.assessment.dto.StudentTestDto dto = convertToStudentTestDto(st);
+                            dto.setReattemptStatus("PENDING");
+                            dto.setReattemptQuestionId(sqs.getQuestionId());
+                            questionRepository.findById(sqs.getQuestionId()).ifPresent(q -> dto.setReattemptQuestionTitle(q.getTitle()));
+                            dtos.add(dto);
+                        }
                     }
                 }
             }

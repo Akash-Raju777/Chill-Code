@@ -7,7 +7,9 @@ import java.time.LocalDateTime;
 import java.util.List;
 
 @Entity
-@Table(name = "questions")
+@Table(name = "questions", uniqueConstraints = {
+    @UniqueConstraint(columnNames = {"admin_id", "question_code"})
+})
 @Getter
 @Setter
 @NoArgsConstructor
@@ -23,6 +25,11 @@ public class Question {
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "subject_id", nullable = false)
     private Subject subject;
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "admin_id")
+    @com.fasterxml.jackson.annotation.JsonIgnore
+    private User admin;
 
     @Column(nullable = false, length = 150)
     private String title;
@@ -43,7 +50,7 @@ public class Question {
     @Column(name = "output_format", columnDefinition = "TEXT")
     private String outputFormat;
 
-    @Column(name = "question_code", unique = true, length = 50)
+    @Column(name = "question_code", length = 50)
     private String questionCode; // e.g., HTML-1, JAVA-2
 
     @Column(name = "timer")

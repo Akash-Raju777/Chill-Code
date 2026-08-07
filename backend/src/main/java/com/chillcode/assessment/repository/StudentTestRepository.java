@@ -19,8 +19,17 @@ public interface StudentTestRepository extends JpaRepository<StudentTest, Long> 
     @Query("SELECT st FROM StudentTest st JOIN FETCH st.student WHERE st.status IN ('SUBMITTED', 'EVALUATED', 'COMPLETED')")
     List<StudentTest> findAllCompletedWithStudents();
 
+    @Query("SELECT st FROM StudentTest st JOIN FETCH st.student WHERE st.status IN ('SUBMITTED', 'EVALUATED', 'COMPLETED') AND st.test.admin.id = :adminId")
+    List<StudentTest> findAllCompletedWithStudentsByAdminId(@org.springframework.data.repository.query.Param("adminId") Long adminId);
+
     @Query("SELECT st FROM StudentTest st JOIN FETCH st.student JOIN FETCH st.test")
     List<StudentTest> findAllWithStudents();
+
+    @Query("SELECT st FROM StudentTest st JOIN FETCH st.student JOIN FETCH st.test WHERE st.test.admin.id = :adminId")
+    List<StudentTest> findAllWithStudentsByAdminId(@org.springframework.data.repository.query.Param("adminId") Long adminId);
+
+    @Query("SELECT COUNT(st) FROM StudentTest st WHERE st.status = :status AND st.test.admin.id = :adminId")
+    long countByStatusAndAdminId(@org.springframework.data.repository.query.Param("status") String status, @org.springframework.data.repository.query.Param("adminId") Long adminId);
 
     @org.springframework.data.jpa.repository.Modifying
     @org.springframework.data.jpa.repository.Query(value = 

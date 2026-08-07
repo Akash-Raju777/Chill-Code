@@ -123,6 +123,9 @@ public class QuestionService {
     public List<QuestionDto> getAllQuestions() {
         log.info("Repository Call: Load all questions from database");
         com.chillcode.assessment.entity.User student = getCurrentUserEntity();
+        Long adminId = com.chillcode.assessment.security.SecurityUtils.getCurrentAdminId();
+        if (adminId == null) return java.util.Collections.emptyList();
+        
         java.util.Map<Long, StudentQuestionStatus> statusMap = getStatusMapForStudent(student);
         java.util.Set<Long> solvedSet = getSolvedQuestionIdsForStudent(student);
 
@@ -136,7 +139,7 @@ public class QuestionService {
             }
         }
 
-        return questionRepository.findAll().stream()
+        return questionRepository.findByAdminId(adminId).stream()
                 .map(q -> convertToDto(q, statusMap, java.util.Collections.emptyList(), solvedSet, latestSubmissionMap))
                 .collect(Collectors.toList());
     }
@@ -160,14 +163,18 @@ public class QuestionService {
             }
         }
 
-        return questionRepository.findBySubjectId(subjectId).stream()
+        Long adminId = com.chillcode.assessment.security.SecurityUtils.getCurrentAdminId();
+        if (adminId == null) return java.util.Collections.emptyList();
+
+        return questionRepository.findBySubjectIdAndAdminId(subjectId, adminId).stream()
                 .map(q -> convertToDto(q, statusMap, testCasesMap.getOrDefault(q.getId(), java.util.Collections.emptyList()), solvedSet, latestSubmissionMap))
                 .collect(Collectors.toList());
     }
 
     public QuestionDto getQuestionById(Long id) {
         log.info("Repository Call: Load question by ID: {} from database", id);
-        Question question = questionRepository.findById(id)
+        Long adminId = com.chillcode.assessment.security.SecurityUtils.getCurrentAdminId();
+        Question question = questionRepository.findByIdAndAdminId(id, adminId)
                 .orElseThrow(() -> new RuntimeException("Question not found with id: " + id));
         com.chillcode.assessment.entity.User student = getCurrentUserEntity();
         java.util.Map<Long, StudentQuestionStatus> statusMap = getStatusMapForStudent(student);
@@ -191,9 +198,11 @@ public class QuestionService {
         Subject subject = subjectRepository.findById(questionDto.getSubjectId())
                 .orElseThrow(() -> new RuntimeException("Subject not found with id: " + questionDto.getSubjectId()));
 
+        Long adminId = com.chillcode.assessment.security.SecurityUtils.getCurrentAdminId();
+        
         // Idempotency protection to prevent duplicate creations
         if (questionDto.getQuestionCode() != null && !questionDto.getQuestionCode().trim().isEmpty()) {
-            java.util.Optional<Question> existingCodeOpt = questionRepository.findByQuestionCode(questionDto.getQuestionCode().trim().toUpperCase());
+            java.util.Optional<Question> existingCodeOpt = questionRepository.findByQuestionCodeAndAdminId(questionDto.getQuestionCode().trim().toUpperCase(), adminId);
             if (existingCodeOpt.isPresent()) {
                 throw new RuntimeException("Question ID '" + questionDto.getQuestionCode().trim().toUpperCase() + "' already exists. Please choose a unique Question ID.");
             }
@@ -239,6 +248,7 @@ public class QuestionService {
                 .passingMarks(passingMarks)
                 .negativeMarks(questionDto.getNegativeMarks() != null ? questionDto.getNegativeMarks() : 0.0)
                 .partialMarksEnabled(questionDto.getPartialMarksEnabled() != null ? questionDto.getPartialMarksEnabled() : true)
+                .admin(com.chillcode.assessment.security.SecurityUtils.getCurrentUser())
                 .build();
 
         Question savedQuestion = questionRepository.save(question);
@@ -264,7 +274,8 @@ public class QuestionService {
     @Transactional
     public QuestionDto updateQuestion(Long id, QuestionDto questionDto) {
         log.info("Repository Call: Update question ID: {}", id);
-        Question question = questionRepository.findById(id)
+        Long adminId = com.chillcode.assessment.security.SecurityUtils.getCurrentAdminId();
+        Question question = questionRepository.findByIdAndAdminId(id, adminId)
                 .orElseThrow(() -> new RuntimeException("Question not found with id: " + id));
 
         Subject subject = subjectRepository.findById(questionDto.getSubjectId())
@@ -272,7 +283,7 @@ public class QuestionService {
 
         if (questionDto.getQuestionCode() != null && !questionDto.getQuestionCode().trim().isEmpty()) {
             String newCode = questionDto.getQuestionCode().trim().toUpperCase();
-            java.util.Optional<Question> existingCodeOpt = questionRepository.findByQuestionCode(newCode);
+            java.util.Optional<Question> existingCodeOpt = questionRepository.findByQuestionCodeAndAdminId(newCode, adminId);
             if (existingCodeOpt.isPresent() && !existingCodeOpt.get().getId().equals(id)) {
                 throw new RuntimeException("Question ID '" + newCode + "' already exists. Please choose a unique Question ID.");
             }
@@ -342,6 +353,9 @@ public class QuestionService {
     @Transactional
     public void deleteQuestion(Long id) {
         log.info("Repository Call: Delete question ID: {}", id);
+        Long adminId = com.chillcode.assessment.security.SecurityUtils.getCurrentAdminId();
+        Question question = questionRepository.findByIdAndAdminId(id, adminId)
+                .orElseThrow(() -> new RuntimeException("Question not found with id: " + id));
 
         // 1. Flush & clear Hibernate context
         try {
@@ -731,6 +745,7 @@ public class QuestionService {
                     .durationMinutes(question.getTimer() != null ? question.getTimer() : 60)
                     .startTime(java.time.LocalDateTime.now())
                     .endTime(java.time.LocalDateTime.now().plusYears(10))
+                    .admin(com.chillcode.assessment.security.SecurityUtils.getCurrentUser())
                     .build();
             questionTest = testRepository.save(questionTest);
             questionTest.getQuestions().add(question);

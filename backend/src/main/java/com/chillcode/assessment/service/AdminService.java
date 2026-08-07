@@ -38,20 +38,25 @@ public class AdminService {
     private ActivityLogRepository activityLogRepository;
 
     public DashboardMetricsDto getDashboardMetrics() {
-        long totalStudents = userRepository.countByRole(Role.STUDENT);
-        long totalSubjects = subjectRepository.count();
-        long totalTests = testRepository.countAvailableTests();
-        long totalQuestions = questionRepository.count();
+        Long adminId = com.chillcode.assessment.security.SecurityUtils.getCurrentAdminId();
+        if (adminId == null) {
+            return DashboardMetricsDto.builder().build();
+        }
+
+        long totalStudents = userRepository.countByRoleAndAdminId(Role.STUDENT, adminId);
+        long totalSubjects = subjectRepository.countByAdminId(adminId);
+        long totalTests = testRepository.countAvailableTestsByAdminId(adminId);
+        long totalQuestions = questionRepository.countByAdminId(adminId);
 
         LocalDateTime now = LocalDateTime.now();
-        long todayActiveTests = testRepository.countActiveAvailableTests(now);
+        long todayActiveTests = testRepository.countActiveAvailableTestsByAdminId(adminId, now);
 
-        long pendingEvaluations = studentTestRepository.countByStatus("SUBMITTED");
+        long pendingEvaluations = studentTestRepository.countByStatusAndAdminId("SUBMITTED", adminId);
 
         // Prepare monthly tests chart using actual data
         List<Map<String, Object>> monthlyTests = new ArrayList<>();
         String[] months = {"Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"};
-        List<com.chillcode.assessment.entity.Test> testsList = testRepository.findAll();
+        List<com.chillcode.assessment.entity.Test> testsList = testRepository.findByAdminId(adminId);
         for (int i = 5; i >= 0; i--) {
             LocalDateTime monthStart = now.minusMonths(i).withDayOfMonth(1).withHour(0).withMinute(0).withSecond(0).withNano(0);
             LocalDateTime monthEnd = monthStart.plusMonths(1);
@@ -69,8 +74,7 @@ public class AdminService {
 
         // Student participation chart using actual data
         List<Map<String, Object>> studentParticipation = new ArrayList<>();
-        List<com.chillcode.assessment.entity.Test> allTestsList = testRepository.findAll();
-        for (com.chillcode.assessment.entity.Test t : allTestsList) {
+        for (com.chillcode.assessment.entity.Test t : testsList) {
             if (studentParticipation.size() >= 5) break;
             List<StudentTest> sts = studentTestRepository.findByTestId(t.getId());
             if (sts != null && !sts.isEmpty()) {
@@ -97,8 +101,8 @@ public class AdminService {
         List<Map<String, Object>> languagePerformance = new ArrayList<>();
         String[] langs = {"java", "python", "cpp", "c", "javascript"};
         for (String lang : langs) {
-            long total = submissionRepository.countSubmissionsByLanguage(lang);
-            long accepted = submissionRepository.countAcceptedSubmissionsByLanguage(lang);
+            long total = submissionRepository.countSubmissionsByLanguageAndAdminId(lang, adminId);
+            long accepted = submissionRepository.countAcceptedSubmissionsByLanguageAndAdminId(lang, adminId);
             double avg = total > 0 ? (accepted * 100.0 / total) : 0.0;
             Map<String, Object> data = new HashMap<>();
             data.put("language", lang.toUpperCase());
@@ -108,7 +112,7 @@ public class AdminService {
 
         // Recent activity logs (Top 5 latest warnings)
         List<Map<String, Object>> recentActivities = new ArrayList<>();
-        List<com.chillcode.assessment.entity.Warning> latestWarnings = warningRepository.findTop5ByOrderByTimestampDesc();
+        List<com.chillcode.assessment.entity.Warning> latestWarnings = warningRepository.findTop5ByAdminIdOrderByTimestampDesc(adminId);
         for (com.chillcode.assessment.entity.Warning w : latestWarnings) {
             if (w.getStudentTest() != null && w.getStudentTest().getStudent() != null) {
                 Map<String, Object> activity = new HashMap<>();
@@ -118,6 +122,7 @@ public class AdminService {
                 activity.put("details", "Triggered warning: " + w.getType() + " - " + w.getReason());
                 activity.put("type", "warning");
                 recentActivities.add(activity);
+                if (recentActivities.size() >= 5) break;
             }
         }
 

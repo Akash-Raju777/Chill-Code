@@ -11,4 +11,8 @@ public interface BadgeRepository extends JpaRepository<Badge, Long> {
     List<Badge> findByStatus(String status);
     Optional<Badge> findByName(String name);
     List<Badge> findByType(String type);
+
+    List<Badge> findByAdminId(Long adminId);
+    List<Badge> findByStatusAndAdminId(String status, Long adminId);
+    Optional<Badge> findByNameAndAdminId(String name, Long adminId);
 }

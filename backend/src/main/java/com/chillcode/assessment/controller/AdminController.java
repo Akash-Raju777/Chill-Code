@@ -47,9 +47,8 @@ public class AdminController {
 
     @GetMapping("/students")
     public ResponseEntity<List<User>> getAllStudents() {
-        List<User> students = userRepository.findAll().stream()
-                .filter(u -> u.getRole() == Role.STUDENT)
-                .collect(Collectors.toList());
+        Long adminId = com.chillcode.assessment.security.SecurityUtils.getCurrentAdminId();
+        List<User> students = userRepository.findByRoleAndAdminId(Role.STUDENT, adminId);
         return ResponseEntity.ok(students);
     }
 
@@ -63,6 +62,7 @@ public class AdminController {
         }
 
         studentRequest.setRole(Role.STUDENT);
+        studentRequest.setAdmin(com.chillcode.assessment.security.SecurityUtils.getCurrentUser());
         if (studentRequest.getPassword() != null && !studentRequest.getPassword().isBlank()) {
             studentRequest.setPassword(passwordEncoder.encode(studentRequest.getPassword()));
         } else {
@@ -76,6 +76,11 @@ public class AdminController {
     @PutMapping("/students/{id}")
     public ResponseEntity<?> updateStudent(@PathVariable Long id, @RequestBody User studentRequest) {
         return userRepository.findById(id).map(existingUser -> {
+            Long adminId = com.chillcode.assessment.security.SecurityUtils.getCurrentAdminId();
+            if (existingUser.getAdmin() == null || !existingUser.getAdmin().getId().equals(adminId)) {
+                return ResponseEntity.status(403).body("Access Denied");
+            }
+
             if (studentRequest.getEmail() != null && !studentRequest.getEmail().equalsIgnoreCase(existingUser.getEmail())) {
                 if (userRepository.existsByEmail(studentRequest.getEmail())) {
                     return ResponseEntity.badRequest().body("Email is already registered.");
@@ -138,15 +143,10 @@ public class AdminController {
     @PostMapping("/student/forgive")
     @org.springframework.transaction.annotation.Transactional
     public ResponseEntity<?> forgiveStudent(@RequestParam String registerNumber) {
-        java.util.Optional<User> studentOpt = userRepository.findByRegisterNumber(registerNumber);
-        if (studentOpt.isEmpty()) {
-            studentOpt = userRepository.findByUsername(registerNumber);
-        }
-        if (studentOpt.isEmpty()) {
-            studentOpt = userRepository.findAll().stream()
-                    .filter(u -> u.getName().equalsIgnoreCase(registerNumber))
-                    .findFirst();
-        }
+        Long adminId = com.chillcode.assessment.security.SecurityUtils.getCurrentAdminId();
+        java.util.Optional<User> studentOpt = userRepository.findByRoleAndAdminId(Role.STUDENT, adminId).stream()
+                .filter(u -> registerNumber.equals(u.getRegisterNumber()) || registerNumber.equals(u.getUsername()) || registerNumber.equalsIgnoreCase(u.getName()))
+                .findFirst();
         if (studentOpt.isEmpty()) {
             return ResponseEntity.ok("No student security logs found to forgive for: " + registerNumber);
         }
@@ -188,7 +188,12 @@ public class AdminController {
 
     @DeleteMapping("/students/{id}")
     public ResponseEntity<Void> deleteStudent(@PathVariable Long id) {
-        adminService.deleteStudent(id);
-        return ResponseEntity.ok().build();
+        Long adminId = com.chillcode.assessment.security.SecurityUtils.getCurrentAdminId();
+        java.util.Optional<User> existingUser = userRepository.findById(id);
+        if (existingUser.isPresent() && existingUser.get().getAdmin() != null && existingUser.get().getAdmin().getId().equals(adminId)) {
+            adminService.deleteStudent(id);
+            return ResponseEntity.ok().build();
+        }
+        return ResponseEntity.status(403).build();
     }
 }

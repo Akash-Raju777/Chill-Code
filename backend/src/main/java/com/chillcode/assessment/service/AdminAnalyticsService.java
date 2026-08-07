@@ -34,14 +34,13 @@ public class AdminAnalyticsService {
     @Transactional(readOnly = true)
     public Map<String, Object> getOverviewStats() {
         Map<String, Object> stats = new HashMap<>();
+        Long adminId = com.chillcode.assessment.security.SecurityUtils.getCurrentAdminId();
+        if (adminId == null) return stats;
 
-        long totalStudents = userRepository.findAll().stream()
-                .filter(u -> u.getRole() == Role.STUDENT)
-                .count();
+        long totalStudents = userRepository.countByRoleAndAdminId(Role.STUDENT, adminId);
+        long totalTests = testRepository.countByAdminId(adminId);
 
-        long totalTests = testRepository.count();
-
-        List<StudentTest> allAssignments = studentTestRepository.findAll();
+        List<StudentTest> allAssignments = studentTestRepository.findAllWithStudentsByAdminId(adminId);
         
         long totalAttempts = allAssignments.stream()
                 .filter(st -> st.getStartedAt() != null || !"ASSIGNED".equalsIgnoreCase(st.getStatus()))
@@ -57,7 +56,7 @@ public class AdminAnalyticsService {
         double passRate = totalAttempts > 0 ? ((double) totalPassed / totalAttempts) * 100 : 0.0;
         double failRate = totalAttempts > 0 ? 100.0 - passRate : 0.0;
 
-        long totalBadges = studentAchievementRepository.count();
+        long totalBadges = studentAchievementRepository.countByAdminId(adminId);
 
         // Active Students Today (Students who have a submission today)
         LocalDate today = LocalDate.now();
@@ -84,8 +83,10 @@ public class AdminAnalyticsService {
     @Transactional(readOnly = true)
     public Map<String, Object> getChartData() {
         Map<String, Object> charts = new HashMap<>();
+        Long adminId = com.chillcode.assessment.security.SecurityUtils.getCurrentAdminId();
+        if (adminId == null) return charts;
 
-        List<StudentTest> allAssignments = studentTestRepository.findAllCompletedWithStudents();
+        List<StudentTest> allAssignments = studentTestRepository.findAllCompletedWithStudentsByAdminId(adminId);
 
         // 1. Pass vs Fail
         long passed = allAssignments.stream()

@@ -21,4 +21,15 @@ public interface TestRepository extends JpaRepository<Test, Long> {
 
     @org.springframework.data.jpa.repository.Query("SELECT COUNT(t) FROM Test t WHERE t.questions IS NOT EMPTY AND t.startTime < :now AND t.endTime > :now")
     long countActiveAvailableTests(@org.springframework.data.repository.query.Param("now") java.time.LocalDateTime now);
+
+    List<Test> findByAdminId(Long adminId);
+    List<Test> findBySubjectIdAndAdminId(Long subjectId, Long adminId);
+    long countByAdminId(Long adminId);
+    java.util.Optional<Test> findByTestCodeAndAdminId(String testCode, Long adminId);
+
+    @org.springframework.data.jpa.repository.Query("SELECT COUNT(t) FROM Test t WHERE t.questions IS NOT EMPTY AND t.admin.id = :adminId")
+    long countAvailableTestsByAdminId(@org.springframework.data.repository.query.Param("adminId") Long adminId);
+
+    @org.springframework.data.jpa.repository.Query("SELECT COUNT(t) FROM Test t WHERE t.questions IS NOT EMPTY AND t.startTime < :now AND t.endTime > :now AND t.admin.id = :adminId")
+    long countActiveAvailableTestsByAdminId(@org.springframework.data.repository.query.Param("adminId") Long adminId, @org.springframework.data.repository.query.Param("now") java.time.LocalDateTime now);
 }

@@ -29,9 +29,12 @@ public class OverallLeaderboardService {
     @Transactional(readOnly = true)
     public List<OverallLeaderboardEntry> getOverallLeaderboard(String timeFilter, String departmentFilter) {
         try {
-            List<User> students = userRepository.findAll().stream()
-                    .filter(u -> u.getRole() == Role.STUDENT)
-                    .collect(Collectors.toList());
+            Long adminId = com.chillcode.assessment.security.SecurityUtils.getCurrentAdminId();
+            List<User> students = adminId != null ?
+                    userRepository.findByRoleAndAdminId(Role.STUDENT, adminId) :
+                    userRepository.findAll().stream()
+                            .filter(u -> u.getRole() == Role.STUDENT)
+                            .collect(Collectors.toList());
 
             if (departmentFilter != null && !departmentFilter.trim().isEmpty() && !"ALL".equalsIgnoreCase(departmentFilter)) {
                 students = students.stream()
@@ -40,7 +43,9 @@ public class OverallLeaderboardService {
             }
 
             // Use eager JOIN FETCH query to avoid N+1 lazy loading of student field
-            List<StudentTest> allStudentTests = studentTestRepository.findAllWithStudents();
+            List<StudentTest> allStudentTests = adminId != null ? 
+                    studentTestRepository.findAllWithStudentsByAdminId(adminId) :
+                    studentTestRepository.findAllWithStudents();
 
             List<OverallLeaderboardEntry> entries = new ArrayList<>();
 

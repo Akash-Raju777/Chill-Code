@@ -20,6 +20,11 @@ public class Badge {
     @Column(nullable = false, length = 100)
     private String name;
 
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "admin_id")
+    @com.fasterxml.jackson.annotation.JsonIgnore
+    private User admin;
+
     @Column(columnDefinition = "TEXT")
     private String description;
 

@@ -9,6 +9,12 @@ import java.util.Optional;
 public interface SubjectRepository extends JpaRepository<Subject, Long> {
     Optional<Subject> findByName(String name);
     boolean existsByName(String name);
+    
+    java.util.List<Subject> findByAdminId(Long adminId);
+    Optional<Subject> findByIdAndAdminId(Long id, Long adminId);
+    long countByAdminId(Long adminId);
+    Optional<Subject> findByNameAndAdminId(String name, Long adminId);
+    boolean existsByNameAndAdminId(String name, Long adminId);
 
     @org.springframework.data.jpa.repository.Query(value = 
         "SELECT s.id, s.name, s.color, " +
