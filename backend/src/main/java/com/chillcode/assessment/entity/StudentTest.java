@@ -34,6 +34,11 @@ public class StudentTest {
     @JoinColumn(name = "test_id", nullable = false)
     private Test test;
 
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "admin_id")
+    @com.fasterxml.jackson.annotation.JsonIgnore
+    private User admin;
+
     private Integer score = 0;
 
     @Column(length = 30)

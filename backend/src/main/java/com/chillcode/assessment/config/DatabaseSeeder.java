@@ -54,8 +54,10 @@ public class DatabaseSeeder implements CommandLineRunner {
     @Transactional
     public void run(String... args) throws Exception {
         // Seed admin_demo if it doesn't exist
-        if (userRepository.findByUsername("admin_demo").isEmpty() && userRepository.findByEmail("admin@chillcode.com").isEmpty()) {
-            User admin = User.builder()
+        User adminDemo = userRepository.findByUsername("admin_demo")
+                .orElseGet(() -> userRepository.findByEmail("admin@chillcode.com").orElse(null));
+        if (adminDemo == null) {
+            adminDemo = User.builder()
                 .username("admin_demo")
                 .name("Demo Admin")
                 .email("admin@chillcode.com")
@@ -63,7 +65,7 @@ public class DatabaseSeeder implements CommandLineRunner {
                 .role(Role.ADMIN)
                 .status(UserStatus.ACTIVE)
                 .build();
-            userRepository.save(admin);
+            adminDemo = userRepository.save(adminDemo);
             System.out.println("Seeded Demo Admin successfully.");
         }
 
@@ -87,6 +89,7 @@ public class DatabaseSeeder implements CommandLineRunner {
             demoStudent.setRole(Role.STUDENT);
             demoStudent.setStatus(UserStatus.ACTIVE);
             demoStudent.setPassword(passwordEncoder.encode("password"));
+            demoStudent.setAdmin(adminDemo);
             userRepository.save(demoStudent);
             System.out.println("Seeded Demo Student (2024CS001 / student_demo) successfully.");
         } else {
@@ -102,6 +105,10 @@ public class DatabaseSeeder implements CommandLineRunner {
             }
             if (demoStudent.getStatus() == null) {
                 demoStudent.setStatus(UserStatus.ACTIVE);
+                updated = true;
+            }
+            if (demoStudent.getAdmin() == null) {
+                demoStudent.setAdmin(adminDemo);
                 updated = true;
             }
             if (updated) {
@@ -126,8 +133,16 @@ public class DatabaseSeeder implements CommandLineRunner {
                     .orElse(null);
 
             if (test != null) {
+                boolean testUpdated = false;
                 if (test.getSecurityShieldEnabled() == null || !test.getSecurityShieldEnabled()) {
                     test.setSecurityShieldEnabled(true);
+                    testUpdated = true;
+                }
+                if (test.getAdmin() == null) {
+                    test.setAdmin(adminDemo);
+                    testUpdated = true;
+                }
+                if (testUpdated) {
                     testRepository.save(test);
                 }
             }
@@ -151,6 +166,7 @@ public class DatabaseSeeder implements CommandLineRunner {
                         .negativeMarking(false)
                         .securityShieldEnabled(true)
                         .questions(new java.util.HashSet<>())
+                        .admin(adminDemo)
                         .build();
                 test = testRepository.save(test);
                 System.out.println("Seeded test: " + testName + " (" + testCode + ")");
@@ -172,6 +188,7 @@ public class DatabaseSeeder implements CommandLineRunner {
                             .score(0)
                             .warningsCount(0)
                             .isSuspended(false)
+                            .admin(adminDemo)
                             .build();
                     studentTestRepository.save(st);
 
@@ -182,6 +199,7 @@ public class DatabaseSeeder implements CommandLineRunner {
                             .message("You have been assigned the practice block '" + test.getName() + "'.")
                             .type("TEST_ALERT")
                             .isRead(false)
+                            .admin(adminDemo)
                             .build();
                     notificationRepository.save(notification);
                 }

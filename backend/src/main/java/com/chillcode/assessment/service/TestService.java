@@ -163,6 +163,7 @@ public class TestService {
                     .score(0)
                     .warningsCount(0)
                     .isSuspended(false)
+                    .admin(savedTest.getAdmin() != null ? savedTest.getAdmin() : (student.getAdmin() != null ? student.getAdmin() : com.chillcode.assessment.security.SecurityUtils.getCurrentUser()))
                     .build();
             studentTestRepository.save(st);
 
@@ -559,6 +560,7 @@ public class TestService {
                         .score(0)
                         .warningsCount(0)
                         .isSuspended(false)
+                        .admin(test.getAdmin() != null ? test.getAdmin() : (student != null ? student.getAdmin() : null))
                         .build();
                 studentTestRepository.save(st);
                 savedAny = true;

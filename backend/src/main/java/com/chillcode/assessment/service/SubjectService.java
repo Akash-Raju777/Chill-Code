@@ -70,6 +70,7 @@ public class SubjectService {
                     .score(0)
                     .warningsCount(0)
                     .isSuspended(false)
+                    .admin(test.getAdmin() != null ? test.getAdmin() : (student.getAdmin() != null ? student.getAdmin() : null))
                     .build();
             studentTestRepository.save(st);
         }
