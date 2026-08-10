@@ -276,7 +276,7 @@ export default function TestsWorkspace() {
         }
       }
 
-      const updatedSt = await apiCall(`/api/student/tests/${selectedTest.test.id}/start`, {
+      const updatedSt = await apiCall(`/api/student/tests/${selectedTest.test.id}/start?questionId=${selectedQuestion.id}`, {
         method: 'POST',
       });
       resetWarnings();

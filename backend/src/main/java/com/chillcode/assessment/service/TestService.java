@@ -184,7 +184,7 @@ public class TestService {
     }
 
     @Transactional
-    public StudentTest startTest(Long testId, Long studentId) {
+    public StudentTest startTest(Long testId, Long studentId, Long questionId) {
         User student = userRepository.findById(studentId)
                 .orElseThrow(() -> new RuntimeException("Student not found"));
 
@@ -269,7 +269,25 @@ public class TestService {
 
         st.setStatus("STARTED");
         st.setStartedAt(LocalDateTime.now());
-        return studentTestRepository.save(st);
+        st = studentTestRepository.save(st);
+
+        if (questionId != null) {
+            com.chillcode.assessment.entity.StudentQuestionStatus sqs = studentQuestionStatusRepository.findByStudentIdAndQuestionId(studentId, questionId)
+                    .orElseGet(() -> com.chillcode.assessment.entity.StudentQuestionStatus.builder()
+                            .studentId(studentId)
+                            .questionId(questionId)
+                            .attemptCount(0)
+                            .status("NOT_STARTED")
+                            .build());
+
+            if ("NOT_STARTED".equals(sqs.getStatus()) || "SUSPENDED".equals(sqs.getStatus())) {
+                sqs.setStatus("IN_PROGRESS");
+                sqs.setAttemptCount((sqs.getAttemptCount() != null ? sqs.getAttemptCount() : 0) + 1);
+                sqs.setLastAttemptAt(LocalDateTime.now());
+                studentQuestionStatusRepository.save(sqs);
+            }
+        }
+        return st;
     }
 
     @Transactional
@@ -604,8 +622,8 @@ public class TestService {
     }
 
     @Transactional
-    public com.chillcode.assessment.dto.StudentTestDto startTestDto(Long testId, Long studentId) {
-        StudentTest st = startTest(testId, studentId);
+    public com.chillcode.assessment.dto.StudentTestDto startTestDto(Long testId, Long studentId, Long questionId) {
+        StudentTest st = startTest(testId, studentId, questionId);
         return convertToStudentTestDto(st);
     }
 

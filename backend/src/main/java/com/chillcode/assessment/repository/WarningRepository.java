@@ -11,6 +11,5 @@ public interface WarningRepository extends JpaRepository<Warning, Long> {
     long countByStudentTestId(Long studentTestId);
     List<Warning> findTop5ByOrderByTimestampDesc();
     
-    @org.springframework.data.jpa.repository.Query("SELECT w FROM Warning w WHERE w.studentTest.test.admin.id = :adminId ORDER BY w.timestamp DESC LIMIT 5")
-    List<Warning> findTop5ByAdminIdOrderByTimestampDesc(@org.springframework.data.repository.query.Param("adminId") Long adminId);
+    List<Warning> findTop5ByStudentTestAdminIdOrderByTimestampDesc(Long adminId);
 }

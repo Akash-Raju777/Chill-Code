@@ -65,9 +65,11 @@ public class TestController {
     }
 
     @PostMapping("/student/tests/{id}/start")
-    public ResponseEntity<com.chillcode.assessment.dto.StudentTestDto> startTest(@PathVariable("id") Long id) {
+    public ResponseEntity<com.chillcode.assessment.dto.StudentTestDto> startTest(
+            @PathVariable("id") Long id,
+            @RequestParam(value = "questionId", required = false) Long questionId) {
         User student = getCurrentUser();
-        return ResponseEntity.ok(testService.startTestDto(id, student.getId()));
+        return ResponseEntity.ok(testService.startTestDto(id, student.getId(), questionId));
     }
 
     @PostMapping("/student/tests/{id}/submit")
