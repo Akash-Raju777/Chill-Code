@@ -156,6 +156,33 @@ public class DatabaseSeeder implements CommandLineRunner {
             System.out.println("Retroactively fixed missing admin_id on existing student_tests.");
         }
 
+        // Retroactively fix stuck IN_PROGRESS student_question_statuses
+        try {
+            java.util.List<com.chillcode.assessment.entity.StudentQuestionStatus> allSqs = 
+                studentQuestionStatusRepository.findAll();
+            boolean sqsPatched = false;
+            for (com.chillcode.assessment.entity.StudentQuestionStatus sqs : allSqs) {
+                if ("IN_PROGRESS".equals(sqs.getStatus())) {
+                    // Check if test is PENDING or COMPLETED
+                    studentTestRepository.findByStudentId(sqs.getStudentId()).stream()
+                        .filter(st -> st.getTest().getQuestions().stream().anyMatch(q -> q.getId().equals(sqs.getQuestionId())))
+                        .findFirst()
+                        .ifPresent(st -> {
+                            if (!"STARTED".equals(st.getStatus())) {
+                                sqs.setStatus("PENDING");
+                                studentQuestionStatusRepository.save(sqs);
+                            }
+                        });
+                    sqsPatched = true;
+                }
+            }
+            if (sqsPatched) {
+                System.out.println("Retroactively fixed stuck IN_PROGRESS student_question_statuses.");
+            }
+        } catch (Exception e) {
+            System.err.println("Failed to patch sqs: " + e.getMessage());
+        }
+
         // Seed tests and assign to students
         java.util.List<com.chillcode.assessment.entity.Subject> subjects = subjectRepository.findAll();
         java.util.List<User> students = userRepository.findAll().stream()

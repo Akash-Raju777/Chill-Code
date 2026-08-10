@@ -340,7 +340,8 @@ public class CodeExecutionService {
             // Update StudentQuestionStatus:
             try {
                 User student = studentTest != null ? studentTest.getStudent() : getCurrentUser();
-                updateStudentQuestionStatus(student, question, sub, false);
+                Long adminId = studentTest != null && studentTest.getAdmin() != null ? studentTest.getAdmin().getId() : (question.getAdmin() != null ? question.getAdmin().getId() : null);
+                updateStudentQuestionStatus(student, question, sub, false, adminId);
             } catch (Exception e) {
                 System.err.println("Failed to update student question status: " + e.getMessage());
             }
@@ -395,13 +396,14 @@ public class CodeExecutionService {
                 .orElseThrow(() -> new RuntimeException("Current user not found"));
     }
 
-    private void updateStudentQuestionStatus(User student, Question question, Submission submission, boolean runOnly) {
+    private void updateStudentQuestionStatus(User student, Question question, Submission submission, boolean runOnly, Long adminId) {
         StudentQuestionStatus status = studentQuestionStatusRepository
                 .findByStudentIdAndQuestionId(student.getId(), question.getId())
                 .orElse(null);
 
         if (status == null) {
             status = new StudentQuestionStatus();
+            status.setAdminId(adminId);
             status.setStudentId(student.getId());
             status.setQuestionId(question.getId());
             status.setStatus("IN_PROGRESS");

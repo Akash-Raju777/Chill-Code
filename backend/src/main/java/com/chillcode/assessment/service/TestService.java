@@ -274,8 +274,10 @@ public class TestService {
         }
 
         if (questionId != null) {
+            final Long adminIdForQuestion = st.getAdmin().getId();
             com.chillcode.assessment.entity.StudentQuestionStatus sqs = studentQuestionStatusRepository.findByStudentIdAndQuestionId(studentId, questionId)
                     .orElseGet(() -> com.chillcode.assessment.entity.StudentQuestionStatus.builder()
+                            .adminId(adminIdForQuestion)
                             .studentId(studentId)
                             .questionId(questionId)
                             .attemptCount(0)
@@ -394,7 +396,7 @@ public class TestService {
             return st; // Ignore warnings and suspension if security shield is disabled or student has NO_SECURITY status
         }
 
-        if (!"STARTED".equals(st.getStatus())) {
+        if (!"STARTED".equals(st.getStatus()) && !"PENDING".equals(st.getStatus())) {
             throw new RuntimeException("Cannot log warning for a test that is not in progress.");
         }
 
@@ -426,7 +428,7 @@ public class TestService {
             // Log activity log
             Notification alert = Notification.builder()
                     .user(student)
-                    .admin(st.getTest().getAdmin())
+                    .admin(st.getAdmin())
                     .title("Attempt Suspended")
                     .message("Your exam attempt has been suspended due to multiple security violations in test: " + st.getTest().getName())
                     .type("SUSPENSION")
@@ -630,6 +632,29 @@ public class TestService {
     }
 
     @Transactional
+    public com.chillcode.assessment.dto.StudentTestDto exitTestDto(Long testId, Long studentId, Long questionId) {
+        StudentTest st = studentTestRepository.findByStudentIdAndTestId(studentId, testId)
+                .orElseThrow(() -> new RuntimeException("Student test not found"));
+        
+        if (questionId != null) {
+            studentQuestionStatusRepository.findByStudentIdAndQuestionId(studentId, questionId)
+                    .ifPresent(sqs -> {
+                        if ("IN_PROGRESS".equals(sqs.getStatus()) || "NOT_STARTED".equals(sqs.getStatus())) {
+                            sqs.setStatus("PENDING");
+                            studentQuestionStatusRepository.save(sqs);
+                        }
+                    });
+        }
+        
+        if ("STARTED".equals(st.getStatus())) {
+            st.setStatus("PENDING");
+            st = studentTestRepository.save(st);
+        }
+        
+        return convertToStudentTestDto(st);
+    }
+
+    @Transactional
     public com.chillcode.assessment.dto.StudentTestDto submitTestDto(Long testId, Long studentId) {
         return submitTestDto(testId, studentId, null);
     }
@@ -705,6 +730,7 @@ public class TestService {
                 .findByStudentIdAndQuestionId(studentId, questionId)
                 .orElseGet(() -> {
                     StudentQuestionStatus newSqs = new StudentQuestionStatus();
+                    newSqs.setAdminId(st.getAdmin().getId());
                     newSqs.setStudentId(studentId);
                     newSqs.setQuestionId(questionId);
                     newSqs.setAttemptCount(0);

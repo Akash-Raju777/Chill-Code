@@ -11,5 +11,6 @@ public interface WarningRepository extends JpaRepository<Warning, Long> {
     long countByStudentTestId(Long studentTestId);
     List<Warning> findTop5ByOrderByTimestampDesc();
     
+    @org.springframework.data.jpa.repository.EntityGraph(attributePaths = {"studentTest", "studentTest.student"})
     List<Warning> findTop5ByStudentTestAdminIdOrderByTimestampDesc(Long adminId);
 }

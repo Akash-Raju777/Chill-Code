@@ -23,6 +23,9 @@ public class StudentQuestionStatus {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
+    @Column(name = "admin_id", nullable = false)
+    private Long adminId;
+
     @Column(name = "student_id", nullable = false)
     private Long studentId;
 
@@ -47,8 +50,9 @@ public class StudentQuestionStatus {
     public StudentQuestionStatus() {}
 
     @Builder
-    public StudentQuestionStatus(Long id, Long studentId, Long questionId, String status, Integer attemptCount, Long lastSubmissionId, LocalDateTime completedAt, LocalDateTime lastAttemptAt) {
+    public StudentQuestionStatus(Long id, Long adminId, Long studentId, Long questionId, String status, Integer attemptCount, Long lastSubmissionId, LocalDateTime completedAt, LocalDateTime lastAttemptAt) {
         this.id = id;
+        this.adminId = adminId;
         this.studentId = studentId;
         this.questionId = questionId;
         this.status = status;
@@ -61,6 +65,9 @@ public class StudentQuestionStatus {
     // Getters and Setters
     public Long getId() { return id; }
     public void setId(Long id) { this.id = id; }
+
+    public Long getAdminId() { return adminId; }
+    public void setAdminId(Long adminId) { this.adminId = adminId; }
 
     public Long getStudentId() { return studentId; }
     public void setStudentId(Long studentId) { this.studentId = studentId; }

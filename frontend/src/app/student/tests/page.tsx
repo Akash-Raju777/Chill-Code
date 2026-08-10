@@ -329,22 +329,19 @@ export default function TestsWorkspace() {
     return hasPassed && isPassStatus;
   });
 
-  const notStartedQuestions = filteredQuestions.filter((q) => {
-    const hasPassed = (q.score !== undefined && q.score !== null ? q.score : 0) >= (q.passingMarks || 10);
-    const isPassStatus = q.overallResult === 'PASS' || q.status === 'COMPLETED';
-    const isSolved = hasPassed && isPassStatus;
-
-    const hasAttempted = (q.attemptCount && q.attemptCount > 0) || ['IN_PROGRESS', 'FAILED', 'SUSPENDED', 'PENDING', 'PENDING_REATTEMPT'].includes(q.status);
-    return !isSolved && (!hasAttempted || q.status === 'NOT_STARTED');
+  const notAttendedQuestions = filteredQuestions.filter((q) => {
+    const isSolved = (q.score !== undefined && q.score !== null ? q.score : 0) >= (q.passingMarks || 10) && (q.overallResult === 'PASS' || q.status === 'COMPLETED');
+    return !isSolved && q.status === 'NOT_STARTED';
   });
 
   const inProgressQuestions = filteredQuestions.filter((q) => {
-    const hasPassed = (q.score !== undefined && q.score !== null ? q.score : 0) >= (q.passingMarks || 10);
-    const isPassStatus = q.overallResult === 'PASS' || q.status === 'COMPLETED';
-    const isSolved = hasPassed && isPassStatus;
+    const isSolved = (q.score !== undefined && q.score !== null ? q.score : 0) >= (q.passingMarks || 10) && (q.overallResult === 'PASS' || q.status === 'COMPLETED');
+    return !isSolved && q.status === 'IN_PROGRESS';
+  });
 
-    const hasAttempted = (q.attemptCount && q.attemptCount > 0) || ['IN_PROGRESS', 'FAILED', 'SUSPENDED', 'PENDING', 'PENDING_REATTEMPT'].includes(q.status);
-    return !isSolved && hasAttempted && q.status !== 'NOT_STARTED';
+  const pendingQuestions = filteredQuestions.filter((q) => {
+    const isSolved = (q.score !== undefined && q.score !== null ? q.score : 0) >= (q.passingMarks || 10) && (q.overallResult === 'PASS' || q.status === 'COMPLETED');
+    return !isSolved && ['PENDING', 'FAILED', 'SUSPENDED', 'PENDING_REATTEMPT'].includes(q.status);
   });
 
   const renderQuestionsTable = (list: any[], isCompletedTable: boolean) => {
@@ -383,10 +380,11 @@ export default function TestsWorkspace() {
                 const subject = subjects.find((s) => s.id === q.subjectId);
                 const subjectName = subject ? subject.name : 'Unknown';
 
-                let statusStr = "Un Complete";
+                let statusStr = "Not Attended";
                 if (isSolved) statusStr = "Completed";
                 else if (isSuspended) statusStr = "Suspended";
-                else if (isStarted || q.attemptCount > 0) statusStr = "Pending";
+                else if (isStarted) statusStr = "In Progress";
+                else if (q.status !== 'NOT_STARTED') statusStr = "Pending";
 
                 let lastAttemptStr = "No attempt yet";
                 if (q.lastAttemptAt) {
@@ -670,25 +668,27 @@ export default function TestsWorkspace() {
         </div>
       ) : (
         <div className="space-y-8">
-          {/* Category 1: Un Attend */}
+          {/* Category 1: Not Attended */}
           <div className="space-y-4">
             <h2 className="text-sm font-bold text-gray-400 uppercase tracking-wider flex items-center gap-2 font-sans select-none">
               <span className="w-2.5 h-2.5 rounded-full bg-gray-500"></span>
-              Un Attend ({notStartedQuestions.length})
+              Not Attended ({notAttendedQuestions.length})
             </h2>
-            {renderQuestionsTable(notStartedQuestions, false)}
+            {renderQuestionsTable(notAttendedQuestions, false)}
           </div>
 
-          {/* Category 2: Pending */}
+
+
+          {/* Category 3: Pending */}
           <div className="space-y-4 pt-4">
             <h2 className="text-sm font-bold text-amber-400 uppercase tracking-wider flex items-center gap-2 font-sans select-none">
-              <span className="w-2.5 h-2.5 rounded-full bg-amber-400 animate-pulse"></span>
-              Pending ({inProgressQuestions.length})
+              <span className="w-2.5 h-2.5 rounded-full bg-amber-400"></span>
+              Pending ({pendingQuestions.length})
             </h2>
-            {renderQuestionsTable(inProgressQuestions, false)}
+            {renderQuestionsTable(pendingQuestions, false)}
           </div>
 
-          {/* Category 3: Completed */}
+          {/* Category 4: Completed */}
           {!hideSolved && (
             <div className="space-y-4 pt-4">
               <h2 className="text-sm font-bold text-emerald-400 uppercase tracking-wider flex items-center gap-2 font-sans select-none">

@@ -127,12 +127,7 @@ public class AdminService {
         }
 
         if (recentActivities.isEmpty()) {
-            Map<String, Object> sampleAct = new HashMap<>();
-            sampleAct.put("time", now.minusMinutes(10).toString());
-            sampleAct.put("user", "System Admin");
-            sampleAct.put("details", "Dashboard metrics initialized successfully.");
-            sampleAct.put("type", "info");
-            recentActivities.add(sampleAct);
+            // No mock data - show empty state or leave empty
         }
 
         return DashboardMetricsDto.builder()

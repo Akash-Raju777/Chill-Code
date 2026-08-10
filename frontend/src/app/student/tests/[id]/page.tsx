@@ -486,6 +486,33 @@ function CodingWorkspaceInner() {
     });
   };
 
+  const handleExitTest = async () => {
+    setConfirmDialog({
+      isOpen: true,
+      title: 'Exit Test',
+      message: 'Are you sure you want to exit? Your attempt will be marked as PENDING and you will lose access until re-assigned.',
+      onConfirm: async () => {
+        setSubmittingExam(true);
+        try {
+          const token = localStorage.getItem('token');
+          if (token) {
+            await fetch(`http://localhost:8080/api/student/tests/${testId}/exit?questionId=${currentQuestion?.id || ''}`, {
+              method: 'POST',
+              headers: { 'Authorization': `Bearer ${token}` }
+            });
+          }
+          if (document.fullscreenElement) {
+            try { await document.exitFullscreen(); } catch (_) {}
+          }
+          router.push('/student/tests');
+        } catch (err: any) {
+          console.error("Failed to exit properly", err);
+          router.push('/student/tests');
+        }
+      }
+    });
+  };
+
   const handleWarningTrigger = async (type: string, reason: string) => {
     if (!isSessionActive || isTestSuspended) return;
 
@@ -1053,14 +1080,23 @@ function CodingWorkspaceInner() {
           )}
 
           {!isViewMode ? (
-            <button
-              onClick={handleManualSubmitExam}
-              disabled={submittingExam}
-              className="px-4 py-2 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white rounded-xl text-xs font-bold transition-all shadow-md shadow-emerald-500/10 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-1.5"
-            >
-              {submittingExam && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
-              {submittingExam ? 'Submitting...' : 'Submit Exam'}
-            </button>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={handleExitTest}
+                disabled={submittingExam}
+                className="px-4 py-2 bg-[#0b0c10] border border-white/10 hover:bg-white/5 text-gray-300 rounded-xl text-xs font-bold transition-all disabled:opacity-50 select-none"
+              >
+                Exit Test
+              </button>
+              <button
+                onClick={handleManualSubmitExam}
+                disabled={submittingExam}
+                className="px-4 py-2 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white rounded-xl text-xs font-bold transition-all shadow-md shadow-emerald-500/10 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-1.5"
+              >
+                {submittingExam && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
+                {submittingExam ? 'Submitting...' : 'Submit Exam'}
+              </button>
+            </div>
           ) : (
             <button
               onClick={() => router.push('/student/tests')}
