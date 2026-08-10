@@ -35,4 +35,18 @@ public class QuestionDto {
     private String lastAttemptAt;
     private Integer score;
     private String overallResult;
+
+    // Test & Badge Management fields (Question-specific single source of truth)
+    private Long testId;
+    private Boolean enableBadgeManagement;
+    private Long badgeSetId;
+    private String badgeSetName;
+    private Integer badgeWinnersCount;
+    private Boolean enableLanguageBadge;
+    private String languageName;
+    private String languageBadgeName;
+    private String languageBadgeIcon;
+    private Integer languageAwardRank;
+    private List<BadgeDefinitionDto> badgeDefs;
+    private BadgeSetDto badgeSet;
 }

@@ -19,6 +19,8 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
 import java.util.stream.Collectors;
+import com.chillcode.assessment.dto.BadgeDefinitionDto;
+import com.chillcode.assessment.dto.BadgeSetDto;
 
 @Service
 public class QuestionService {
@@ -54,6 +56,10 @@ public class QuestionService {
 
     @Autowired
     private com.chillcode.assessment.repository.BadgeDefinitionRepository badgeDefinitionRepository;
+
+    @Autowired
+    @org.springframework.context.annotation.Lazy
+    private BadgeSetService badgeSetService;
 
     @jakarta.persistence.PersistenceContext
     private jakarta.persistence.EntityManager entityManager;
@@ -267,7 +273,7 @@ public class QuestionService {
             }
         }
 
-        ensureTestAndBadgeSetForSubject(subject, savedQuestion);
+        ensureTestAndBadgeSetForSubject(subject, savedQuestion, questionDto);
         return convertToDto(savedQuestion);
     }
 
@@ -324,7 +330,7 @@ public class QuestionService {
         Question savedQuestion = questionRepository.save(question);
         log.info("Question Updated: Question ID: {}, Title: '{}' successfully updated in database", savedQuestion.getId(), savedQuestion.getTitle());
 
-        ensureTestAndBadgeSetForSubject(subject, savedQuestion);
+        ensureTestAndBadgeSetForSubject(subject, savedQuestion, questionDto);
 
         // Update test cases (delete existing and insert new ones for simplicity)
         List<TestCase> existingTestCases = testCaseRepository.findByQuestionId(id);
@@ -654,7 +660,48 @@ public class QuestionService {
             dto.setStatus(hasAcceptedSubmission ? "COMPLETED" : "NOT_STARTED");
             dto.setAttemptCount(0);
         }
+        populateBadgeInfo(question, dto);
         return dto;
+    }
+
+    private void populateBadgeInfo(Question question, QuestionDto dto) {
+        if (question == null || question.getId() == null) return;
+        try {
+            com.chillcode.assessment.entity.Test questionTest = findTestForQuestion(question.getId());
+            if (questionTest != null) {
+                dto.setTestId(questionTest.getId());
+                List<com.chillcode.assessment.entity.BadgeSet> badgeSets = badgeSetRepository.findByTestId(questionTest.getId());
+                if (badgeSets != null && !badgeSets.isEmpty()) {
+                    com.chillcode.assessment.entity.BadgeSet bs = badgeSets.get(0);
+                    dto.setBadgeSetId(bs.getId());
+                    dto.setEnableBadgeManagement("ACTIVE".equalsIgnoreCase(bs.getStatus()));
+                    dto.setBadgeSetName(bs.getName());
+                    dto.setBadgeWinnersCount(bs.getNumberOfWinners());
+                    dto.setEnableLanguageBadge(bs.getEnableLanguageBadge());
+                    dto.setLanguageName(bs.getLanguageName());
+                    dto.setLanguageBadgeName(bs.getLanguageBadgeName());
+                    dto.setLanguageBadgeIcon(bs.getLanguageBadgeIcon());
+                    dto.setLanguageAwardRank(bs.getLanguageAwardRank());
+
+                    List<BadgeDefinitionDto> defDtos = badgeDefinitionRepository.findByBadgeSetIdAndStatus(bs.getId(), "ACTIVE").stream()
+                            .sorted(java.util.Comparator.comparingInt(com.chillcode.assessment.entity.BadgeDefinition::getRankPosition))
+                            .map(bd -> BadgeDefinitionDto.builder()
+                                    .id(bd.getId())
+                                    .badgeSetId(bs.getId())
+                                    .rankPosition(bd.getRankPosition())
+                                    .badgeName(bd.getBadgeName())
+                                    .badgeIcon(bd.getBadgeIcon())
+                                    .badgeColor(bd.getBadgeColor())
+                                    .badgeOrder(bd.getBadgeOrder())
+                                    .status(bd.getStatus())
+                                    .build())
+                            .collect(Collectors.toList());
+                    dto.setBadgeDefs(defDtos);
+                }
+            }
+        } catch (Exception e) {
+            log.warn("Error populating badge info for question ID {}: {}", question.getId(), e.getMessage());
+        }
     }
 
     private java.util.Set<Long> getSolvedQuestionIdsForCurrentStudent() {
@@ -723,32 +770,36 @@ public class QuestionService {
      * and creates a BadgeSet with default Gold/Silver/Bronze definitions if one doesn't exist.
      * This guarantees that every saved question appears in Question Management AND Badge Management.
      */
+    private com.chillcode.assessment.entity.Test findTestForQuestion(Long questionId) {
+        if (questionId != null) {
+            try {
+                @SuppressWarnings("unchecked")
+                List<Number> existingTestIds = (List<Number>) entityManager.createNativeQuery(
+                        "SELECT DISTINCT test_id FROM test_questions WHERE question_id = :qId")
+                        .setParameter("qId", questionId)
+                        .getResultList();
+                if (existingTestIds != null && !existingTestIds.isEmpty()) {
+                    return testRepository.findById(existingTestIds.get(0).longValue()).orElse(null);
+                }
+            } catch (Exception ignored) {}
+        }
+        return null;
+    }
+
     private void ensureTestAndBadgeSetForSubject(Subject subject, Question question) {
+        ensureTestAndBadgeSetForSubject(subject, question, null);
+    }
+
+    /**
+     * Ensures that a Test and BadgeSet exist for the given subject and question,
+     * links the question to the test, and updates badge management configuration from DTO.
+     */
+    private void ensureTestAndBadgeSetForSubject(Subject subject, Question question, QuestionDto dto) {
         String qCode = (question.getQuestionCode() != null && !question.getQuestionCode().trim().isEmpty())
                 ? question.getQuestionCode().trim().toUpperCase() : null;
 
         // 1. Find or create a dedicated Test for THIS specific question
-        com.chillcode.assessment.entity.Test questionTest = null;
-        try {
-            @SuppressWarnings("unchecked")
-            List<Number> existingTestIds = (List<Number>) entityManager.createNativeQuery(
-                    "SELECT DISTINCT test_id FROM test_questions WHERE question_id = :qId")
-                    .setParameter("qId", question.getId())
-                    .getResultList();
-            if (existingTestIds != null && !existingTestIds.isEmpty()) {
-                questionTest = testRepository.findById(existingTestIds.get(0).longValue()).orElse(null);
-            }
-        } catch (Exception ignored) {}
-
-        // If not linked yet, search for existing test by Title & Subject to prevent duplicate tests
-        if (questionTest == null) {
-            List<com.chillcode.assessment.entity.Test> matchingTests = testRepository.findBySubjectId(subject.getId()).stream()
-                    .filter(t -> t.getName() != null && t.getName().equalsIgnoreCase(question.getTitle()))
-                    .collect(Collectors.toList());
-            if (!matchingTests.isEmpty()) {
-                questionTest = matchingTests.get(0);
-            }
-        }
+        com.chillcode.assessment.entity.Test questionTest = findTestForQuestion(question.getId());
 
         if (questionTest != null) {
             // Sync test properties
@@ -761,20 +812,6 @@ public class QuestionService {
                 questionTest.getQuestions().add(question);
             }
             questionTest = testRepository.save(questionTest);
-
-            // Sync student_achievements immediately when question code/title changes
-            if (qCode != null) {
-                try {
-                    entityManager.createNativeQuery(
-                        "UPDATE student_achievements SET test_code = :qCode, test_name = :title WHERE test_id = :tId")
-                        .setParameter("qCode", qCode)
-                        .setParameter("title", question.getTitle())
-                        .setParameter("tId", questionTest.getId())
-                        .executeUpdate();
-                } catch (Exception e) {
-                    log.warn("Error syncing achievements on question edit: {}", e.getMessage());
-                }
-            }
         } else {
             // Create a new dedicated Test for this question
             String testCode = qCode;
@@ -782,7 +819,7 @@ public class QuestionService {
                 String prefix = subject.getName().replaceAll("[^a-zA-Z]", "").toUpperCase();
                 if (prefix.length() > 6) prefix = prefix.substring(0, 6);
                 if (prefix.isEmpty()) prefix = "TEST";
-                testCode = prefix + "-" + String.format("%03d", question.getId());
+                testCode = prefix + "-" + String.format("%03d", question.getId() != null ? question.getId() : System.currentTimeMillis() % 1000);
             }
 
             questionTest = com.chillcode.assessment.entity.Test.builder()
@@ -807,36 +844,70 @@ public class QuestionService {
 
         if (badgeSets != null && !badgeSets.isEmpty()) {
             badgeSet = badgeSets.get(0);
-            // Delete any duplicate badge sets for this same test ID
             for (int i = 1; i < badgeSets.size(); i++) {
                 try {
                     badgeSetRepository.delete(badgeSets.get(i));
                 } catch (Exception ignored) {}
             }
-            badgeSet.setName(question.getTitle() + " Badge Set");
-            badgeSet.setSubject(subject);
-            if (qCode != null) {
-                badgeSet.setTestCode(qCode);
-            }
-            badgeSetRepository.save(badgeSet);
         } else {
             badgeSet = com.chillcode.assessment.entity.BadgeSet.builder()
-                    .name(question.getTitle() + " Badge Set")
                     .test(questionTest)
                     .subject(subject)
                     .admin(questionTest.getAdmin())
-                    .testCode(qCode != null ? qCode : questionTest.getTestCode())
-                    .numberOfWinners(3)
-                    .status("ACTIVE")
                     .build();
-            badgeSet = badgeSetRepository.save(badgeSet);
+        }
 
-            // Seed default badge definitions (Gold, Silver, Bronze)
+        boolean enabled = dto != null && Boolean.TRUE.equals(dto.getEnableBadgeManagement());
+        String effectiveTestCode = (qCode != null) ? qCode : questionTest.getTestCode();
+
+        badgeSet.setName((dto != null && dto.getBadgeSetName() != null && !dto.getBadgeSetName().trim().isEmpty())
+                ? dto.getBadgeSetName().trim() : question.getTitle() + " Badge Set");
+        badgeSet.setTest(questionTest);
+        badgeSet.setSubject(subject);
+        badgeSet.setTestCode(effectiveTestCode);
+
+        if (dto != null) {
+            if (dto.getBadgeWinnersCount() != null) badgeSet.setNumberOfWinners(dto.getBadgeWinnersCount());
+            if (dto.getEnableLanguageBadge() != null) badgeSet.setEnableLanguageBadge(dto.getEnableLanguageBadge());
+            if (dto.getLanguageName() != null) badgeSet.setLanguageName(dto.getLanguageName());
+            if (dto.getLanguageBadgeName() != null) badgeSet.setLanguageBadgeName(dto.getLanguageBadgeName());
+            if (dto.getLanguageBadgeIcon() != null) badgeSet.setLanguageBadgeIcon(dto.getLanguageBadgeIcon());
+            if (dto.getLanguageAwardRank() != null) badgeSet.setLanguageAwardRank(dto.getLanguageAwardRank());
+            if (dto.getEnableBadgeManagement() != null) {
+                badgeSet.setStatus(enabled ? "ACTIVE" : "INACTIVE");
+            }
+        } else if (badgeSet.getStatus() == null) {
+            badgeSet.setStatus("ACTIVE");
+            badgeSet.setNumberOfWinners(3);
+        }
+
+        badgeSet = badgeSetRepository.save(badgeSet);
+
+        // Save custom badge definitions if provided in dto
+        if (dto != null && dto.getBadgeDefs() != null && !dto.getBadgeDefs().isEmpty()) {
+            List<com.chillcode.assessment.entity.BadgeDefinition> oldDefs = badgeDefinitionRepository.findByBadgeSetIdAndStatus(badgeSet.getId(), "ACTIVE");
+            for (com.chillcode.assessment.entity.BadgeDefinition oldDef : oldDefs) {
+                try { badgeDefinitionRepository.delete(oldDef); } catch (Exception ignored) {}
+            }
+            for (BadgeDefinitionDto bDto : dto.getBadgeDefs()) {
+                com.chillcode.assessment.entity.BadgeDefinition bd = com.chillcode.assessment.entity.BadgeDefinition.builder()
+                        .badgeSet(badgeSet)
+                        .rankPosition(bDto.getRankPosition() != null ? bDto.getRankPosition() : 1)
+                        .badgeName(bDto.getBadgeName() != null ? bDto.getBadgeName() : "Rank Badge")
+                        .badgeIcon(bDto.getBadgeIcon() != null ? bDto.getBadgeIcon() : "Award")
+                        .badgeColor(bDto.getBadgeColor() != null ? bDto.getBadgeColor() : "#f59e0b")
+                        .badgeOrder(bDto.getBadgeOrder() != null ? bDto.getBadgeOrder() : bDto.getRankPosition())
+                        .status("ACTIVE")
+                        .build();
+                badgeDefinitionRepository.save(bd);
+            }
+        } else if (badgeDefinitionRepository.findByBadgeSetIdAndStatus(badgeSet.getId(), "ACTIVE").isEmpty()) {
+            // Seed defaults if no definitions exist
             String titlePrefix = question.getTitle() != null ? question.getTitle() : subject.getName();
             String[][] defaults = {
-                    {"1", "\uD83E\uDD47 " + titlePrefix + " Gold Winner", "Award", "#f59e0b"},
-                    {"2", "\uD83E\uDD48 " + titlePrefix + " Silver Winner", "Award", "#94a3b8"},
-                    {"3", "\uD83E\uDD49 " + titlePrefix + " Bronze Winner", "Award", "#b45309"}
+                    {"1", "🥇 " + titlePrefix + " Gold Winner", "Award", "#f59e0b"},
+                    {"2", "🥈 " + titlePrefix + " Silver Winner", "Award", "#94a3b8"},
+                    {"3", "🥉 " + titlePrefix + " Bronze Winner", "Award", "#b45309"}
             };
             for (String[] def : defaults) {
                 com.chillcode.assessment.entity.BadgeDefinition bd = com.chillcode.assessment.entity.BadgeDefinition.builder()
@@ -850,7 +921,24 @@ public class QuestionService {
                         .build();
                 badgeDefinitionRepository.save(bd);
             }
-            log.info("Auto-created BadgeSet ID: {} with 3 default badge definitions for question '{}'", badgeSet.getId(), question.getTitle());
+        }
+
+        // Sync student_achievements immediately when question code/title changes
+        try {
+            entityManager.createNativeQuery(
+                "UPDATE student_achievements SET test_code = :qCode, test_name = :title WHERE test_id = :tId")
+                .setParameter("qCode", effectiveTestCode)
+                .setParameter("title", question.getTitle())
+                .setParameter("tId", questionTest.getId())
+                .executeUpdate();
+        } catch (Exception e) {
+            log.warn("Error syncing achievements on question edit: {}", e.getMessage());
+        }
+
+        if (enabled) {
+            try {
+                badgeSetService.allocateBadgesForTest(questionTest.getId());
+            } catch (Exception ignored) {}
         }
     }
 }

@@ -195,35 +195,45 @@ export default function QuestionManagement() {
     setExistingBadgeSetId(null);
     setTargetTestId(null);
     setFormSubjectId(q.subjectId);
+    const subName = subjects.find(s => s.id === q.subjectId)?.name || 'Subject';
+    setTargetSubjectName(subName);
+    setTargetTestId((q as any).testId || null);
+    setTargetTestCode(q.questionCode || '');
+    setTargetTestName(q.title);
 
-    // Check if badges were previously configured for this subject or question
-    (async () => {
-      try {
-        const testsData = await apiCall('/api/admin/tests');
-        const subjectTests = (testsData || []).filter((t: any) => (t.subject?.id || t.subjectId) === q.subjectId);
-        const badgeSets = await fetchBadgeSets();
-        const qCode = q.questionCode ? q.questionCode.trim().toUpperCase() : null;
-        const existing = (badgeSets || []).find((bs: any) => 
-          (subjectTests.length > 0 && bs.testId === subjectTests[0].id) ||
-          (qCode && bs.testCode === qCode) ||
-          (bs.subjectId === q.subjectId)
-        );
-        if (existing && existing.status !== 'INACTIVE') {
-          setEnableBadgeManagement(true);
-          setExistingBadgeSetId(existing.id);
-          if (existing.name) setBadgeSetName(existing.name);
-          if (existing.numberOfWinners) setBadgeWinnersCount(existing.numberOfWinners);
-          if (existing.enableLanguageBadge !== undefined) setEnableLanguageBadge(existing.enableLanguageBadge);
-          if (existing.languageName) setLanguageName(existing.languageName);
-          if (existing.languageBadgeName) setLanguageBadgeName(existing.languageBadgeName);
-          if (existing.languageBadgeIcon) setLanguageBadgeIcon(existing.languageBadgeIcon);
-          if (existing.languageAwardRank) setLanguageAwardRank(existing.languageAwardRank);
-          if (existing.badges && existing.badges.length > 0) setBadgeDefs(existing.badges);
-        }
-      } catch (err) {
-        // silent fallback
-      }
-    })();
+    // Persistent badge state loaded directly from backend Question DTO
+    const isBadgesEnabled = (q as any).enableBadgeManagement !== undefined
+      ? Boolean((q as any).enableBadgeManagement)
+      : ((q as any).badgeSet ? (q as any).badgeSet.status === 'ACTIVE' : false);
+
+    setEnableBadgeManagement(isBadgesEnabled);
+    setExistingBadgeSetId((q as any).badgeSetId || (q as any).badgeSet?.id || null);
+    setBadgeSetName((q as any).badgeSetName || (q as any).badgeSet?.name || `${q.title} Badge Set`);
+    setBadgeWinnersCount((q as any).badgeWinnersCount || (q as any).badgeSet?.numberOfWinners || 3);
+
+    const isLangEnabled = (q as any).enableLanguageBadge !== undefined
+      ? Boolean((q as any).enableLanguageBadge)
+      : Boolean((q as any).badgeSet?.enableLanguageBadge);
+
+    setEnableLanguageBadge(isLangEnabled);
+
+    const defaultLang = subName.includes('Python') ? 'Python' : subName.includes('C++') ? 'C++' : subName.includes('C') ? 'C' : subName.includes('JavaScript') ? 'JavaScript' : 'Java';
+    setLanguageName((q as any).languageName || (q as any).badgeSet?.languageName || defaultLang);
+    setLanguageBadgeName((q as any).languageBadgeName || (q as any).badgeSet?.languageBadgeName || (defaultLang === 'Java' ? '☕ Java Expert' : defaultLang === 'Python' ? '🐍 Python Master' : '🎖️ Language Expert'));
+    setLanguageBadgeIcon((q as any).languageBadgeIcon || (q as any).badgeSet?.languageBadgeIcon || (defaultLang === 'Java' ? '☕' : defaultLang === 'Python' ? '🐍' : '🎖️'));
+    setLanguageAwardRank((q as any).languageAwardRank || (q as any).badgeSet?.languageAwardRank || 1);
+
+    if ((q as any).badgeDefs && (q as any).badgeDefs.length > 0) {
+      setBadgeDefs((q as any).badgeDefs);
+    } else if ((q as any).badgeSet?.badges && (q as any).badgeSet.badges.length > 0) {
+      setBadgeDefs((q as any).badgeSet.badges);
+    } else {
+      setBadgeDefs([
+        { rankPosition: 1, badgeName: `🥇 ${q.title} Gold Winner`, badgeIcon: 'Award', badgeColor: '#f59e0b', badgeOrder: 1 },
+        { rankPosition: 2, badgeName: `🥈 ${q.title} Silver Winner`, badgeIcon: 'Award', badgeColor: '#94a3b8', badgeOrder: 2 },
+        { rankPosition: 3, badgeName: `🥉 ${q.title} Bronze Winner`, badgeIcon: 'Award', badgeColor: '#b45309', badgeOrder: 3 },
+      ]);
+    }
 
     setShowForm(true);
   };
@@ -242,7 +252,7 @@ export default function QuestionManagement() {
       return;
     }
 
-    // Show badge UI INSTANTLY with default values - no API calls needed
+    // Show badge UI INSTANTLY for current question
     const subId = formSubjectId || selectedSubjectId;
     const subName = subjects.find(s => s.id === subId)?.name || 'Subject';
     const actualTitle = title.trim() || `${subName} Practice Arena`;
@@ -252,14 +262,16 @@ export default function QuestionManagement() {
     setTargetTestName(actualTitle);
     setTargetSubjectName(subName);
 
-    // Set defaults immediately
-    if (!badgeSetName) setBadgeSetName(`${actualTitle} Champions`);
+    // Set defaults if not already loaded from editing question
+    if (!badgeSetName) setBadgeSetName(`${actualTitle} Badge Set`);
     if (!badgeWinnersCount) setBadgeWinnersCount(3);
-    setBadgeDefs([
-      { rankPosition: 1, badgeName: `🥇 ${actualTitle} Gold Winner`, badgeIcon: 'Award', badgeColor: '#f59e0b', badgeOrder: 1 },
-      { rankPosition: 2, badgeName: `🥈 ${actualTitle} Silver Winner`, badgeIcon: 'Award', badgeColor: '#94a3b8', badgeOrder: 2 },
-      { rankPosition: 3, badgeName: `🥉 ${actualTitle} Bronze Winner`, badgeIcon: 'Award', badgeColor: '#b45309', badgeOrder: 3 },
-    ]);
+    if (!badgeDefs || badgeDefs.length === 0) {
+      setBadgeDefs([
+        { rankPosition: 1, badgeName: `🥇 ${actualTitle} Gold Winner`, badgeIcon: 'Award', badgeColor: '#f59e0b', badgeOrder: 1 },
+        { rankPosition: 2, badgeName: `🥈 ${actualTitle} Silver Winner`, badgeIcon: 'Award', badgeColor: '#94a3b8', badgeOrder: 2 },
+        { rankPosition: 3, badgeName: `🥉 ${actualTitle} Bronze Winner`, badgeIcon: 'Award', badgeColor: '#b45309', badgeOrder: 3 },
+      ]);
+    }
 
     const defaultLang = subName.includes('Python') ? 'Python' : subName.includes('C++') ? 'C++' : subName.includes('C') ? 'C' : subName.includes('JavaScript') ? 'JavaScript' : 'Java';
     if (!enableLanguageBadge) {
@@ -268,39 +280,6 @@ export default function QuestionManagement() {
       setLanguageBadgeIcon(defaultLang === 'Java' ? '☕' : defaultLang === 'Python' ? '🐍' : '🎖️');
       setLanguageAwardRank(1);
     }
-
-    // Show badge step UI instantly
-
-    // Load existing badge data in background (non-blocking)
-    (async () => {
-      try {
-        const testsData = await apiCall('/api/admin/tests');
-        const subjectTests = (testsData || []).filter((t: any) => (t.subject?.id || t.subjectId) === subId);
-        const testObj = subjectTests.length > 0 ? subjectTests[0] : null;
-        if (testObj) {
-          setTargetTestId(testObj.id);
-          if (!actualCode) setTargetTestCode(testObj.testCode || '');
-
-          const badgeSets = await fetchBadgeSets();
-          const existingSet = (badgeSets || []).find((bs: any) =>
-            bs.testId === testObj.id || (actualCode && bs.testCode === actualCode) || bs.subjectId === subId
-          );
-          if (existingSet) {
-            setExistingBadgeSetId(existingSet.id);
-            if (existingSet.name) setBadgeSetName(existingSet.name);
-            if (existingSet.numberOfWinners) setBadgeWinnersCount(existingSet.numberOfWinners);
-            if (existingSet.badges?.length > 0) setBadgeDefs(existingSet.badges);
-            if (existingSet.enableLanguageBadge !== undefined) setEnableLanguageBadge(existingSet.enableLanguageBadge);
-            if (existingSet.languageName) setLanguageName(existingSet.languageName);
-            if (existingSet.languageBadgeName) setLanguageBadgeName(existingSet.languageBadgeName);
-            if (existingSet.languageBadgeIcon) setLanguageBadgeIcon(existingSet.languageBadgeIcon);
-            if (existingSet.languageAwardRank) setLanguageAwardRank(existingSet.languageAwardRank);
-          }
-        }
-      } catch (_) {
-        // Silently fail - defaults are already shown
-      }
-    })();
   };
 
   const handleTestCaseChange = (index: number, field: keyof TestCase, value: any) => {
@@ -374,85 +353,67 @@ export default function QuestionManagement() {
     };
 
     try {
-      // Step 1: Save the question (backend auto-creates Test + BadgeSet)
+      const fullPayload = {
+        ...payload,
+        testId: targetTestId,
+        enableBadgeManagement,
+        badgeSetName: badgeSetName.trim() || `${title.trim()} Badge Set`,
+        badgeWinnersCount,
+        enableLanguageBadge,
+        languageName,
+        languageBadgeName,
+        languageBadgeIcon,
+        languageAwardRank: Number(languageAwardRank),
+        badgeDefs,
+      };
+
+      let savedQ: any;
       if (editingQuestion) {
-        await apiCall(`/api/admin/questions/${editingQuestion.id}`, {
+        savedQ = await apiCall(`/api/admin/questions/${editingQuestion.id}`, {
           method: 'PUT',
-          body: JSON.stringify(payload),
+          body: JSON.stringify(fullPayload),
         });
       } else {
-        await apiCall('/api/admin/questions', {
+        savedQ = await apiCall('/api/admin/questions', {
           method: 'POST',
-          body: JSON.stringify(payload),
+          body: JSON.stringify(fullPayload),
         });
       }
 
-      // Step 2: Handle Custom Badges if enabled
-      if (enableBadgeManagement) {
-        let resolvedTestId = targetTestId;
-        let resolvedTestCode = targetTestCode;
-        let resolvedTestName = targetTestName;
-        const subId = formSubjectId || selectedSubjectId;
+      // Also sync BadgeSet endpoint explicitly as fallback to ensure BadgeSet table is 100% updated
+      if (savedQ && (savedQ.testId || targetTestId)) {
+        const resolvedTId = savedQ.testId || targetTestId;
+        const badgePayload = {
+          name: badgeSetName.trim() || `${title.trim()} Badge Set`,
+          testId: resolvedTId,
+          testCode: questionCode.trim() ? questionCode.trim().toUpperCase() : savedQ.questionCode,
+          testName: title.trim(),
+          numberOfWinners: badgeWinnersCount,
+          enableLanguageBadge,
+          languageName,
+          languageBadgeName,
+          languageBadgeIcon,
+          languageAwardRank: Number(languageAwardRank),
+          status: enableBadgeManagement ? 'ACTIVE' : 'INACTIVE',
+          badges: badgeDefs,
+        };
 
-        const testsData = await apiCall('/api/admin/tests');
-        const subjectTests = (testsData || []).filter((t: any) => (t.subject?.id || t.subjectId) === subId);
-        let testObj = subjectTests.length > 0 ? subjectTests[0] : (testsData && testsData.length > 0 ? testsData[0] : null);
-
-        if (testObj) {
-          if (!resolvedTestId) resolvedTestId = testObj.id;
-          const subName = subjects.find((s: any) => s.id === subId)?.name || 'Subject';
-          const prefix = subName.replace(/[^a-zA-Z]/g, '').toUpperCase().slice(0, 6) || 'TEST';
-          if (!resolvedTestCode) resolvedTestCode = testObj.testCode || `${prefix}-${testObj.id}`;
-          if (!resolvedTestName) resolvedTestName = testObj.name || `${subName} Practice Arena`;
-
-          // Fetch fresh badge sets to find the auto-created one
+        try {
           const badgeSets = await fetchBadgeSets();
-          const existingSet = (badgeSets || []).find((bs: any) => bs.testId === testObj.id);
-
-          const badgePayload = {
-            name: badgeSetName || `${resolvedTestName} Badge Set`,
-            testId: resolvedTestId,
-            testCode: resolvedTestCode,
-            testName: resolvedTestName,
-            numberOfWinners: badgeWinnersCount,
-            enableLanguageBadge,
-            languageName,
-            languageBadgeName,
-            languageBadgeIcon,
-            languageAwardRank: Number(languageAwardRank),
-            status: 'ACTIVE',
-            badges: badgeDefs,
-          };
-
+          const existingSet = (badgeSets || []).find((bs: any) => bs.testId === resolvedTId);
           if (existingSet) {
             await updateBadgeSet(existingSet.id, badgePayload);
-          } else {
+          } else if (enableBadgeManagement) {
             await createBadgeSet(badgePayload);
           }
-        }
-      } else {
-        // Explicitly set BadgeSet status to INACTIVE if unchecked
-        const subId = formSubjectId || selectedSubjectId;
-        const testsData = await apiCall('/api/admin/tests');
-        const subjectTests = (testsData || []).filter((t: any) => (t.subject?.id || t.subjectId) === subId);
-        let testObj = subjectTests.length > 0 ? subjectTests[0] : null;
-        if (testObj) {
-          const badgeSets = await fetchBadgeSets();
-          const existingSet = (badgeSets || []).find((bs: any) => bs.testId === testObj.id);
-          if (existingSet && existingSet.status !== 'INACTIVE') {
-            await updateBadgeSet(existingSet.id, {
-              ...existingSet,
-              status: 'INACTIVE'
-            });
-          }
-        }
+        } catch (_) {}
       }
 
-      // Step 3: Refresh question list
+      // Refresh question list immediately
       const activeSubjectId = formSubjectId || selectedSubjectId;
       if (activeSubjectId) {
         setSelectedSubjectId(activeSubjectId);
-        fetchQuestions(activeSubjectId); // non-blocking
+        await fetchQuestions(activeSubjectId);
       }
 
       showToast(editingQuestion ? 'Question updated successfully!' : 'Question uploaded successfully!');
@@ -951,13 +912,13 @@ export default function QuestionManagement() {
 
             <div className="space-y-1.5">
               <label className="text-gray-400 font-bold uppercase tracking-wider text-[10px]">Number of Winners</label>
-              <div className="grid grid-cols-4 gap-3">
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
                 {[1, 3, 5, 10].map((num) => (
                   <button
                     type="button"
                     key={num}
                     onClick={() => handleBadgeWinnersCountChange(num)}
-                    className={`py-2.5 rounded-xl font-bold border transition-all ${
+                    className={`py-2.5 rounded-xl font-bold border transition-all text-xs sm:text-sm ${
                       badgeWinnersCount === num ? 'bg-amber-500/20 border-amber-400 text-amber-400 shadow-md shadow-amber-500/10' : 'bg-white/5 border-white/5 text-gray-400 hover:bg-white/10'
                     }`}
                   >
@@ -969,7 +930,7 @@ export default function QuestionManagement() {
 
             <div className="space-y-3 pt-2">
               <label className="text-gray-400 font-bold uppercase tracking-wider text-[10px]">Customize Winner Badges</label>
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
                 {badgeDefs.map((def, idx) => (
                   <div key={def.rankPosition} className="p-4 bg-[#181a25] border border-white/10 rounded-xl space-y-2 text-center">
                     <div className="text-2xl mb-1">{(def.badgeName || '').includes('🥇') ? '🥇' : (def.badgeName || '').includes('🥈') ? '🥈' : (def.badgeName || '').includes('🥉') ? '🥉' : '🎖️'}</div>
