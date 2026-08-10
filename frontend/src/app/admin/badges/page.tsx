@@ -185,6 +185,7 @@ export default function AdminBadgeSetsPage() {
   const [assignStudentId, setAssignStudentId] = useState<number | ''>('');
   const [assignBadgeId, setAssignBadgeId] = useState<number | ''>('');
   const [assignTestId, setAssignTestId] = useState<number | ''>('');
+  const [studentSearch, setStudentSearch] = useState('');
 
   const loadData = useCallback(async (isSilent = false) => {
     if (!isSilent) setLoading(true);
@@ -256,6 +257,11 @@ export default function AdminBadgeSetsPage() {
   const availableTests = tests.filter((t) => 
     !badgeSets.some((bs) => bs.testId === t.id && (!editingSet || editingSet.id !== bs.id))
   );
+
+  const filteredStudents = students.filter(s => {
+    const term = studentSearch.toLowerCase();
+    return (s.name || '').toLowerCase().includes(term) || (s.registerNumber || '').toLowerCase().includes(term);
+  });
 
   // --- Dynamic sets handlers ---
   const handleOpenCreateModal = () => {
@@ -740,14 +746,23 @@ export default function AdminBadgeSetsPage() {
               <form onSubmit={handleAssignBadge} className="space-y-4 text-xs">
                 <div className="space-y-1">
                   <label className="text-gray-400 font-bold uppercase tracking-wider text-[10px]">Select Student</label>
+                  <input
+                    type="text"
+                    placeholder="🔍 Type student name or register number to search..."
+                    value={studentSearch}
+                    onChange={(e) => setStudentSearch(e.target.value)}
+                    className="w-full bg-[#181a25]/60 border border-white/10 rounded-xl px-4 py-2 text-white placeholder-gray-500 focus:outline-none focus:border-amber-400 text-xs mb-2 transition-all"
+                  />
                   <select
                     required
                     value={assignStudentId}
                     onChange={(e) => setAssignStudentId(e.target.value ? Number(e.target.value) : '')}
                     className="w-full bg-[#181a25] border border-white/10 rounded-xl px-4 py-2.5 text-white focus:outline-none focus:border-amber-400"
                   >
-                    <option value="">-- Choose Student --</option>
-                    {students.map(s => (
+                    <option value="">
+                      {studentSearch ? `-- Choose from ${filteredStudents.length} matches --` : '-- Choose Student --'}
+                    </option>
+                    {filteredStudents.map(s => (
                       <option key={s.id} value={s.id}>
                         {s.name} ({s.registerNumber})
                       </option>
