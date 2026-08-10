@@ -400,15 +400,28 @@ public class TestService {
             throw new RuntimeException("Cannot log warning for a test that is not in progress.");
         }
 
+        User admin = st.getTest().getAdmin() != null ? st.getTest().getAdmin() : 
+                     (st.getStudent() != null && st.getStudent().getAdmin() != null ? st.getStudent().getAdmin() : null);
+
+        if (admin == null) {
+            // Fallback: try to find any admin to satisfy DB constraint if somehow test and student lack one
+            admin = testRepository.findById(testId)
+                    .map(t -> t.getAdmin())
+                    .orElse(null);
+            if (admin == null) {
+                 // Try getting current authenticated admin (if this API was called by admin, though it's called by student)
+                 // Or just fallback to user id 1 if desperate, but better to query
+                 throw new RuntimeException("Cannot determine admin ownership for warning");
+            }
+        }
+
         Warning warning = Warning.builder()
-                .admin(st.getTest().getAdmin() != null ? st.getTest().getAdmin() : st.getStudent().getAdmin())
+                .admin(admin)
                 .studentTest(st)
                 .type(type)
                 .reason(reason)
                 .build();
-        if (warning.getAdmin() == null) {
-            throw new RuntimeException("Cannot determine admin ownership for warning");
-        }
+        
         warningRepository.save(warning);
 
         int warnings = st.getWarningsCount() + 1;

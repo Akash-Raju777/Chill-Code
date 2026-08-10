@@ -1150,8 +1150,8 @@ function CodingWorkspaceInner() {
             <span className="text-[10px] text-gray-500 uppercase font-bold tracking-wider">
               {securityShieldEnabled ? 'Security Shield' : 'Security Status'}
             </span>
-             <span className={`text-xs font-bold ${(user?.status === 'ACTIVE' || user?.status === 'NO_SECURITY') ? 'text-emerald-400 animate-pulse' : 'text-red-400'}`}>
-               {user?.status === 'NO_SECURITY' ? 'Off' : (user?.status === 'ACTIVE' ? 'Active' : 'Inactive')}
+             <span className={`text-xs font-bold ${isSecurityStatusActive ? 'text-emerald-400 animate-pulse' : 'text-red-400'}`}>
+               {isSecurityStatusActive ? 'Active' : 'Off'}
              </span>
           </div>
 
