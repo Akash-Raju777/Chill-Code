@@ -186,6 +186,9 @@ export default function AdminBadgeSetsPage() {
   const [assignBadgeId, setAssignBadgeId] = useState<number | ''>('');
   const [assignTestId, setAssignTestId] = useState<number | ''>('');
   const [studentSearch, setStudentSearch] = useState('');
+  const [showStudentDropdown, setShowStudentDropdown] = useState(false);
+  const [testSearch, setTestSearch] = useState('');
+  const [showTestDropdown, setShowTestDropdown] = useState(false);
 
   const loadData = useCallback(async (isSilent = false) => {
     if (!isSilent) setLoading(true);
@@ -261,6 +264,11 @@ export default function AdminBadgeSetsPage() {
   const filteredStudents = students.filter(s => {
     const term = studentSearch.toLowerCase();
     return (s.name || '').toLowerCase().includes(term) || (s.registerNumber || '').toLowerCase().includes(term);
+  });
+
+  const filteredTests = tests.filter(t => {
+    const term = testSearch.toLowerCase();
+    return (t.name || '').toLowerCase().includes(term) || (t.testCode || '').toLowerCase().includes(term);
   });
 
   // --- Dynamic sets handlers ---
@@ -451,6 +459,8 @@ export default function AdminBadgeSetsPage() {
       setAssignStudentId('');
       setAssignBadgeId('');
       setAssignTestId('');
+      setStudentSearch('');
+      setTestSearch('');
       loadManualData();
       toast.success('Badge assigned successfully!');
     } catch (err: any) {
@@ -744,30 +754,71 @@ export default function AdminBadgeSetsPage() {
               <p className="text-xs text-gray-400">Award a defined badge directly to a student's profile</p>
 
               <form onSubmit={handleAssignBadge} className="space-y-4 text-xs">
-                <div className="space-y-1">
+                <div className="space-y-1.5 relative">
                   <label className="text-gray-400 font-bold uppercase tracking-wider text-[10px]">Select Student</label>
-                  <input
-                    type="text"
-                    placeholder="🔍 Type student name or register number to search..."
-                    value={studentSearch}
-                    onChange={(e) => setStudentSearch(e.target.value)}
-                    className="w-full bg-[#181a25]/60 border border-white/10 rounded-xl px-4 py-2 text-white placeholder-gray-500 focus:outline-none focus:border-amber-400 text-xs mb-2 transition-all"
-                  />
-                  <select
-                    required
-                    value={assignStudentId}
-                    onChange={(e) => setAssignStudentId(e.target.value ? Number(e.target.value) : '')}
-                    className="w-full bg-[#181a25] border border-white/10 rounded-xl px-4 py-2.5 text-white focus:outline-none focus:border-amber-400"
-                  >
-                    <option value="">
-                      {studentSearch ? `-- Choose from ${filteredStudents.length} matches --` : '-- Choose Student --'}
-                    </option>
-                    {filteredStudents.map(s => (
-                      <option key={s.id} value={s.id}>
-                        {s.name} ({s.registerNumber})
-                      </option>
-                    ))}
-                  </select>
+                  {assignStudentId ? (
+                    <div className="flex items-center justify-between bg-amber-500/10 border border-amber-500/30 rounded-xl px-4 py-2.5 text-white">
+                      <div className="flex items-center gap-2">
+                        <span className="text-amber-400">👤</span>
+                        <div>
+                          <p className="font-semibold text-xs">{students.find(s => s.id === assignStudentId)?.name}</p>
+                          <p className="text-[10px] text-gray-400">{students.find(s => s.id === assignStudentId)?.registerNumber}</p>
+                        </div>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setAssignStudentId('');
+                          setStudentSearch('');
+                        }}
+                        className="text-gray-400 hover:text-red-400 transition-colors p-1"
+                      >
+                        ✕
+                      </button>
+                    </div>
+                  ) : (
+                    <div className="relative">
+                      <input
+                        type="text"
+                        placeholder="🔍 Type student name or register number to search..."
+                        value={studentSearch}
+                        onFocus={() => setShowStudentDropdown(true)}
+                        onChange={(e) => {
+                          setStudentSearch(e.target.value);
+                          setShowStudentDropdown(true);
+                        }}
+                        className="w-full bg-[#181a25] border border-white/10 rounded-xl px-4 py-2.5 text-white placeholder-gray-500 focus:outline-none focus:border-amber-400 text-xs transition-all"
+                      />
+                      {showStudentDropdown && (
+                        <>
+                          <div 
+                            className="fixed inset-0 z-40" 
+                            onClick={() => setShowStudentDropdown(false)}
+                          />
+                          <div className="absolute left-0 right-0 mt-1 max-h-48 overflow-y-auto bg-[#181a25] border border-white/10 rounded-xl shadow-2xl z-50 divide-y divide-white/5 scrollbar-thin">
+                            {filteredStudents.length === 0 ? (
+                              <div className="px-4 py-3 text-gray-500 text-center">No students found</div>
+                            ) : (
+                              filteredStudents.map(s => (
+                                <button
+                                  key={s.id}
+                                  type="button"
+                                  onClick={() => {
+                                    setAssignStudentId(s.id);
+                                    setShowStudentDropdown(false);
+                                  }}
+                                  className="w-full text-left px-4 py-2.5 hover:bg-amber-500/10 hover:text-amber-400 text-white transition-colors flex flex-col gap-0.5"
+                                >
+                                  <span className="font-semibold text-xs">{s.name}</span>
+                                  <span className="text-[10px] text-gray-400">{s.registerNumber}</span>
+                                </button>
+                              ))
+                            )}
+                          </div>
+                        </>
+                      )}
+                    </div>
+                  )}
                 </div>
 
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -788,20 +839,81 @@ export default function AdminBadgeSetsPage() {
                     </select>
                   </div>
 
-                  <div className="space-y-1">
+                  <div className="space-y-1.5 relative">
                     <label className="text-gray-400 font-bold uppercase tracking-wider text-[10px]">Select Test (Optional)</label>
-                    <select
-                      value={assignTestId}
-                      onChange={(e) => setAssignTestId(e.target.value ? Number(e.target.value) : '')}
-                      className="w-full bg-[#181a25] border border-white/10 rounded-xl px-4 py-2.5 text-white focus:outline-none focus:border-amber-400"
-                    >
-                      <option value="">-- No Test Reference --</option>
-                      {tests.map(t => (
-                        <option key={t.id} value={t.id}>
-                          {t.name}
-                        </option>
-                      ))}
-                    </select>
+                    {assignTestId ? (
+                      <div className="flex items-center justify-between bg-orange-500/10 border border-orange-500/30 rounded-xl px-4 py-2.5 text-white">
+                        <div className="flex items-center gap-2">
+                          <span className="text-orange-400">📋</span>
+                          <div>
+                            <p className="font-semibold text-xs">{tests.find(t => t.id === assignTestId)?.name}</p>
+                            <p className="text-[10px] text-gray-400">{tests.find(t => t.id === assignTestId)?.testCode}</p>
+                          </div>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setAssignTestId('');
+                            setTestSearch('');
+                          }}
+                          className="text-gray-400 hover:text-red-400 transition-colors p-1"
+                        >
+                          ✕
+                        </button>
+                      </div>
+                    ) : (
+                      <div className="relative">
+                        <input
+                          type="text"
+                          placeholder="🔍 Type test name to search..."
+                          value={testSearch}
+                          onFocus={() => setShowTestDropdown(true)}
+                          onChange={(e) => {
+                            setTestSearch(e.target.value);
+                            setShowTestDropdown(true);
+                          }}
+                          className="w-full bg-[#181a25] border border-white/10 rounded-xl px-4 py-2.5 text-white placeholder-gray-500 focus:outline-none focus:border-amber-400 text-xs transition-all"
+                        />
+                        {showTestDropdown && (
+                          <>
+                            <div 
+                              className="fixed inset-0 z-40" 
+                              onClick={() => setShowTestDropdown(false)}
+                            />
+                            <div className="absolute left-0 right-0 mt-1 max-h-48 overflow-y-auto bg-[#181a25] border border-white/10 rounded-xl shadow-2xl z-50 divide-y divide-white/5 scrollbar-thin">
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setAssignTestId('');
+                                  setShowTestDropdown(false);
+                                }}
+                                className="w-full text-left px-4 py-2.5 hover:bg-orange-500/10 hover:text-orange-400 text-gray-400 transition-colors"
+                              >
+                                -- No Test Reference --
+                              </button>
+                              {filteredTests.length === 0 ? (
+                                <div className="px-4 py-3 text-gray-500 text-center">No tests found</div>
+                              ) : (
+                                filteredTests.map(t => (
+                                  <button
+                                    key={t.id}
+                                    type="button"
+                                    onClick={() => {
+                                      setAssignTestId(t.id);
+                                      setShowTestDropdown(false);
+                                    }}
+                                    className="w-full text-left px-4 py-2.5 hover:bg-orange-500/10 hover:text-orange-400 text-white transition-colors flex flex-col gap-0.5"
+                                  >
+                                    <span className="font-semibold text-xs">{t.name}</span>
+                                    <span className="text-[10px] text-gray-400">{t.testCode}</span>
+                                  </button>
+                                ))
+                              )}
+                            </div>
+                          </>
+                        )}
+                      </div>
+                    )}
                   </div>
                 </div>
 
