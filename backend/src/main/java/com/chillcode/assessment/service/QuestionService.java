@@ -746,6 +746,7 @@ public class QuestionService {
                     .startTime(java.time.LocalDateTime.now())
                     .endTime(java.time.LocalDateTime.now().plusYears(10))
                     .admin(com.chillcode.assessment.security.SecurityUtils.getCurrentUser())
+                    .securityShieldEnabled(true)
                     .build();
             questionTest = testRepository.save(questionTest);
             questionTest.getQuestions().add(question);
