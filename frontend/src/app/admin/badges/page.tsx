@@ -236,14 +236,31 @@ export default function AdminBadgeSetsPage() {
     }
   }, []);
 
+  // Initial load on mount (fetch both sets and manual data once)
   useEffect(() => {
-    loadData();
-    if (activeTab === 'manual') {
-      loadManualData();
+    const initLoad = async () => {
+      try {
+        await Promise.all([
+          loadData(false),
+          loadManualData(false)
+        ]);
+      } catch (e) {
+        console.error("Initial data load failed", e);
+      }
+    };
+    initLoad();
+  }, [loadData, loadManualData]);
+
+  // Silent load when tab changes to refresh data in background
+  useEffect(() => {
+    if (activeTab === 'sets') {
+      loadData(true);
+    } else {
+      loadManualData(true);
     }
   }, [activeTab, loadData, loadManualData]);
 
-  // Auto-refresh dynamic sets or manual lists
+  // Auto-refresh dynamic sets or manual lists silently
   useEffect(() => {
     const interval = setInterval(() => {
       if (activeTab === 'sets') {
