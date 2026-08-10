@@ -75,11 +75,16 @@ export const useAuthStore = create<AuthState>((set) => {
       }
       set({ user: null, token: null, isAuthenticated: false });
     },
-    setUser: (user) => {
-      if (typeof window !== 'undefined') {
-        localStorage.setItem('chill_user', JSON.stringify(user));
-      }
-      set({ user });
+    setUser: (newUser) => {
+      set((state) => {
+        if (state.user && JSON.stringify(state.user) === JSON.stringify(newUser)) {
+          return state;
+        }
+        if (typeof window !== 'undefined') {
+          localStorage.setItem('chill_user', JSON.stringify(newUser));
+        }
+        return { user: newUser };
+      });
     },
   };
 });

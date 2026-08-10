@@ -275,7 +275,7 @@ function CodingWorkspaceInner() {
     };
 
     recoverSession();
-  }, [mounted, testId, startTestSession, router, user]);
+  }, [mounted, testId]);
 
   // Trigger fullscreen whenever security status becomes active
   useEffect(() => {
