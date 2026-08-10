@@ -40,6 +40,9 @@ public class QuestionController {
                 .orElseThrow(() -> new RuntimeException("Current user not found"));
     }
 
+    @Autowired
+    private com.chillcode.assessment.repository.QuestionRepository questionRepository;
+
     // Both Admin and Student can get questions list of a subject
     @GetMapping({"/admin/subjects/{subjectId}/questions", "/student/subjects/{subjectId}/questions"})
     public ResponseEntity<List<QuestionDto>> getQuestionsBySubject(@PathVariable("subjectId") Long subjectId) {
@@ -89,6 +92,17 @@ public class QuestionController {
                 .orElse(null);
         if (status == null) {
             status = new com.chillcode.assessment.entity.StudentQuestionStatus();
+            Long adminId = com.chillcode.assessment.security.SecurityUtils.getCurrentAdminId();
+            if (adminId == null && student != null && student.getAdmin() != null) {
+                adminId = student.getAdmin().getId();
+            }
+            if (adminId == null) {
+                com.chillcode.assessment.entity.Question q = questionRepository.findById(questionId).orElse(null);
+                if (q != null && q.getAdmin() != null) {
+                    adminId = q.getAdmin().getId();
+                }
+            }
+            status.setAdminId(adminId);
             status.setStudentId(student.getId());
             status.setQuestionId(questionId);
             status.setAdminId(student.getAdmin() != null ? student.getAdmin().getId() : null);

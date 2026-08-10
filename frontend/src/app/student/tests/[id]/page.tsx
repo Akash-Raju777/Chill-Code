@@ -155,10 +155,12 @@ function CodingWorkspaceInner() {
     }
 
     const recoverSession = async () => {
+      console.log('[ExamInit] START');
       try {
         setRecoverError(null);
+        console.log('[ExamInit] Loading student/test & questions...');
 
-        // Fetch tests and questions IN PARALLEL for maximum speed
+        // Fetch tests, questions, and student profile in parallel
         const [testsRes, questionsRes, profileRes] = await Promise.allSettled([
           apiCall('/api/student/tests'),
           apiCall('/api/student/questions'),
@@ -166,7 +168,7 @@ function CodingWorkspaceInner() {
         ]);
 
         const tests = testsRes.status === 'fulfilled' ? testsRes.value : [];
-        const allQuestions = questionsRes.status === 'fulfilled' ? questionsRes.value : [];
+        let allQuestions = questionsRes.status === 'fulfilled' ? questionsRes.value : [];
         const updatedProfile = profileRes.status === 'fulfilled' ? profileRes.value : null;
 
         if (updatedProfile) {
@@ -174,9 +176,15 @@ function CodingWorkspaceInner() {
         }
         const currentUserStatus = updatedProfile?.status || user?.status || 'ACTIVE';
 
-        const activeTest = tests.find((st: any) => st.test?.id === testId || st.id === testId);
+        let activeTest = tests.find((st: any) => st.test?.id === testId || st.id === testId);
+        if (!activeTest && tests && tests.length > 0) {
+          // Fallback to first available assigned test if specific testId mapping is not found
+          activeTest = tests[0];
+        }
+
         if (!activeTest) {
-          router.push('/student/tests');
+          console.error('[ExamInit] FAILED: No active test session assigned for student');
+          setRecoverError('No practice challenge or assessment session is assigned to your student account.');
           return;
         }
 
@@ -186,6 +194,7 @@ function CodingWorkspaceInner() {
         const isSecActive = currentUserStatus === 'ACTIVE' && isEnabled;
 
         if ((activeTest.isSuspended || activeTest.status === 'SUSPENDED') && isSecActive) {
+          console.log('[ExamInit] Session suspended by security policies');
           suspendTest();
           clearTestSession();
           return;
@@ -200,7 +209,12 @@ function CodingWorkspaceInner() {
           if (!matchedQ) {
             try {
               matchedQ = await apiCall(`/api/student/questions/${qId}`);
-            } catch (_) {}
+              if (matchedQ && matchedQ.id) {
+                allQuestions.push(matchedQ);
+              }
+            } catch (err) {
+              console.warn('[ExamInit] Question lookup by ID failed:', err);
+            }
           }
           if (matchedQ) {
             targetQuestions = [matchedQ];
@@ -208,8 +222,16 @@ function CodingWorkspaceInner() {
         }
 
         if (!targetQuestions || targetQuestions.length === 0) {
-          router.push('/student/tests');
+          console.error('[ExamInit] FAILED: No valid questions found');
+          setRecoverError('No problem statements found for this challenge.');
           return;
+        }
+
+        console.log('[ExamInit] Loading question status...');
+        if (targetQuestions[0]?.id) {
+          apiCall(`/api/student/question/${targetQuestions[0].id}/status`).catch((err) => {
+            console.warn('[ExamInit] Question status update notice:', err);
+          });
         }
 
         // Calculate remaining time
@@ -222,7 +244,6 @@ function CodingWorkspaceInner() {
           remainingSeconds = Math.max(0, totalSeconds - elapsedSeconds);
         }
 
-        // View mode for submitted, evaluated, completed tests, or explicit view mode request
         const viewFromSearch = typeof window !== 'undefined' ? new URLSearchParams(window.location.search).get('view') === 'true' : false;
         const isViewParam = searchParams.get('view') === 'true' || viewFromSearch;
         const isDone = isViewParam || activeTest.status === 'SUBMITTED' || activeTest.status === 'EVALUATED' || activeTest.status === 'COMPLETED';
@@ -230,7 +251,9 @@ function CodingWorkspaceInner() {
           remainingSeconds = totalSeconds;
         }
 
-        // 1. INSTANT START SESSION
+        console.log('[ExamInit] Initializing security...');
+
+        // 1. START SESSION IN ZUSTAND STORE
         startTestSession(
           activeTest.test?.id || testId,
           activeTest.id,
@@ -241,6 +264,8 @@ function CodingWorkspaceInner() {
           isEnabled,
           user?.id || updatedProfile?.id
         );
+
+        console.log('[ExamInit] COMPLETE');
 
         // 2. RESTORE CODE (Non-blocking background sync)
         const uid = user?.id || updatedProfile?.id;
@@ -267,8 +292,8 @@ function CodingWorkspaceInner() {
         });
 
       } catch (err: any) {
-        console.error('Failed to recover exam session', err);
-        setRecoverError(err?.message || 'Failed to initialize exam session. Please check connection.');
+        console.error('[ExamInit] FAILED:', err);
+        setRecoverError(err?.message || 'Unable to initialize exam session. Please try again.');
       } finally {
         recoverSessionCalledRef.current = false;
       }
