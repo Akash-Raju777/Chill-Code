@@ -776,6 +776,7 @@ public class QuestionService {
                     .name(question.getTitle() + " Badge Set")
                     .test(questionTest)
                     .subject(subject)
+                    .admin(questionTest.getAdmin())
                     .testCode(qCode != null ? qCode : questionTest.getTestCode())
                     .numberOfWinners(3)
                     .status("ACTIVE")
