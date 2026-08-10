@@ -31,6 +31,7 @@ public interface StudentTestRepository extends JpaRepository<StudentTest, Long> 
     @Query("SELECT COUNT(st) FROM StudentTest st WHERE st.status = :status AND st.test.admin.id = :adminId")
     long countByStatusAndAdminId(@org.springframework.data.repository.query.Param("status") String status, @org.springframework.data.repository.query.Param("adminId") Long adminId);
 
+    @org.springframework.transaction.annotation.Transactional(propagation = org.springframework.transaction.annotation.Propagation.REQUIRES_NEW)
     @org.springframework.data.jpa.repository.Modifying
     @org.springframework.data.jpa.repository.Query(value = 
         "INSERT INTO student_tests (student_id, test_id, status, score, warnings_count, is_suspended) " +

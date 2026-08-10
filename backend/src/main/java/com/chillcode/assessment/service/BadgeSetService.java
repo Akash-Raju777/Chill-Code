@@ -246,7 +246,7 @@ public class BadgeSetService {
 
     // --- Automatic Badge Allocation Engine ---
 
-    @Transactional
+    @Transactional(propagation = org.springframework.transaction.annotation.Propagation.REQUIRES_NEW)
     public List<StudentAchievement> allocateBadgesForTest(Long testId) {
         Optional<BadgeSet> badgeSetOpt = badgeSetRepository.findByTestIdAndStatus(testId, "ACTIVE");
         if (badgeSetOpt.isEmpty()) {
