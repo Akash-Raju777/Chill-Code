@@ -162,7 +162,7 @@ export default function StudentResults() {
                         {item.subjectName || 'Unknown Subject'}
                       </span>
                       <span className="text-indigo-400 font-bold text-[10px] tracking-wider bg-indigo-500/10 border border-indigo-500/20 px-2 py-0.5 rounded">
-                        Attempts: {item.attempts ?? 1}
+                        Attempts: {item.attempts ?? 0}
                       </span>
                       <span className="flex items-center gap-1">
                         <Clock className="w-3.5 h-3.5" />

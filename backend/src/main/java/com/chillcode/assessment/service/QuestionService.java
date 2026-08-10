@@ -653,12 +653,18 @@ public class QuestionService {
         boolean hasAcceptedSubmission = solvedQuestionIds != null && solvedQuestionIds.contains(question.getId());
 
         if (status != null) {
+            boolean isCompleted = hasAcceptedSubmission || "COMPLETED".equals(status.getStatus());
             if ("PENDING_REATTEMPT".equals(status.getStatus())) {
                 dto.setStatus("PENDING_REATTEMPT");
             } else {
-                dto.setStatus(hasAcceptedSubmission ? "COMPLETED" : status.getStatus());
+                dto.setStatus(isCompleted ? "COMPLETED" : status.getStatus());
             }
-            dto.setAttemptCount(status.getAttemptCount());
+            int rawAttempts = status.getAttemptCount() != null ? status.getAttemptCount() : 0;
+            if (isCompleted) {
+                dto.setAttemptCount(Math.max(0, rawAttempts - 1));
+            } else {
+                dto.setAttemptCount(rawAttempts);
+            }
             dto.setLastAttemptAt(status.getLastAttemptAt() != null ? status.getLastAttemptAt().toString() : null);
         } else {
             dto.setStatus(hasAcceptedSubmission ? "COMPLETED" : "NOT_STARTED");

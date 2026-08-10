@@ -131,7 +131,10 @@ public class SubmissionController {
                 map.put("subjectName", sub.getQuestion().getSubject().getName());
             }
             com.chillcode.assessment.entity.StudentQuestionStatus sqs = sqsMap.get(sub.getQuestion().getId());
-            map.put("attempts", sqs != null ? sqs.getAttemptCount() : 1);
+            int rawAttempts = sqs != null && sqs.getAttemptCount() != null ? sqs.getAttemptCount() : 1;
+            boolean isComp = "COMPLETED".equals(sqs != null ? sqs.getStatus() : "") || "ACCEPTED".equals(sub.getStatus()) || "PASS".equals(sub.getOverallResult());
+            int displayAttempts = isComp ? Math.max(0, rawAttempts - 1) : rawAttempts;
+            map.put("attempts", displayAttempts);
 
             if (sub.getStudentTest() != null && sub.getStudentTest().getTest() != null) {
                 map.put("testId", sub.getStudentTest().getTest().getId());

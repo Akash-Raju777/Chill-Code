@@ -319,7 +319,9 @@ public class SubjectService {
                             .filter(s -> s.getQuestionId().equals(question.getId()))
                             .findFirst().orElse(null);
                     if (sqs != null && sqs.getAttemptCount() != null) {
-                        attempts = sqs.getAttemptCount();
+                        int raw = sqs.getAttemptCount();
+                        boolean isComp = "COMPLETED".equals(sqs.getStatus());
+                        attempts = isComp ? Math.max(0, raw - 1) : raw;
                     }
 
                     java.util.List<com.chillcode.assessment.dto.BadgeDto> badgeDtos = new java.util.ArrayList<>();

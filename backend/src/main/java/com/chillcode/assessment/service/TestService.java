@@ -286,7 +286,6 @@ public class TestService {
 
             if ("NOT_STARTED".equals(sqs.getStatus()) || "SUSPENDED".equals(sqs.getStatus())) {
                 sqs.setStatus("IN_PROGRESS");
-                sqs.setAttemptCount((sqs.getAttemptCount() != null ? sqs.getAttemptCount() : 0) + 1);
                 sqs.setLastAttemptAt(LocalDateTime.now());
                 studentQuestionStatusRepository.save(sqs);
             }
