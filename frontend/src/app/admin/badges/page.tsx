@@ -186,7 +186,8 @@ export default function AdminBadgeSetsPage() {
   const [assignBadgeId, setAssignBadgeId] = useState<number | ''>('');
   const [assignTestId, setAssignTestId] = useState<number | ''>('');
 
-  const loadData = useCallback(async () => {
+  const loadData = useCallback(async (isSilent = false) => {
+    if (!isSilent) setLoading(true);
     try {
       const [setsData, testsData] = await Promise.all([
         fetchBadgeSets(),
@@ -207,14 +208,14 @@ export default function AdminBadgeSetsPage() {
       setTests(formattedTests);
       setError('');
     } catch (err: any) {
-      setError(err.message || 'Failed to load badge sets data');
+      if (!isSilent) setError(err.message || 'Failed to load badge sets data');
     } finally {
-      setLoading(false);
+      if (!isSilent) setLoading(false);
     }
   }, []);
 
-  const loadManualData = useCallback(async () => {
-    setManualLoading(true);
+  const loadManualData = useCallback(async (isSilent = false) => {
+    if (!isSilent) setManualLoading(true);
     try {
       const [badgesData, studentsData, earnedData] = await Promise.all([
         fetchAllBadges(),
@@ -227,7 +228,7 @@ export default function AdminBadgeSetsPage() {
     } catch (err: any) {
       toast.error('Failed to load manual badge data');
     } finally {
-      setManualLoading(false);
+      if (!isSilent) setManualLoading(false);
     }
   }, []);
 
@@ -242,9 +243,9 @@ export default function AdminBadgeSetsPage() {
   useEffect(() => {
     const interval = setInterval(() => {
       if (activeTab === 'sets') {
-        loadData();
+        loadData(true);
       } else {
-        loadManualData();
+        loadManualData(true);
       }
     }, 15000);
     return () => clearInterval(interval);
@@ -782,7 +783,7 @@ export default function AdminBadgeSetsPage() {
                       <option value="">-- No Test Reference --</option>
                       {tests.map(t => (
                         <option key={t.id} value={t.id}>
-                          {t.testCode} — {t.name}
+                          {t.name}
                         </option>
                       ))}
                     </select>
