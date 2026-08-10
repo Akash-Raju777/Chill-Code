@@ -550,7 +550,7 @@ export default function QuestionManagement() {
                     <h3 className="font-bold text-white text-lg">{q.title}</h3>
                   </div>
                   <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-gray-500 mt-2">
-                    <span>Allowed: <strong className="text-white capitalize">{q.allowedLanguages.replaceAll(',', ', ')}</strong></span>
+                    <span>Allowed: <strong className="text-white capitalize">{(q.allowedLanguages || 'All').replaceAll(',', ', ')}</strong></span>
                   </div>
                 </div>
                 <div className="flex items-center gap-2">
