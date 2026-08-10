@@ -554,20 +554,38 @@ public class BadgeSetService {
     @Transactional(readOnly = true)
     public List<LanguageMasterBadgeDto> getStudentLanguageBadges(Long studentId) {
         return languageMasterBadgeRepository.findByStudentIdOrderByAwardedDateDesc(studentId).stream()
-                .map(lmb -> LanguageMasterBadgeDto.builder()
-                        .id(lmb.getId())
-                        .studentId(lmb.getStudent().getId())
-                        .studentName(lmb.getStudent().getName())
-                        .studentRegisterNumber(lmb.getStudent().getRegisterNumber())
-                        .testId(lmb.getTest() != null ? lmb.getTest().getId() : null)
-                        .testCode(lmb.getTest() != null ? lmb.getTest().getTestCode() : null)
-                        .testName(lmb.getTest() != null ? lmb.getTest().getName() : null)
-                        .subject(lmb.getSubject())
-                        .badgeName(lmb.getBadgeName())
-                        .badgeIcon(lmb.getBadgeIcon())
-                        .awardedRank(lmb.getAwardedRank())
-                        .awardedDate(lmb.getAwardedDate())
-                        .build())
+                .map(lmb -> {
+                    String effectiveTestCode = null;
+                    String effectiveTestName = lmb.getTest() != null ? lmb.getTest().getName() : null;
+                    if (lmb.getTest() != null) {
+                        if (lmb.getTest().getQuestions() != null && !lmb.getTest().getQuestions().isEmpty()) {
+                            for (Question q : lmb.getTest().getQuestions()) {
+                                if (q.getQuestionCode() != null && !q.getQuestionCode().trim().isEmpty()) {
+                                    effectiveTestCode = q.getQuestionCode().trim().toUpperCase();
+                                    break;
+                                }
+                            }
+                        }
+                        if (effectiveTestCode == null || effectiveTestCode.trim().isEmpty()) {
+                            effectiveTestCode = lmb.getTest().getTestCode();
+                        }
+                    }
+
+                    return LanguageMasterBadgeDto.builder()
+                            .id(lmb.getId())
+                            .studentId(lmb.getStudent().getId())
+                            .studentName(lmb.getStudent().getName())
+                            .studentRegisterNumber(lmb.getStudent().getRegisterNumber())
+                            .testId(lmb.getTest() != null ? lmb.getTest().getId() : null)
+                            .testCode(effectiveTestCode)
+                            .testName(effectiveTestName)
+                            .subject(lmb.getSubject())
+                            .badgeName(lmb.getBadgeName())
+                            .badgeIcon(lmb.getBadgeIcon())
+                            .awardedRank(lmb.getAwardedRank())
+                            .awardedDate(lmb.getAwardedDate())
+                            .build();
+                })
                 .collect(Collectors.toList());
     }
 
@@ -730,6 +748,25 @@ public class BadgeSetService {
             subjectRank = subjectRankMap.get(studentId + "-" + sa.getSubjectName());
         }
 
+        String effectiveTestCode = sa.getTestCode();
+        String effectiveTestName = sa.getTestName();
+        if (sa.getTest() != null) {
+            if (sa.getTest().getName() != null && !sa.getTest().getName().trim().isEmpty()) {
+                effectiveTestName = sa.getTest().getName();
+            }
+            if (sa.getTest().getQuestions() != null && !sa.getTest().getQuestions().isEmpty()) {
+                for (Question q : sa.getTest().getQuestions()) {
+                    if (q.getQuestionCode() != null && !q.getQuestionCode().trim().isEmpty()) {
+                        effectiveTestCode = q.getQuestionCode().trim().toUpperCase();
+                        break;
+                    }
+                }
+            }
+            if ((effectiveTestCode == null || effectiveTestCode.trim().isEmpty()) && sa.getTest().getTestCode() != null) {
+                effectiveTestCode = sa.getTest().getTestCode();
+            }
+        }
+
         return StudentAchievementDto.builder()
                 .id(sa.getId())
                 .studentId(sa.getStudent() != null ? sa.getStudent().getId() : null)
@@ -739,8 +776,8 @@ public class BadgeSetService {
                 .badgeIcon(sa.getBadgeIcon())
                 .badgeCategory(sa.getBadgeCategory())
                 .testId(sa.getTest() != null ? sa.getTest().getId() : null)
-                .testCode(sa.getTestCode())
-                .testName(sa.getTestName())
+                .testCode(effectiveTestCode)
+                .testName(effectiveTestName)
                 .subjectName(sa.getSubjectName())
                 .subjectRank(subjectRank)
                 .overallRank(overallRank)

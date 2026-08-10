@@ -559,6 +559,39 @@ public class QuestionService {
                 "DELETE FROM tests WHERE id NOT IN (SELECT DISTINCT test_id FROM test_questions)"
         ).executeUpdate();
 
+        // 14. Synchronize tests.test_code, badge_sets.test_code, and student_achievements.test_code
+        // with the linked question's question_code (authoritative unique ID) and title.
+        try {
+            entityManager.createNativeQuery(
+                "UPDATE tests t " +
+                "SET test_code = UPPER(TRIM(q.question_code)), name = q.title " +
+                "FROM test_questions tq " +
+                "JOIN questions q ON tq.question_id = q.id " +
+                "WHERE tq.test_id = t.id " +
+                "AND q.question_code IS NOT NULL AND TRIM(q.question_code) != ''"
+            ).executeUpdate();
+
+            entityManager.createNativeQuery(
+                "UPDATE badge_sets bs " +
+                "SET test_code = UPPER(TRIM(q.question_code)), name = CONCAT(q.title, ' Badge Set') " +
+                "FROM test_questions tq " +
+                "JOIN questions q ON tq.question_id = q.id " +
+                "WHERE tq.test_id = bs.test_id " +
+                "AND q.question_code IS NOT NULL AND TRIM(q.question_code) != ''"
+            ).executeUpdate();
+
+            entityManager.createNativeQuery(
+                "UPDATE student_achievements sa " +
+                "SET test_code = UPPER(TRIM(q.question_code)), test_name = q.title " +
+                "FROM test_questions tq " +
+                "JOIN questions q ON tq.question_id = q.id " +
+                "WHERE tq.test_id = sa.test_id " +
+                "AND q.question_code IS NOT NULL AND TRIM(q.question_code) != ''"
+            ).executeUpdate();
+        } catch (Exception e) {
+            log.warn("Error running native test_code sync query: {}", e.getMessage());
+        }
+
         // Flush and clear L1 session
         try {
             entityManager.flush();
@@ -728,6 +761,20 @@ public class QuestionService {
                 questionTest.getQuestions().add(question);
             }
             questionTest = testRepository.save(questionTest);
+
+            // Sync student_achievements immediately when question code/title changes
+            if (qCode != null) {
+                try {
+                    entityManager.createNativeQuery(
+                        "UPDATE student_achievements SET test_code = :qCode, test_name = :title WHERE test_id = :tId")
+                        .setParameter("qCode", qCode)
+                        .setParameter("title", question.getTitle())
+                        .setParameter("tId", questionTest.getId())
+                        .executeUpdate();
+                } catch (Exception e) {
+                    log.warn("Error syncing achievements on question edit: {}", e.getMessage());
+                }
+            }
         } else {
             // Create a new dedicated Test for this question
             String testCode = qCode;
