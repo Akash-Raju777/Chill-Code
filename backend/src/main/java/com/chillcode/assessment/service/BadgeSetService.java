@@ -86,6 +86,7 @@ public class BadgeSetService {
                 .test(test)
                 .testCode(testCode)
                 .subject(subject)
+                .admin(test.getAdmin())
                 .numberOfWinners(dto.getNumberOfWinners() != null ? dto.getNumberOfWinners() : 3)
                 .enableLanguageBadge(dto.getEnableLanguageBadge() != null ? dto.getEnableLanguageBadge() : false)
                 .languageName(dto.getLanguageName())

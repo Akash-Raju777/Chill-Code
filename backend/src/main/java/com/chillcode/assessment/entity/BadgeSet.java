@@ -25,6 +25,11 @@ public class BadgeSet {
     private String name;
 
     @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "admin_id", nullable = false)
+    @com.fasterxml.jackson.annotation.JsonIgnore
+    private User admin;
+
+    @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "test_id", nullable = false)
     private Test test;
 
