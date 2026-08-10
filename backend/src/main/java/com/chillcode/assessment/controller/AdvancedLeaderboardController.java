@@ -1,6 +1,7 @@
 package com.chillcode.assessment.controller;
 
 import com.chillcode.assessment.dto.StudentAchievementDto;
+import com.chillcode.assessment.dto.LanguageMasterBadgeDto;
 import com.chillcode.assessment.security.CustomUserDetails;
 import com.chillcode.assessment.service.BadgeSetService;
 import com.chillcode.assessment.service.OverallLeaderboardService;
@@ -57,12 +58,36 @@ public class AdvancedLeaderboardController {
         }
 
         List<StudentAchievementDto> achievements = badgeSetService.getStudentAchievements(studentId);
-        StudentAchievementDto recent = achievements.isEmpty() ? null : achievements.get(0);
+        List<LanguageMasterBadgeDto> langBadges = badgeSetService.getStudentLanguageBadges(studentId);
+
+        int totalBadgesEarned = achievements.size() + (langBadges != null ? langBadges.size() : 0);
+
+        Object recent = null;
+        java.time.LocalDateTime recentTime = null;
+
+        if (!achievements.isEmpty()) {
+            recent = achievements.get(0);
+            recentTime = achievements.get(0).getAwardedAt();
+        }
+
+        if (langBadges != null && !langBadges.isEmpty()) {
+            java.time.LocalDateTime langTime = langBadges.get(0).getAwardedDate();
+            if (recentTime == null || (langTime != null && langTime.isAfter(recentTime))) {
+                LanguageMasterBadgeDto lmb = langBadges.get(0);
+                recent = StudentAchievementDto.builder()
+                        .badgeName(lmb.getBadgeName())
+                        .badgeIcon(lmb.getBadgeIcon())
+                        .badgeCategory("LANGUAGE_MASTER")
+                        .awardedAt(lmb.getAwardedDate())
+                        .testName(lmb.getTestName())
+                        .build();
+            }
+        }
 
         Map<String, Object> summary = new HashMap<>();
         summary.put("myCurrentRank", myOverallRank > 0 ? myOverallRank : 1);
         summary.put("overallRank", myOverallRank > 0 ? myOverallRank : 1);
-        summary.put("totalBadgesEarned", achievements.size());
+        summary.put("totalBadgesEarned", totalBadgesEarned);
         summary.put("recentAchievement", recent);
 
         return ResponseEntity.ok(summary);

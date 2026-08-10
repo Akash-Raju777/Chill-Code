@@ -26,6 +26,12 @@ public class OverallLeaderboardService {
     @Autowired
     private StudentAchievementRepository studentAchievementRepository;
 
+    @Autowired
+    private com.chillcode.assessment.repository.StudentBadgeRepository studentBadgeRepository;
+
+    @Autowired
+    private com.chillcode.assessment.repository.LanguageMasterBadgeRepository languageMasterBadgeRepository;
+
     @Transactional(readOnly = true)
     public List<OverallLeaderboardEntry> getOverallLeaderboard(String timeFilter, String departmentFilter) {
         try {
@@ -89,7 +95,10 @@ public class OverallLeaderboardService {
 
                 int totalBadges = 0;
                 try {
-                    totalBadges = studentAchievementRepository.findByStudentIdOrderByAwardedAtDesc(student.getId()).size();
+                    int achievementsCount = studentAchievementRepository.findByStudentIdOrderByAwardedAtDesc(student.getId()).size();
+                    int manualBadgesCount = studentBadgeRepository.findByStudentId(student.getId()).size();
+                    int languageBadgesCount = languageMasterBadgeRepository.findByStudentIdOrderByAwardedDateDesc(student.getId()).size();
+                    totalBadges = achievementsCount + manualBadgesCount + languageBadgesCount;
                 } catch (Exception ignored) {}
 
                 double avgScore = myTests.isEmpty() ? 0.0 :
