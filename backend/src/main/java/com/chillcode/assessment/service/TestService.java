@@ -220,17 +220,16 @@ public class TestService {
                 (st.getTest().getName().toLowerCase().contains("practice") || st.getTest().getName().toLowerCase().contains("arena"));
         boolean hasSecurityShield = Boolean.TRUE.equals(st.getTest().getSecurityShieldEnabled());
 
-        if ("COMPLETED".equals(st.getStatus())) {
-            return st;
-        }
-
         if ("SUBMITTED".equals(st.getStatus()) || "EVALUATED".equals(st.getStatus())) {
             if (isPracticeArena || !hasSecurityShield) {
                 st.setStatus("STARTED");
                 st.setStartedAt(LocalDateTime.now());
-                return studentTestRepository.save(st);
+                st = studentTestRepository.save(st);
+            } else {
+                return st;
             }
-            return st;
+        } else if ("COMPLETED".equals(st.getStatus())) {
+             return st;
         }
 
         if (st.getIsSuspended()) {
@@ -241,9 +240,10 @@ public class TestService {
                 st.setWarningsCount(0);
                 st.setStatus("STARTED");
                 st.setStartedAt(LocalDateTime.now());
-                return studentTestRepository.save(st);
+                st = studentTestRepository.save(st);
+            } else {
+                throw new RuntimeException("Your attempt on this test has been suspended due to security violations.");
             }
-            throw new RuntimeException("Your attempt on this test has been suspended due to security violations.");
         }
 
         // If re-attempting a failed test (PENDING), deactivate previous attempt's submissions and clear score
@@ -267,9 +267,11 @@ public class TestService {
             st.setScore(0);
         }
 
-        st.setStatus("STARTED");
-        st.setStartedAt(LocalDateTime.now());
-        st = studentTestRepository.save(st);
+        if (!"COMPLETED".equals(st.getStatus()) && !"SUBMITTED".equals(st.getStatus()) && !"EVALUATED".equals(st.getStatus())) {
+            st.setStatus("STARTED");
+            st.setStartedAt(LocalDateTime.now());
+            st = studentTestRepository.save(st);
+        }
 
         if (questionId != null) {
             com.chillcode.assessment.entity.StudentQuestionStatus sqs = studentQuestionStatusRepository.findByStudentIdAndQuestionId(studentId, questionId)

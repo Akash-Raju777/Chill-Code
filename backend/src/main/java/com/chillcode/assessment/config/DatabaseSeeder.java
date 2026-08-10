@@ -133,6 +133,29 @@ public class DatabaseSeeder implements CommandLineRunner {
             System.out.println("Retroactively enabled security shield on all existing tests.");
         }
 
+        // Retroactively fix missing admin_id in student_tests
+        java.util.List<com.chillcode.assessment.entity.StudentTest> allStudentTests = studentTestRepository.findAll();
+        boolean studentTestsPatched = false;
+        for (com.chillcode.assessment.entity.StudentTest st : allStudentTests) {
+            if (st.getAdmin() == null) {
+                com.chillcode.assessment.entity.User correctAdmin = null;
+                if (st.getTest() != null && st.getTest().getAdmin() != null) {
+                    correctAdmin = st.getTest().getAdmin();
+                } else if (st.getStudent() != null && st.getStudent().getAdmin() != null) {
+                    correctAdmin = st.getStudent().getAdmin();
+                }
+                
+                if (correctAdmin != null) {
+                    st.setAdmin(correctAdmin);
+                    studentTestRepository.save(st);
+                    studentTestsPatched = true;
+                }
+            }
+        }
+        if (studentTestsPatched) {
+            System.out.println("Retroactively fixed missing admin_id on existing student_tests.");
+        }
+
         // Seed tests and assign to students
         java.util.List<com.chillcode.assessment.entity.Subject> subjects = subjectRepository.findAll();
         java.util.List<User> students = userRepository.findAll().stream()
