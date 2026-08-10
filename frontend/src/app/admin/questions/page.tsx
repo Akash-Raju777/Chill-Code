@@ -38,7 +38,7 @@ interface Question {
 
 export default function QuestionManagement() {
   const [subjects, setSubjects] = useState<Subject[]>([]);
-  const [selectedSubjectId, setSelectedSubjectId] = useState<number | null>(null);
+  const [selectedSubjectId, setSelectedSubjectId] = useState<number | 'ALL'>('ALL');
   const [questions, setQuestions] = useState<Question[]>([]);
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -108,9 +108,6 @@ export default function QuestionManagement() {
     try {
       const subs = await apiCall('/api/admin/subjects');
       setSubjects(subs);
-      if (subs.length > 0) {
-        setSelectedSubjectId(subs[0].id);
-      }
     } catch (err: any) {
       setError('Failed to load initial configurations');
     }
@@ -120,12 +117,13 @@ export default function QuestionManagement() {
     loadInitialData();
   }, []);
 
-  const fetchQuestions = async (subjectId: number, isInitial = false) => {
+  const fetchQuestions = async (subjectId: number | 'ALL', isInitial = false) => {
     if (isInitial || questions.length === 0) {
       setLoading(true);
     }
     try {
-      const data = await apiCall(`/api/admin/subjects/${subjectId}/questions`);
+      const url = subjectId === 'ALL' ? '/api/admin/questions' : `/api/admin/subjects/${subjectId}/questions`;
+      const data = await apiCall(url);
       setQuestions(data);
     } catch (err: any) {
       setError('Failed to fetch questions list');
@@ -158,7 +156,8 @@ export default function QuestionManagement() {
     setAllowedLangs({ java: true, python: true, cpp: false, c: false, javascript: false });
     setTags('');
     setTestCases([{ inputData: '', expectedOutput: '', isHidden: false, marks: 5 }]);
-    setFormSubjectId(selectedSubjectId);
+    const defaultSubId = (selectedSubjectId && selectedSubjectId !== 'ALL') ? selectedSubjectId : (subjects[0]?.id || null);
+    setFormSubjectId(defaultSubId);
     setShowForm(true);
   };
 
@@ -412,8 +411,10 @@ export default function QuestionManagement() {
       // Refresh question list immediately
       const activeSubjectId = formSubjectId || selectedSubjectId;
       if (activeSubjectId) {
-        setSelectedSubjectId(activeSubjectId);
-        await fetchQuestions(activeSubjectId);
+        if (selectedSubjectId !== 'ALL' && typeof activeSubjectId === 'number') {
+          setSelectedSubjectId(activeSubjectId);
+        }
+        await fetchQuestions(selectedSubjectId);
       }
 
       showToast(editingQuestion ? 'Question updated successfully!' : 'Question uploaded successfully!');
@@ -461,10 +462,16 @@ export default function QuestionManagement() {
           <div className="flex gap-3 items-center w-full sm:w-auto">
             {/* Subject Filter Dropdown */}
             <select
-              className="glass-input p-2 rounded-xl text-sm w-full sm:w-48 bg-[#11131c] text-white border border-white/5"
-              value={selectedSubjectId || ''}
-              onChange={(e) => setSelectedSubjectId(Number(e.target.value))}
+              className="glass-input p-2 rounded-xl text-sm w-full sm:w-48 bg-[#11131c] text-white border border-white/5 cursor-pointer"
+              value={selectedSubjectId}
+              onChange={(e) => {
+                const val = e.target.value;
+                setSelectedSubjectId(val === 'ALL' ? 'ALL' : Number(val));
+              }}
             >
+              <option value="ALL" className="bg-[#11131c] text-white">
+                All Subjects
+              </option>
               {subjects.map((sub) => (
                 <option key={sub.id} value={sub.id} className="bg-[#11131c] text-white">
                   {sub.name}
@@ -547,6 +554,11 @@ export default function QuestionManagement() {
                     }`}>
                       {q.difficulty}
                     </span>
+                    {subjects.find(s => s.id === q.subjectId) && (
+                      <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-indigo-500/10 text-indigo-400 border border-indigo-500/20">
+                        {subjects.find(s => s.id === q.subjectId)?.name}
+                      </span>
+                    )}
                     <h3 className="font-bold text-white text-lg">{q.title}</h3>
                   </div>
                   <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-gray-500 mt-2">
