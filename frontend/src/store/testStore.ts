@@ -115,7 +115,9 @@ export const useTestStore = create<TestState>((set) => ({
     const nextTime = state.timeLeftSeconds - 1;
     return {
       timeLeftSeconds: Math.max(0, nextTime),
-      isSessionActive: nextTime > 0,
+      // Do NOT set isSessionActive to false here — the auto-submit handler
+      // needs the session to remain active during submission. It will call
+      // clearTestSession() after the API call completes.
     };
   }),
 

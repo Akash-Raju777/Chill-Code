@@ -97,7 +97,7 @@ function CodingWorkspaceInner() {
   const [customInput2, setCustomInput2] = useState('');
   const [customInput3, setCustomInput3] = useState('');
   const [consoleTab, setConsoleTab] = useState<'TESTCASE' | 'RESULT'>('TESTCASE');
-  const [securityShieldEnabled, setSecurityShieldEnabled] = useState(false);
+  const securityShieldEnabled = useTestStore((s) => s.securityShieldEnabled);
   const [submittingExam, setSubmittingExam] = useState(false);
   const [showExternalPasteWarning, setShowExternalPasteWarning] = useState(false);
   const [confirmDialog, setConfirmDialog] = useState<{
@@ -189,7 +189,7 @@ function CodingWorkspaceInner() {
         }
 
         const isEnabled = activeTest.test?.securityShieldEnabled ?? false;
-        setSecurityShieldEnabled(isEnabled);
+        // securityShieldEnabled is read from Zustand store (set via startTestSession below)
 
         const isSecActive = currentUserStatus === 'ACTIVE' && isEnabled;
 
@@ -458,7 +458,6 @@ function CodingWorkspaceInner() {
   const handleAutoSubmit = async () => {
     if (autoSubmittedRef.current) return;
     autoSubmittedRef.current = true;
-    useTestStore.setState({ isSessionActive: false });
     
     setSubmittingExam(true);
     try {
@@ -474,22 +473,24 @@ function CodingWorkspaceInner() {
         method: 'POST',
         body: JSON.stringify(questionCodes),
       });
+      toast.warning('Time is up! Your exam attempt has been auto-submitted.');
+    } catch (e) {
+      console.error('Auto submit failed', e);
+      toast.error('Time is up! Auto-submission encountered an error. Redirecting to results...');
+    } finally {
+      // Always clean up and redirect, even if the API call failed
       if (user?.id) {
         Object.keys(codes).forEach((qId) => {
           localStorage.removeItem(`chillcode_code_backup_${user.id}_${qId}`);
         });
       }
+      if (document.fullscreenElement) {
+        try { document.exitFullscreen(); } catch (_) {}
+      }
       clearTestSession();
       resetWarnings();
-      if (document.fullscreenElement) {
-        document.exitFullscreen();
-      }
-      toast.warning('Time is up! Your exam attempt has been auto-submitted.');
-      router.push('/student/results');
-    } catch (e) {
-      console.error('Auto submit failed', e);
-    } finally {
       setSubmittingExam(false);
+      router.push('/student/results');
     }
   };
 
@@ -830,12 +831,23 @@ function CodingWorkspaceInner() {
     );
   }
 
-  if (!mounted || !isSessionActive || !currentQuestion) {
+  if (!mounted || (!isSessionActive && !submittingExam) || !currentQuestion) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-[#0b0c10]">
         <div className="text-center space-y-4">
           <Loader2 className="w-8 h-8 animate-spin text-[#7c3aed] mx-auto" />
           <p className="text-gray-400">Initializing Exam Session...</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (submittingExam && !isSessionActive) {
+     return (
+      <div className="min-h-screen flex items-center justify-center bg-[#0b0c10]">
+        <div className="text-center space-y-4">
+          <Loader2 className="w-8 h-8 animate-spin text-[#7c3aed] mx-auto" />
+          <p className="text-gray-400">Submitting your exam, please wait...</p>
         </div>
       </div>
     );
