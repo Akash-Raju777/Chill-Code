@@ -277,15 +277,14 @@ function CodingWorkspaceInner() {
     recoverSession();
   }, [mounted, testId]);
 
-  // Trigger fullscreen whenever security status becomes active
+  // Check if fullscreen view is required when security status is active
   useEffect(() => {
     if (!mounted || isViewMode) return;
     if (isSecurityStatusActive && typeof window !== 'undefined') {
       if (!document.fullscreenElement) {
-        // Auto-enter fullscreen when secure session starts
-        document.documentElement.requestFullscreen().catch(() => {
-          setFullscreenRequired(true);
-        });
+        setFullscreenRequired(true);
+      } else {
+        setFullscreenRequired(false);
       }
     }
   }, [mounted, isSecurityStatusActive, isViewMode]);
@@ -600,14 +599,22 @@ function CodingWorkspaceInner() {
   const handleToggleFullscreen = async () => {
     try {
       lastWarningTimeRef.current = Date.now();
+      const docEl = document.documentElement as any;
       if (document.fullscreenElement) {
-        await document.exitFullscreen();
+        const exitFS = document.exitFullscreen || (document as any).webkitExitFullscreen || (document as any).mozCancelFullScreen || (document as any).msExitFullscreen;
+        if (exitFS) {
+          await exitFS.call(document);
+        }
       } else {
-        await document.documentElement.requestFullscreen();
+        const requestFS = docEl.requestFullscreen || docEl.webkitRequestFullscreen || docEl.mozRequestFullScreen || docEl.msRequestFullscreen;
+        if (requestFS) {
+          await requestFS.call(docEl);
+        }
         setFullscreenRequired(false);
       }
-    } catch (e) {
-      console.error('Fullscreen toggle failed', e);
+    } catch (e: any) {
+      console.warn('Fullscreen toggle request rejected:', e);
+      toast.warning('Please click Enter Secure Test Mode to continue.');
     }
   };
 
@@ -1587,10 +1594,19 @@ function CodingWorkspaceInner() {
               Reaching <strong className="text-white">3 warnings</strong> will suspend your attempt immediately.
             </p>
             <button
-              onClick={() => {
+              onClick={async () => {
                 setWarningModal(false);
                 if (!document.fullscreenElement) {
-                  document.documentElement.requestFullscreen().catch(console.error);
+                  try {
+                    const docEl = document.documentElement as any;
+                    const reqFS = docEl.requestFullscreen || docEl.webkitRequestFullscreen || docEl.mozRequestFullScreen || docEl.msRequestFullscreen;
+                    if (reqFS) {
+                      await reqFS.call(docEl);
+                    }
+                  } catch (e) {
+                    console.warn("Fullscreen resume request error:", e);
+                    setFullscreenRequired(true);
+                  }
                 }
               }}
               className="px-6 py-2 bg-[#7c3aed] hover:bg-[#8b5cf6] text-white rounded-xl text-xs font-bold transition-all w-full"

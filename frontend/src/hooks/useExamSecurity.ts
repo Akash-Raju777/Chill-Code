@@ -171,6 +171,9 @@ export function useExamSecurity({ testId, onWarning, isSessionActive, internalCl
     document.addEventListener('dragstart', handleDragDrop, true);
     document.addEventListener('drop', handleDragDrop, true);
     document.addEventListener('fullscreenchange', handleFullscreenChange, true);
+    document.addEventListener('webkitfullscreenchange', handleFullscreenChange, true);
+    document.addEventListener('mozfullscreenchange', handleFullscreenChange, true);
+    document.addEventListener('MSFullscreenChange', handleFullscreenChange, true);
     window.addEventListener('resize', handleResize, true);
 
     return () => {
@@ -182,6 +185,9 @@ export function useExamSecurity({ testId, onWarning, isSessionActive, internalCl
       document.removeEventListener('dragstart', handleDragDrop, true);
       document.removeEventListener('drop', handleDragDrop, true);
       document.removeEventListener('fullscreenchange', handleFullscreenChange, true);
+      document.removeEventListener('webkitfullscreenchange', handleFullscreenChange, true);
+      document.removeEventListener('mozfullscreenchange', handleFullscreenChange, true);
+      document.removeEventListener('MSFullscreenChange', handleFullscreenChange, true);
       window.removeEventListener('resize', handleResize, true);
     };
   }, [testId, isSessionActive]);
