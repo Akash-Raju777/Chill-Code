@@ -235,7 +235,7 @@ export default function AdminDashboard() {
     fetchMetricsRef.current(true);
     const interval = setInterval(() => {
       fetchMetricsRef.current(false);
-    }, 8000);
+    }, 4000);
     return () => clearInterval(interval);
   }, []);
 

@@ -400,20 +400,31 @@ public class TestService {
             throw new RuntimeException("Cannot log warning for a test that is not in progress.");
         }
 
-        User admin = st.getTest().getAdmin() != null ? st.getTest().getAdmin() : 
-                     (st.getStudent() != null && st.getStudent().getAdmin() != null ? st.getStudent().getAdmin() : null);
+        // Deterministic admin resolution: Test.admin → StudentTest.admin → Student.admin
+        User admin = null;
+        if (st.getTest() != null && st.getTest().getAdmin() != null) {
+            admin = st.getTest().getAdmin();
+        } else if (st.getAdmin() != null) {
+            admin = st.getAdmin();
+        } else if (st.getStudent() != null && st.getStudent().getAdmin() != null) {
+            admin = st.getStudent().getAdmin();
+        }
 
         if (admin == null) {
-            // Fallback: try to find any admin to satisfy DB constraint if somehow test and student lack one
-            admin = testRepository.findById(testId)
-                    .map(t -> t.getAdmin())
-                    .orElse(null);
-            if (admin == null) {
-                 // Try getting current authenticated admin (if this API was called by admin, though it's called by student)
-                 // Or just fallback to user id 1 if desperate, but better to query
-                 throw new RuntimeException("Cannot determine admin ownership for warning");
-            }
+            String diagnostics = String.format(
+                "studentTestId=%d, testId=%d, studentId=%d",
+                st.getId(), testId, studentId
+            );
+            throw new RuntimeException(
+                "Cannot determine admin ownership for warning. " +
+                "Every Test must have an admin. Diagnostics: " + diagnostics
+            );
         }
+
+        System.out.println(String.format(
+            "[Warning] Recording: type=%s, studentTestId=%d, adminId=%d, reason=%s",
+            type, st.getId(), admin.getId(), reason
+        ));
 
         Warning warning = Warning.builder()
                 .admin(admin)

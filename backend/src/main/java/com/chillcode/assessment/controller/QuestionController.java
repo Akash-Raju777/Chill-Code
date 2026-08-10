@@ -43,6 +43,9 @@ public class QuestionController {
     @Autowired
     private com.chillcode.assessment.repository.QuestionRepository questionRepository;
 
+    @Autowired
+    private com.chillcode.assessment.repository.StudentTestRepository studentTestRepository;
+
     // Both Admin and Student can get questions list of a subject
     @GetMapping({"/admin/subjects/{subjectId}/questions", "/student/subjects/{subjectId}/questions"})
     public ResponseEntity<List<QuestionDto>> getQuestionsBySubject(@PathVariable("subjectId") Long subjectId) {
@@ -58,21 +61,21 @@ public class QuestionController {
 
     @GetMapping({"/admin/questions/{id}", "/student/questions/{id}"})
     public ResponseEntity<QuestionDto> getQuestionById(@PathVariable("id") Long id) {
-        log.info("API Request: Load question by ID: {}", id);
+        log.info("API Request: Get question ID: {}", id);
         return ResponseEntity.ok(questionService.getQuestionById(id));
     }
 
     @PostMapping("/admin/questions")
     @PreAuthorize("hasRole('ADMIN')")
     public ResponseEntity<QuestionDto> createQuestion(@RequestBody QuestionDto questionDto) {
-        log.info("API Request: Create question with title: {}", questionDto.getTitle());
+        log.info("API Request: Create question: {}", questionDto.getTitle());
         return ResponseEntity.ok(questionService.createQuestion(questionDto));
     }
 
     @PutMapping("/admin/questions/{id}")
     @PreAuthorize("hasRole('ADMIN')")
     public ResponseEntity<QuestionDto> updateQuestion(@PathVariable("id") Long id, @RequestBody QuestionDto questionDto) {
-        log.info("API Request: Update question ID: {} with title: {}", id, questionDto.getTitle());
+        log.info("API Request: Update question ID: {}", id);
         return ResponseEntity.ok(questionService.updateQuestion(id, questionDto));
     }
 
@@ -92,9 +95,37 @@ public class QuestionController {
                 .orElse(null);
         if (status == null) {
             status = new com.chillcode.assessment.entity.StudentQuestionStatus();
-            Long adminId = com.chillcode.assessment.security.SecurityUtils.getCurrentAdminId();
-            if (adminId == null && student != null && student.getAdmin() != null) {
-                adminId = student.getAdmin().getId();
+            
+            // Resolve adminId robustly through StudentTest/Test relationships first
+            Long adminId = null;
+            Long studentTestId = null;
+            Long testId = null;
+
+            List<com.chillcode.assessment.entity.StudentTest> studentTests = studentTestRepository.findByStudentIdWithTestAndQuestions(student.getId());
+            com.chillcode.assessment.entity.StudentTest matchingStudentTest = studentTests.stream()
+                .filter(st -> st.getTest() != null && st.getTest().getQuestions().stream().anyMatch(q -> q.getId().equals(questionId)))
+                .findFirst()
+                .orElse(null);
+
+            if (matchingStudentTest != null) {
+                studentTestId = matchingStudentTest.getId();
+                if (matchingStudentTest.getTest() != null) {
+                    testId = matchingStudentTest.getTest().getId();
+                    if (matchingStudentTest.getTest().getAdmin() != null) {
+                        adminId = matchingStudentTest.getTest().getAdmin().getId();
+                    }
+                }
+                if (adminId == null && matchingStudentTest.getAdmin() != null) {
+                    adminId = matchingStudentTest.getAdmin().getId();
+                }
+                if (adminId == null && matchingStudentTest.getStudent() != null && matchingStudentTest.getStudent().getAdmin() != null) {
+                    adminId = matchingStudentTest.getStudent().getAdmin().getId();
+                }
+            }
+
+            // Fallback to Current Admin ID or Question Admin
+            if (adminId == null) {
+                adminId = com.chillcode.assessment.security.SecurityUtils.getCurrentAdminId();
             }
             if (adminId == null) {
                 com.chillcode.assessment.entity.Question q = questionRepository.findById(questionId).orElse(null);
@@ -102,16 +133,25 @@ public class QuestionController {
                     adminId = q.getAdmin().getId();
                 }
             }
+
+            if (adminId == null) {
+                String diag = String.format("studentTestId=%s, testId=%s, questionId=%s",
+                    studentTestId != null ? studentTestId : "null",
+                    testId != null ? testId : "null",
+                    questionId);
+                log.error("Cannot determine admin ownership for student question status creation. Diagnostics: {}", diag);
+                throw new RuntimeException("Cannot determine admin ownership for student question status. Diagnostics: " + diag);
+            }
+
             status.setAdminId(adminId);
             status.setStudentId(student.getId());
             status.setQuestionId(questionId);
-            status.setAdminId(student.getAdmin() != null ? student.getAdmin().getId() : null);
-            if (status.getAdminId() == null) {
-                throw new RuntimeException("Cannot determine admin ownership for student question status");
-            }
             status.setStatus("IN_PROGRESS");
             status.setAttemptCount(0);
             status = studentQuestionStatusRepository.save(status);
+            
+            log.info("[QuestionStatus] Created new status entry for studentId={}, questionId={}, adminId={}", 
+                student.getId(), questionId, adminId);
         } else if ("NOT_STARTED".equals(status.getStatus()) || "NOT_COMPLETED".equals(status.getStatus())) {
             status.setStatus("IN_PROGRESS");
             status = studentQuestionStatusRepository.save(status);

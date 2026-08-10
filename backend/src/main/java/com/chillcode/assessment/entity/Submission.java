@@ -34,6 +34,11 @@ public class Submission {
     @com.fasterxml.jackson.annotation.JsonIgnore
     private Question question;
 
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "admin_id", nullable = false)
+    @com.fasterxml.jackson.annotation.JsonIgnore
+    private User admin;
+
     @Column(nullable = false, length = 20)
     private String language;
 

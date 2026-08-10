@@ -53,6 +53,9 @@ public class CodeExecutionService {
     @Autowired
     private StudentQuestionStatusRepository studentQuestionStatusRepository;
 
+    @Autowired
+    private StudentQuestionStatusService studentQuestionStatusService;
+
     @Value("${judge0.api.url:http://localhost:2358}")
     private String judge0ApiUrl;
 
@@ -337,28 +340,21 @@ public class CodeExecutionService {
             submissionRepository.save(sub);
             resultDto.setSubmissionId(sub.getId());
 
-            // Update StudentQuestionStatus:
+            // Update StudentQuestionStatus (runs in REQUIRES_NEW transaction to isolate from Submission):
             try {
                 User student = studentTest != null ? studentTest.getStudent() : getCurrentUser();
-                Long adminId = null;
-                
-                if (studentTest != null) {
-                    if (studentTest.getAdmin() != null) adminId = studentTest.getAdmin().getId();
-                    else if (studentTest.getTest() != null && studentTest.getTest().getAdmin() != null) adminId = studentTest.getTest().getAdmin().getId();
-                    else if (studentTest.getStudent() != null && studentTest.getStudent().getAdmin() != null) adminId = studentTest.getStudent().getAdmin().getId();
-                }
-                
-                if (adminId == null && question != null && question.getAdmin() != null) {
-                    adminId = question.getAdmin().getId();
-                }
-
-                if (adminId != null) {
-                    updateStudentQuestionStatus(student, question, sub, false, adminId);
-                } else {
-                    System.err.println("Skipped updating student question status: Cannot determine admin ownership (prevented transaction rollback).");
-                }
+                Long adminId = studentQuestionStatusService.resolveAdminId(studentTest, question);
+                studentQuestionStatusService.updateStatus(student, question, sub, adminId);
             } catch (Exception e) {
-                System.err.println("Failed to update student question status: " + e.getMessage());
+                // Log the failure but do NOT let it crash the Submission transaction.
+                // The Submission is already saved and committed in the parent transaction.
+                System.err.println(String.format(
+                    "[StudentQuestionStatus] FAILED to update: studentTestId=%s, questionId=%s, error=%s",
+                    studentTest != null ? studentTest.getId() : "null",
+                    question != null ? question.getId() : "null",
+                    e.getMessage()
+                ));
+                e.printStackTrace();
             }
 
             // Update overall StudentTest score:
@@ -411,39 +407,8 @@ public class CodeExecutionService {
                 .orElseThrow(() -> new RuntimeException("Current user not found"));
     }
 
-    private void updateStudentQuestionStatus(User student, Question question, Submission submission, boolean runOnly, Long adminId) {
-        StudentQuestionStatus status = studentQuestionStatusRepository
-                .findByStudentIdAndQuestionId(student.getId(), question.getId())
-                .orElse(null);
-
-        if (status == null) {
-            status = new StudentQuestionStatus();
-            status.setAdminId(adminId);
-            status.setStudentId(student.getId());
-            status.setQuestionId(question.getId());
-            status.setStatus("IN_PROGRESS");
-            status.setAttemptCount(0);
-        }
-
-        if (!runOnly) {
-            status.setAttemptCount(status.getAttemptCount() + 1);
-            status.setLastAttemptAt(LocalDateTime.now());
-            status.setLastSubmissionId(submission.getId());
-
-            if ("ACCEPTED".equals(submission.getStatus()) || "PASS".equals(submission.getOverallResult())) {
-                status.setStatus("COMPLETED");
-                if (status.getCompletedAt() == null) {
-                    status.setCompletedAt(LocalDateTime.now());
-                }
-            } else {
-                if (!"COMPLETED".equals(status.getStatus())) {
-                    status.setStatus("FAILED");
-                }
-            }
-        }
-
-        studentQuestionStatusRepository.save(status);
-    }
+    // updateStudentQuestionStatus is now in StudentQuestionStatusService
+    // with REQUIRES_NEW transaction isolation to prevent Submission cascade failures.
 
     private JsonNode executeOnJudge0(String code, int languageId, String stdin, String expectedOutput) {
         try {
@@ -1144,9 +1109,43 @@ public class CodeExecutionService {
     }
 
     private Submission saveSubmissionRecord(StudentTest studentTest, Question question, SubmitRequest request, SubmissionResultDto result) {
+        // Resolve admin deterministically from the entity chain
+        User admin = null;
+        if (studentTest != null) {
+            if (studentTest.getTest() != null && studentTest.getTest().getAdmin() != null) {
+                admin = studentTest.getTest().getAdmin();
+            } else if (studentTest.getAdmin() != null) {
+                admin = studentTest.getAdmin();
+            } else if (studentTest.getStudent() != null && studentTest.getStudent().getAdmin() != null) {
+                admin = studentTest.getStudent().getAdmin();
+            }
+        }
+        if (admin == null && question != null && question.getAdmin() != null) {
+            admin = question.getAdmin();
+        }
+
+        if (admin == null) {
+            String diagnostics = String.format(
+                "studentTestId=%s, testId=%s, questionId=%s",
+                studentTest != null ? studentTest.getId() : "null",
+                studentTest != null && studentTest.getTest() != null ? studentTest.getTest().getId() : "null",
+                question != null ? question.getId() : "null"
+            );
+            throw new IllegalStateException("Cannot resolve admin ownership for Submission. Diagnostics: " + diagnostics);
+        }
+
+        System.out.println(String.format(
+            "[Submission] Creating record: studentTestId=%s, questionId=%s, adminId=%d, language=%s",
+            studentTest != null ? studentTest.getId() : "null",
+            question != null ? question.getId() : "null",
+            admin.getId(),
+            request.getLanguage()
+        ));
+
         Submission sub = Submission.builder()
                 .studentTest(studentTest)
                 .question(question)
+                .admin(admin)
                 .code(request.getCode())
                 .language(request.getLanguage())
                 .status(result.getStatus())
