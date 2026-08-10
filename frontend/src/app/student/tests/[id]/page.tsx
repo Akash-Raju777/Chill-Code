@@ -388,9 +388,9 @@ function CodingWorkspaceInner() {
     const handleBeforeUnload = (e: BeforeUnloadEvent) => {
       const state = useTestStore.getState();
       if (state.isSessionActive && !state.isViewMode && !isTestSuspended && !submittingExam) {
-        const token = localStorage.getItem('token');
+        const token = typeof window !== 'undefined' ? localStorage.getItem('chill_token') || localStorage.getItem('token') : null;
         if (token && currentQuestion) {
-          fetch(`http://localhost:8080/api/student/tests/${testId}/exit?questionId=${currentQuestion.id}`, {
+          fetch(`/api/student/tests/${testId}/exit?questionId=${currentQuestion.id}`, {
             method: 'POST',
             headers: { 'Authorization': `Bearer ${token}` },
             keepalive: true
@@ -403,22 +403,8 @@ function CodingWorkspaceInner() {
 
     return () => {
       window.removeEventListener('beforeunload', handleBeforeUnload);
-      
-      const state = useTestStore.getState();
-      // If unmounting while still active (e.g. client-side routing to dashboard)
-      if (state.isSessionActive && !state.isViewMode && !submittingExam) {
-        const token = localStorage.getItem('token');
-        if (token && currentQuestion) {
-          fetch(`http://localhost:8080/api/student/tests/${testId}/exit?questionId=${currentQuestion.id}`, {
-            method: 'POST',
-            headers: { 'Authorization': `Bearer ${token}` },
-            keepalive: true
-          }).catch(console.error);
-        }
-        state.clearTestSession();
-      }
     };
-  }, [testId, currentQuestion, submittingExam, isTestSuspended]);
+  }, [testId, currentQuestion?.id, submittingExam, isTestSuspended]);
 
   const fetchSubmissionsHistory = async () => {
     if (!currentQuestion || !activeStudentTestId) return;
