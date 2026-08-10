@@ -135,7 +135,7 @@ interface ManualBadgeAssignment {
 }
 
 export default function AdminBadgeSetsPage() {
-  const [activeTab, setActiveTab] = useState<'sets' | 'manual'>('manual');
+  const [activeTab, setActiveTab] = useState<'sets' | 'manual'>('sets');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
 
@@ -237,26 +237,23 @@ export default function AdminBadgeSetsPage() {
   }, []);
 
   useEffect(() => {
-    const initLoad = async () => {
-      try {
-        await Promise.all([
-          loadData(false),
-          loadManualData(false)
-        ]);
-      } catch (e) {
-        console.error("Initial load failed", e);
-      }
-    };
-    initLoad();
-  }, [loadData, loadManualData]);
+    loadData();
+    if (activeTab === 'manual') {
+      loadManualData();
+    }
+  }, [activeTab, loadData, loadManualData]);
 
-  // Auto-refresh manual lists in background silently
+  // Auto-refresh dynamic sets or manual lists
   useEffect(() => {
     const interval = setInterval(() => {
-      loadManualData(true);
+      if (activeTab === 'sets') {
+        loadData(true);
+      } else {
+        loadManualData(true);
+      }
     }, 15000);
     return () => clearInterval(interval);
-  }, [loadManualData]);
+  }, [activeTab, loadData, loadManualData]);
 
   const selectedTestObj = tests.find(t => t.id === Number(selectedTestId));
 
@@ -530,12 +527,30 @@ export default function AdminBadgeSetsPage() {
         </div>
       )}
 
-      {/* Section Subheader */}
-      <div className="flex border-b border-white/10 pb-3">
-        <h2 className="text-sm font-extrabold text-white flex items-center gap-2">
-          <Award className="w-4 h-4 text-amber-500" />
+      {/* Tabs Layout */}
+      <div className="flex border-b border-white/10 gap-6">
+        <button
+          onClick={() => setActiveTab('sets')}
+          className={`pb-3 text-sm font-bold border-b-2 flex items-center gap-2 transition-all ${
+            activeTab === 'sets' 
+              ? 'border-amber-500 text-white font-extrabold' 
+              : 'border-transparent text-gray-400 hover:text-gray-200'
+          }`}
+        >
+          <Layers className="w-4 h-4" />
+          Dynamic Test Winner Sets
+        </button>
+        <button
+          onClick={() => setActiveTab('manual')}
+          className={`pb-3 text-sm font-bold border-b-2 flex items-center gap-2 transition-all ${
+            activeTab === 'manual' 
+              ? 'border-amber-500 text-white font-extrabold' 
+              : 'border-transparent text-gray-400 hover:text-gray-200'
+          }`}
+        >
+          <Award className="w-4 h-4" />
           Badge Definitions & Manual Awards
-        </h2>
+        </button>
       </div>
 
       {activeTab === 'sets' ? (
