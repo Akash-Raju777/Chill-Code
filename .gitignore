@@ -35,3 +35,4 @@ deploy/*.tmp
 backend/tools/
 tools/
 *.7z.exe
+brain/

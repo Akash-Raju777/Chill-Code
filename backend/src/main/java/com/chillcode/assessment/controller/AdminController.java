@@ -186,6 +186,7 @@ public class AdminController {
         return ResponseEntity.ok("Student suspension has been lifted.");
     }
 
+
     @DeleteMapping("/students/{id}")
     public ResponseEntity<Void> deleteStudent(@PathVariable Long id) {
         Long adminId = com.chillcode.assessment.security.SecurityUtils.getCurrentAdminId();

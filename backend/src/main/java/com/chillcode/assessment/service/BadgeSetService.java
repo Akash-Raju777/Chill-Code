@@ -246,10 +246,40 @@ public class BadgeSetService {
 
     // --- Automatic Badge Allocation Engine ---
 
-    @Transactional(propagation = org.springframework.transaction.annotation.Propagation.REQUIRES_NEW)
+    @Transactional
     public List<StudentAchievement> allocateBadgesForTest(Long testId) {
+        try {
+            return doAllocateBadgesForTest(testId);
+        } catch (Exception e) {
+            // Catch ALL exceptions to prevent poisoning the parent transaction (submitTest).
+            // This method runs within the same transaction as the caller (REQUIRED propagation),
+            // so an uncaught exception would mark the transaction as rollback-only.
+            System.err.println("[BadgeSetService] Non-fatal error in allocateBadgesForTest for testId=" + testId + ": " + e.getMessage());
+            return Collections.emptyList();
+        }
+    }
+
+    /**
+     * Core badge allocation engine. Recalculates the top-N ranked students for a test
+     * and dynamically reassigns rank badges (🥇🥈🥉) based on current scores.
+     *
+     * Ranking criteria (in order):
+     *   1. score DESC (higher is better)
+     *   2. testCasesPassed DESC (more is better)
+     *   3. timeTakenSeconds ASC (faster is better)
+     *   4. submittedAt ASC (earlier submission wins ties)
+     *
+     * Key design decisions:
+     *   - Matches existing StudentAchievement by (student_id, test_id) — NOT by rank.
+     *     This allows in-place updates when a student's rank changes, preventing
+     *     duplicate notifications and badge count flickering.
+     *   - Students who drop out of the top N have their achievement DELETED.
+     *   - Uses findByTestId() for scoped, efficient queries (not findAll()).
+     */
+    private List<StudentAchievement> doAllocateBadgesForTest(Long testId) {
         Optional<BadgeSet> badgeSetOpt = badgeSetRepository.findByTestIdAndStatus(testId, "ACTIVE");
         if (badgeSetOpt.isEmpty()) {
+            // No active badge set → clean up any stale achievements for this test
             studentAchievementRepository.deleteByTestId(testId);
             languageMasterBadgeRepository.deleteByTestId(testId);
             return Collections.emptyList();
@@ -257,16 +287,18 @@ public class BadgeSetService {
 
         BadgeSet badgeSet = badgeSetOpt.get();
         List<BadgeDefinition> definitions = badgeDefinitionRepository.findByBadgeSetIdAndStatus(badgeSet.getId(), "ACTIVE");
-
         definitions.sort(Comparator.comparingInt(BadgeDefinition::getRankPosition));
 
-        // Fetch all evaluated / submitted student tests for this test
-        List<StudentTest> studentTests = studentTestRepository.findAll().stream()
-                .filter(st -> st.getTest() != null && st.getTest().getId().equals(testId)
-                        && ("SUBMITTED".equalsIgnoreCase(st.getStatus()) || "EVALUATED".equalsIgnoreCase(st.getStatus()) || "COMPLETED".equalsIgnoreCase(st.getStatus()) || "PENDING".equalsIgnoreCase(st.getStatus())))
+        // 1. Fetch all student tests for THIS test only (scoped, efficient)
+        List<StudentTest> studentTests = studentTestRepository.findByTestId(testId).stream()
+                .filter(st -> st.getStudent() != null && st.getScore() != null
+                        && ("SUBMITTED".equalsIgnoreCase(st.getStatus())
+                            || "EVALUATED".equalsIgnoreCase(st.getStatus())
+                            || "COMPLETED".equalsIgnoreCase(st.getStatus())
+                            || "PENDING".equalsIgnoreCase(st.getStatus())))
                 .collect(Collectors.toList());
 
-        // Sort by Priority: 1. Highest Marks, 2. Highest Test Cases Passed, 3. Lowest Time Taken, 4. Earliest Submission
+        // 2. Sort by: score DESC → testCasesPassed DESC → timeTakenSeconds ASC → submittedAt ASC
         studentTests.sort((a, b) -> {
             int scoreCompare = Integer.compare(b.getScore() != null ? b.getScore() : 0, a.getScore() != null ? a.getScore() : 0);
             if (scoreCompare != 0) return scoreCompare;
@@ -279,18 +311,37 @@ public class BadgeSetService {
             int timeCompare = Long.compare(timeA, timeB);
             if (timeCompare != 0) return timeCompare;
 
-            LocalDateTime subA = a.getSubmittedAt() != null ? a.getSubmittedAt() : a.getCreatedAt();
-            LocalDateTime subB = b.getSubmittedAt() != null ? b.getSubmittedAt() : b.getCreatedAt();
+            LocalDateTime subA = a.getSubmittedAt() != null ? a.getSubmittedAt() : (a.getCreatedAt() != null ? a.getCreatedAt() : LocalDateTime.MAX);
+            LocalDateTime subB = b.getSubmittedAt() != null ? b.getSubmittedAt() : (b.getCreatedAt() != null ? b.getCreatedAt() : LocalDateTime.MAX);
             return subA.compareTo(subB);
         });
 
-        // 1. Get all existing achievements and language badges for this test
+        // 3. Load all existing achievements and language badges for this test
         List<StudentAchievement> existingSAs = studentAchievementRepository.findByTestIdOrderByAwardedAtDesc(testId);
         List<LanguageMasterBadge> existingLMBs = languageMasterBadgeRepository.findByTestId(testId);
 
-        List<StudentAchievement> currentValidSAs = new java.util.ArrayList<>();
-        List<LanguageMasterBadge> currentValidLMBs = new java.util.ArrayList<>();
+        // Build a map of studentId → existing StudentAchievement for fast lookup
+        Map<Long, StudentAchievement> existingSAByStudent = new HashMap<>();
+        for (StudentAchievement sa : existingSAs) {
+            if (sa.getStudent() != null) {
+                existingSAByStudent.put(sa.getStudent().getId(), sa);
+            }
+        }
 
+        // Build a map of studentId → existing LanguageMasterBadge for fast lookup
+        Map<Long, LanguageMasterBadge> existingLMBByStudent = new HashMap<>();
+        for (LanguageMasterBadge lmb : existingLMBs) {
+            if (lmb.getStudent() != null) {
+                existingLMBByStudent.put(lmb.getStudent().getId(), lmb);
+            }
+        }
+
+        // Track which students SHOULD have badges after this recalculation
+        Set<Long> currentValidStudentIds = new HashSet<>();
+        Set<Long> currentValidLMBStudentIds = new HashSet<>();
+        List<StudentAchievement> currentValidSAs = new ArrayList<>();
+
+        // 4. Assign ranks to the top N students
         int rank = 1;
         for (StudentTest st : studentTests) {
             if (rank > badgeSet.getNumberOfWinners()) break;
@@ -304,30 +355,36 @@ public class BadgeSetService {
             if (def != null && st.getStudent() != null) {
                 User student = st.getStudent();
                 Test test = st.getTest();
+                Long studentId = student.getId();
+                currentValidStudentIds.add(studentId);
 
-                // Find if this student already has the achievement for this rank
-                StudentAchievement sa = existingSAs.stream()
-                        .filter(x -> x.getStudent().getId().equals(student.getId()) && x.getRankAchieved() != null && x.getRankAchieved().equals("Badge " + currentRank))
-                        .findFirst()
-                        .orElse(null);
+                // Check if this student already has an achievement for this TEST (any rank)
+                StudentAchievement existingSA = existingSAByStudent.get(studentId);
 
-                if (sa == null) {
-                    User correctAdmin = null;
-                    if (test.getAdmin() != null) {
-                        correctAdmin = test.getAdmin();
-                    } else if (student.getAdmin() != null) {
-                        correctAdmin = student.getAdmin();
-                    } else {
-                        Long currentAdminId = com.chillcode.assessment.security.SecurityUtils.getCurrentAdminId();
-                        if (currentAdminId != null) {
-                            correctAdmin = userRepository.findById(currentAdminId).orElse(null);
-                        }
+                if (existingSA != null) {
+                    // Student already has an achievement for this test — check if rank changed
+                    String expectedRankStr = "Badge " + currentRank;
+                    if (!expectedRankStr.equals(existingSA.getRankAchieved())
+                            || !def.getBadgeName().equals(existingSA.getBadgeName())) {
+                        // Rank changed — UPDATE IN-PLACE (no delete+recreate, no duplicate notification)
+                        existingSA.setBadgeName(def.getBadgeName());
+                        existingSA.setBadgeIcon(def.getBadgeIcon());
+                        existingSA.setRankAchieved(expectedRankStr);
+                        existingSA.setUpdatedAt(LocalDateTime.now());
+                        studentAchievementRepository.save(existingSA);
                     }
+                    // Rank unchanged — no action needed
+                    currentValidSAs.add(existingSA);
+                } else {
+                    // Brand new achievement — create and notify
+                    User correctAdmin = resolveAdmin(test, student);
                     if (correctAdmin == null) {
-                        correctAdmin = userRepository.findByUsername("admin_demo").orElse(null);
+                        System.err.println("[BadgeSetService] Cannot award StudentAchievement: no admin found for student=" + studentId);
+                        rank++;
+                        continue;
                     }
 
-                    sa = StudentAchievement.builder()
+                    StudentAchievement sa = StudentAchievement.builder()
                             .student(student)
                             .admin(correctAdmin)
                             .badgeName(def.getBadgeName())
@@ -343,19 +400,21 @@ public class BadgeSetService {
                             .status("ACTIVE")
                             .build();
                     studentAchievementRepository.save(sa);
+                    currentValidSAs.add(sa);
 
                     // Notify winner
-                    Notification notification = Notification.builder()
-                            .user(student)
-                            .admin(test.getAdmin())
-                            .title("🏆 Congratulations! You earned a Badge!")
-                            .message("You achieved Rank " + currentRank + " in '" + test.getName() + "' and earned the badge '" + def.getBadgeName() + "'!")
-                            .type("BADGE_ALERT")
-                            .isRead(false)
-                            .build();
-                    notificationRepository.save(notification);
+                    try {
+                        Notification notification = Notification.builder()
+                                .user(student)
+                                .admin(test.getAdmin())
+                                .title("🏆 Congratulations! You earned a Badge!")
+                                .message("You achieved Rank " + currentRank + " in '" + test.getName() + "' and earned the badge '" + def.getBadgeName() + "'!")
+                                .type("BADGE_ALERT")
+                                .isRead(false)
+                                .build();
+                        notificationRepository.save(notification);
+                    } catch (Exception ignored) {}
                 }
-                currentValidSAs.add(sa);
             }
 
             // Language Master Badge Auto Awarding
@@ -364,58 +423,88 @@ public class BadgeSetService {
 
                 User student = st.getStudent();
                 Test test = st.getTest();
+                Long studentId = student.getId();
+                currentValidLMBStudentIds.add(studentId);
+
                 String langName = badgeSet.getLanguageName() != null ? badgeSet.getLanguageName() : "Java";
                 String badgeName = badgeSet.getLanguageBadgeName() != null ? badgeSet.getLanguageBadgeName() : "☕ " + langName + " Expert";
                 String badgeIcon = badgeSet.getLanguageBadgeIcon() != null ? badgeSet.getLanguageBadgeIcon() : "☕";
 
-                LanguageMasterBadge lmb = existingLMBs.stream()
-                        .filter(x -> x.getStudent().getId().equals(student.getId()) && x.getAwardedRank() != null && x.getAwardedRank().equals(currentRank))
-                        .findFirst()
-                        .orElse(null);
+                LanguageMasterBadge existingLMB = existingLMBByStudent.get(studentId);
 
-                if (lmb == null) {
-                    lmb = LanguageMasterBadge.builder()
+                if (existingLMB != null) {
+                    // Update in-place if rank changed
+                    if (existingLMB.getAwardedRank() == null || !existingLMB.getAwardedRank().equals(rank)) {
+                        existingLMB.setAwardedRank(rank);
+                        existingLMB.setBadgeName(badgeName);
+                        existingLMB.setBadgeIcon(badgeIcon);
+                        languageMasterBadgeRepository.save(existingLMB);
+                    }
+                } else {
+                    LanguageMasterBadge lmb = LanguageMasterBadge.builder()
                             .student(student)
                             .test(test)
                             .subject(test.getSubject() != null ? test.getSubject().getName() : "")
                             .badgeName(badgeName)
                             .badgeIcon(badgeIcon)
-                            .awardedRank(currentRank)
+                            .awardedRank(rank)
                             .awardedDate(LocalDateTime.now())
                             .build();
                     languageMasterBadgeRepository.save(lmb);
 
-                    Notification langNotification = Notification.builder()
-                            .user(student)
-                            .admin(test.getAdmin())
-                            .title("🎖️ Language Master Badge Earned!")
-                            .message("You were awarded the '" + badgeName + "' badge for your performance in " + test.getName() + "!")
-                            .type("BADGE_ALERT")
-                            .isRead(false)
-                            .build();
-                    notificationRepository.save(langNotification);
+                    try {
+                        Notification langNotification = Notification.builder()
+                                .user(student)
+                                .admin(test.getAdmin())
+                                .title("🎖️ Language Master Badge Earned!")
+                                .message("You were awarded the '" + badgeName + "' badge for your performance in " + test.getName() + "!")
+                                .type("BADGE_ALERT")
+                                .isRead(false)
+                                .build();
+                        notificationRepository.save(langNotification);
+                    } catch (Exception ignored) {}
                 }
-                currentValidLMBs.add(lmb);
             }
 
             rank++;
         }
 
-        // Delete any achievements that are no longer valid for this test
+        // 5. Delete achievements for students who dropped OUT of the top N
         for (StudentAchievement oldSa : existingSAs) {
-            if (!currentValidSAs.contains(oldSa)) {
+            if (oldSa.getStudent() != null && !currentValidStudentIds.contains(oldSa.getStudent().getId())) {
                 studentAchievementRepository.delete(oldSa);
             }
         }
 
-        // Delete any language badges that are no longer valid for this test
+        // Delete language badges for students who dropped out
         for (LanguageMasterBadge oldLmb : existingLMBs) {
-            if (!currentValidLMBs.contains(oldLmb)) {
+            if (oldLmb.getStudent() != null && !currentValidLMBStudentIds.contains(oldLmb.getStudent().getId())) {
                 languageMasterBadgeRepository.delete(oldLmb);
             }
         }
 
         return currentValidSAs;
+    }
+
+    /**
+     * Resolves the admin user for a badge assignment, with multiple fallbacks.
+     */
+    private User resolveAdmin(Test test, User student) {
+        if (test.getAdmin() != null) return test.getAdmin();
+        if (student.getAdmin() != null) return student.getAdmin();
+        try {
+            Long currentAdminId = com.chillcode.assessment.security.SecurityUtils.getCurrentAdminId();
+            if (currentAdminId != null) {
+                User admin = userRepository.findById(currentAdminId).orElse(null);
+                if (admin != null) return admin;
+            }
+        } catch (Exception ignored) {}
+        User admin = userRepository.findByUsername("admin_demo").orElse(null);
+        if (admin != null) return admin;
+        return userRepository.findAll().stream()
+                .filter(u -> u.getRole() != null && u.getRole().toString().contains("ADMIN"))
+                .findFirst()
+                .orElse(null);
     }
 
     // --- Student & Admin Achievements ---
