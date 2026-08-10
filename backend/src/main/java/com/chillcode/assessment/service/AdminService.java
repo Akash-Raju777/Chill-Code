@@ -112,7 +112,7 @@ public class AdminService {
 
         // Recent activity logs (Top 5 latest warnings)
         List<Map<String, Object>> recentActivities = new ArrayList<>();
-        List<com.chillcode.assessment.entity.Warning> latestWarnings = warningRepository.findTop5ByStudentTest_Test_Admin_IdOrderByTimestampDesc(adminId);
+        List<com.chillcode.assessment.entity.Warning> latestWarnings = warningRepository.findTop5ByAdminIdOrderByTimestampDesc(adminId);
         for (com.chillcode.assessment.entity.Warning w : latestWarnings) {
             if (w.getStudentTest() != null && w.getStudentTest().getStudent() != null) {
                 Map<String, Object> activity = new HashMap<>();

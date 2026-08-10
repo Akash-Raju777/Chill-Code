@@ -91,6 +91,10 @@ public class QuestionController {
             status = new com.chillcode.assessment.entity.StudentQuestionStatus();
             status.setStudentId(student.getId());
             status.setQuestionId(questionId);
+            status.setAdminId(student.getAdmin() != null ? student.getAdmin().getId() : null);
+            if (status.getAdminId() == null) {
+                throw new RuntimeException("Cannot determine admin ownership for student question status");
+            }
             status.setStatus("IN_PROGRESS");
             status.setAttemptCount(0);
             status = studentQuestionStatusRepository.save(status);

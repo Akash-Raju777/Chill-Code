@@ -305,6 +305,7 @@ public class DatabaseSeeder implements CommandLineRunner {
 
                         // Seed student question status as COMPLETED
                         com.chillcode.assessment.entity.StudentQuestionStatus sqs = com.chillcode.assessment.entity.StudentQuestionStatus.builder()
+                            .adminId(adminDemo.getId())
                             .studentId(studentDemo.getId())
                             .questionId(qTwoSum.getId())
                             .status("COMPLETED")

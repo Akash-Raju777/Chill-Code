@@ -401,10 +401,14 @@ public class TestService {
         }
 
         Warning warning = Warning.builder()
+                .admin(st.getTest().getAdmin() != null ? st.getTest().getAdmin() : st.getStudent().getAdmin())
                 .studentTest(st)
                 .type(type)
                 .reason(reason)
                 .build();
+        if (warning.getAdmin() == null) {
+            throw new RuntimeException("Cannot determine admin ownership for warning");
+        }
         warningRepository.save(warning);
 
         int warnings = st.getWarningsCount() + 1;
