@@ -203,6 +203,7 @@ public class StudentService {
         for (com.chillcode.assessment.entity.User student : students) {
             Notification notification = Notification.builder()
                     .user(student)
+                    .admin(student.getAdmin() != null ? student.getAdmin() : com.chillcode.assessment.security.SecurityUtils.getCurrentUser())
                     .title(title)
                     .message(message)
                     .type("GENERAL")

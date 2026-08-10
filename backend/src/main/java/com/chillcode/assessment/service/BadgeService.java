@@ -286,6 +286,7 @@ public class BadgeService {
     private void createBadgeNotification(User student, Badge badge) {
         Notification notification = Notification.builder()
                 .user(student)
+                .admin(student.getAdmin())
                 .title("🎉 Badge Unlocked: " + badge.getName())
                 .message("Congratulations! You earned the badge '" + badge.getName() + "'. Check your Achievements page!")
                 .type("ACHIEVEMENT")

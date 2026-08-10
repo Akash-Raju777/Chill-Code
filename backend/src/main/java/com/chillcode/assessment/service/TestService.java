@@ -170,6 +170,7 @@ public class TestService {
             // Notify Student
             Notification notification = Notification.builder()
                     .user(student)
+                    .admin(savedTest.getAdmin())
                     .title("New Test Assigned: " + savedTest.getName())
                     .message("You have been assigned the test '" + savedTest.getName() + "' for subject " + subject.getName() + 
                             ". Scheduled window: " + savedTest.getStartTime() + " to " + savedTest.getEndTime())
@@ -405,6 +406,7 @@ public class TestService {
             // Log activity log
             Notification alert = Notification.builder()
                     .user(student)
+                    .admin(st.getTest().getAdmin())
                     .title("Attempt Suspended")
                     .message("Your exam attempt has been suspended due to multiple security violations in test: " + st.getTest().getName())
                     .type("SUSPENSION")

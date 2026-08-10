@@ -302,6 +302,7 @@ public class BadgeSetService {
                     // Notify winner
                     Notification notification = Notification.builder()
                             .user(student)
+                            .admin(test.getAdmin())
                             .title("🏆 Congratulations! You earned a Badge!")
                             .message("You achieved Rank " + currentRank + " in '" + test.getName() + "' and earned the badge '" + def.getBadgeName() + "'!")
                             .type("BADGE_ALERT")
@@ -339,6 +340,7 @@ public class BadgeSetService {
 
                     Notification langNotification = Notification.builder()
                             .user(student)
+                            .admin(test.getAdmin())
                             .title("🎖️ Language Master Badge Earned!")
                             .message("You were awarded the '" + badgeName + "' badge for your performance in " + test.getName() + "!")
                             .type("BADGE_ALERT")
