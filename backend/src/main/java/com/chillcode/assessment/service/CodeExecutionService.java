@@ -340,8 +340,23 @@ public class CodeExecutionService {
             // Update StudentQuestionStatus:
             try {
                 User student = studentTest != null ? studentTest.getStudent() : getCurrentUser();
-                Long adminId = studentTest != null && studentTest.getAdmin() != null ? studentTest.getAdmin().getId() : (question.getAdmin() != null ? question.getAdmin().getId() : null);
-                updateStudentQuestionStatus(student, question, sub, false, adminId);
+                Long adminId = null;
+                
+                if (studentTest != null) {
+                    if (studentTest.getAdmin() != null) adminId = studentTest.getAdmin().getId();
+                    else if (studentTest.getTest() != null && studentTest.getTest().getAdmin() != null) adminId = studentTest.getTest().getAdmin().getId();
+                    else if (studentTest.getStudent() != null && studentTest.getStudent().getAdmin() != null) adminId = studentTest.getStudent().getAdmin().getId();
+                }
+                
+                if (adminId == null && question != null && question.getAdmin() != null) {
+                    adminId = question.getAdmin().getId();
+                }
+
+                if (adminId != null) {
+                    updateStudentQuestionStatus(student, question, sub, false, adminId);
+                } else {
+                    System.err.println("Skipped updating student question status: Cannot determine admin ownership (prevented transaction rollback).");
+                }
             } catch (Exception e) {
                 System.err.println("Failed to update student question status: " + e.getMessage());
             }
