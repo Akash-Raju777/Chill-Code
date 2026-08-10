@@ -259,7 +259,7 @@ public class RankingService {
                     .filter(lmb -> lmb.getSubject() != null && lmb.getSubject().equalsIgnoreCase(subjectName))
                     .count();
 
-            totalBadgesForSubject = (int) (achievementsCount + manualBadgesCount + languageBadgesCount);
+            totalBadgesForSubject = (int) (achievementsCount + manualBadgesCount);
         } catch (Exception ignored) {}
 
         return SubjectRankingDto.builder()

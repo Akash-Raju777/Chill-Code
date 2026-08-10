@@ -89,7 +89,7 @@ export default function StudentAchievementsPage() {
               <Award className="w-6 h-6" />
             </div>
             <div>
-              <div className="text-2xl font-black text-white">{achievements.length + languageBadges.length}</div>
+              <div className="text-2xl font-black text-white">{achievements.length}</div>
               <div className="text-[10px] text-gray-400 uppercase font-bold tracking-wider">Total Badges Earned</div>
             </div>
           </div>

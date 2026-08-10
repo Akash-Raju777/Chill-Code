@@ -60,7 +60,7 @@ public class AdvancedLeaderboardController {
         List<StudentAchievementDto> achievements = badgeSetService.getStudentAchievements(studentId);
         List<LanguageMasterBadgeDto> langBadges = badgeSetService.getStudentLanguageBadges(studentId);
 
-        int totalBadgesEarned = achievements.size() + (langBadges != null ? langBadges.size() : 0);
+        int totalBadgesEarned = achievements.size();
 
         Object recent = null;
         java.time.LocalDateTime recentTime = null;

@@ -160,7 +160,7 @@ public class StudentService {
                     .filter(sb -> "ACTIVE".equalsIgnoreCase(sb.getStatus()))
                     .count();
             int languageBadgesCount = languageMasterBadgeRepository.findByStudentIdOrderByAwardedDateDesc(studentId).size();
-            totalBadges = achievementsCount + manualBadgesCount + languageBadgesCount;
+            totalBadges = achievementsCount + manualBadgesCount;
         } catch (Exception ignored) {}
 
         Map<String, Object> stats = new HashMap<>();

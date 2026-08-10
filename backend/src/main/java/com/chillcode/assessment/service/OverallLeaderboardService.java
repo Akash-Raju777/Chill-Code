@@ -98,7 +98,7 @@ public class OverallLeaderboardService {
                     int achievementsCount = studentAchievementRepository.findByStudentIdOrderByAwardedAtDesc(student.getId()).size();
                     int manualBadgesCount = studentBadgeRepository.findByStudentId(student.getId()).size();
                     int languageBadgesCount = languageMasterBadgeRepository.findByStudentIdOrderByAwardedDateDesc(student.getId()).size();
-                    totalBadges = achievementsCount + manualBadgesCount + languageBadgesCount;
+                    totalBadges = achievementsCount + manualBadgesCount;
                 } catch (Exception ignored) {}
 
                 double avgScore = myTests.isEmpty() ? 0.0 :
