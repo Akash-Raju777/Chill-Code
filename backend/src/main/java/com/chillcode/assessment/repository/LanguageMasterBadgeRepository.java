@@ -10,5 +10,6 @@ import java.util.Optional;
 public interface LanguageMasterBadgeRepository extends JpaRepository<LanguageMasterBadge, Long> {
     List<LanguageMasterBadge> findByStudentIdOrderByAwardedDateDesc(Long studentId);
     Optional<LanguageMasterBadge> findByStudentIdAndTestIdAndBadgeName(Long studentId, Long testId, String badgeName);
+    List<LanguageMasterBadge> findByTestId(Long testId);
     void deleteByTestId(Long testId);
 }

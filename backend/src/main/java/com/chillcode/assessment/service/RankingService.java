@@ -34,6 +34,12 @@ public class RankingService {
     @Autowired
     private com.chillcode.assessment.repository.SubmissionRepository submissionRepository;
 
+    @Autowired
+    private BadgeSetService badgeSetService;
+
+    @Autowired
+    private com.chillcode.assessment.repository.TestRepository testRepository;
+
     private String getLanguageCodeForSubject(String subjectName) {
         if (subjectName == null) return "java";
         String lower = subjectName.toLowerCase();
@@ -190,6 +196,16 @@ public class RankingService {
             if (!activeStudentIds.contains(oldRanking.getStudent().getId())) {
                 subjectRankingRepository.delete(oldRanking);
             }
+        }
+
+        // Dynamically trigger badge allocation for all tests under this subject
+        try {
+            List<com.chillcode.assessment.entity.Test> tests = testRepository.findBySubjectId(subjectId);
+            for (com.chillcode.assessment.entity.Test test : tests) {
+                badgeSetService.allocateBadgesForTest(test.getId());
+            }
+        } catch (Exception e) {
+            System.err.println("Error recalculating badges for subject " + subjectId + ": " + e.getMessage());
         }
 
         return updatedRankings;

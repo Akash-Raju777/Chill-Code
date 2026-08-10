@@ -25,6 +25,7 @@ interface Stats {
   completedQuestions: number;
   recentActivities: string[];
   subjectStats: SubjectStat[];
+  totalBadges?: number;
 }
 
 export default function StudentDashboard() {
@@ -218,6 +219,10 @@ export default function StudentDashboard() {
                 <div className="flex justify-between items-center text-xs p-3 rounded-lg bg-white/5">
                   <span className="text-gray-500 font-semibold">Email</span>
                   <span className="font-semibold text-gray-300 truncate max-w-[180px]">{user?.email || 'student@college.edu'}</span>
+                </div>
+                <div className="flex justify-between items-center text-xs p-3 rounded-lg bg-white/5">
+                  <span className="text-gray-500 font-semibold">Badges Earned</span>
+                  <span className="font-bold text-purple-400">{stats?.totalBadges ?? 0}</span>
                 </div>
               </div>
             </div>

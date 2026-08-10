@@ -53,6 +53,15 @@ public class StudentService {
     @Autowired
     private QuestionService questionService;
 
+    @Autowired
+    private com.chillcode.assessment.repository.StudentAchievementRepository studentAchievementRepository;
+
+    @Autowired
+    private com.chillcode.assessment.repository.StudentBadgeRepository studentBadgeRepository;
+
+    @Autowired
+    private com.chillcode.assessment.repository.LanguageMasterBadgeRepository languageMasterBadgeRepository;
+
     @Transactional
     public Map<String, Object> getStudentDashboardStats(Long studentId) {
         // Fast one-pass native insert for any newly added tests
@@ -142,6 +151,18 @@ public class StudentService {
                 .average()
                 .orElse(0.0);
 
+        int totalBadges = 0;
+        try {
+            int achievementsCount = (int) studentAchievementRepository.findByStudentIdOrderByAwardedAtDesc(studentId).stream()
+                    .filter(sa -> "ACTIVE".equalsIgnoreCase(sa.getStatus()))
+                    .count();
+            int manualBadgesCount = (int) studentBadgeRepository.findByStudentId(studentId).stream()
+                    .filter(sb -> "ACTIVE".equalsIgnoreCase(sb.getStatus()))
+                    .count();
+            int languageBadgesCount = languageMasterBadgeRepository.findByStudentIdOrderByAwardedDateDesc(studentId).size();
+            totalBadges = achievementsCount + manualBadgesCount + languageBadgesCount;
+        } catch (Exception ignored) {}
+
         Map<String, Object> stats = new HashMap<>();
         stats.put("unattendedTests", unattendedQuestionsCount);
         stats.put("completedTests", completedQuestionsCount);
@@ -152,6 +173,7 @@ public class StudentService {
         stats.put("totalQuestions", totalQuestionsCount);
         stats.put("completedQuestions", completedQuestionsCount);
         stats.put("subjectStats", subjectStatsList);
+        stats.put("totalBadges", totalBadges);
 
         // Recent activity logs: fetch latest 5 submissions made by the student
         List<com.chillcode.assessment.entity.Submission> latestSubmissions = submissionRepository.findTop5ByStudentIdOrderByCreatedAtDesc(

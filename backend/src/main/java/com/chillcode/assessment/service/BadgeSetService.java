@@ -249,7 +249,11 @@ public class BadgeSetService {
     @Transactional
     public List<StudentAchievement> allocateBadgesForTest(Long testId) {
         Optional<BadgeSet> badgeSetOpt = badgeSetRepository.findByTestIdAndStatus(testId, "ACTIVE");
-        if (badgeSetOpt.isEmpty()) return Collections.emptyList();
+        if (badgeSetOpt.isEmpty()) {
+            studentAchievementRepository.deleteByTestId(testId);
+            languageMasterBadgeRepository.deleteByTestId(testId);
+            return Collections.emptyList();
+        }
 
         BadgeSet badgeSet = badgeSetOpt.get();
         List<BadgeDefinition> definitions = badgeDefinitionRepository.findByBadgeSetIdAndStatus(badgeSet.getId(), "ACTIVE");
@@ -280,7 +284,13 @@ public class BadgeSetService {
             return subA.compareTo(subB);
         });
 
-        List<StudentAchievement> allocated = new ArrayList<>();
+        // 1. Get all existing achievements and language badges for this test
+        List<StudentAchievement> existingSAs = studentAchievementRepository.findByTestIdOrderByAwardedAtDesc(testId);
+        List<LanguageMasterBadge> existingLMBs = languageMasterBadgeRepository.findByTestId(testId);
+
+        List<StudentAchievement> currentValidSAs = new java.util.ArrayList<>();
+        List<LanguageMasterBadge> currentValidLMBs = new java.util.ArrayList<>();
+
         int rank = 1;
         for (StudentTest st : studentTests) {
             if (rank > badgeSet.getNumberOfWinners()) break;
@@ -295,11 +305,13 @@ public class BadgeSetService {
                 User student = st.getStudent();
                 Test test = st.getTest();
 
-                boolean alreadyAwarded = studentAchievementRepository
-                        .findByStudentIdAndTestId(student.getId(), test.getId()).stream()
-                        .anyMatch(sa -> sa.getRankAchieved() != null && sa.getRankAchieved().equals("Badge " + currentRank));
+                // Find if this student already has the achievement for this rank
+                StudentAchievement sa = existingSAs.stream()
+                        .filter(x -> x.getStudent().getId().equals(student.getId()) && x.getRankAchieved() != null && x.getRankAchieved().equals("Badge " + currentRank))
+                        .findFirst()
+                        .orElse(null);
 
-                if (!alreadyAwarded) {
+                if (sa == null) {
                     User correctAdmin = null;
                     if (test.getAdmin() != null) {
                         correctAdmin = test.getAdmin();
@@ -315,7 +327,7 @@ public class BadgeSetService {
                         correctAdmin = userRepository.findByUsername("admin_demo").orElse(null);
                     }
 
-                    StudentAchievement sa = StudentAchievement.builder()
+                    sa = StudentAchievement.builder()
                             .student(student)
                             .admin(correctAdmin)
                             .badgeName(def.getBadgeName())
@@ -330,9 +342,7 @@ public class BadgeSetService {
                             .awardedBy("SYSTEM")
                             .status("ACTIVE")
                             .build();
-
                     studentAchievementRepository.save(sa);
-                    allocated.add(sa);
 
                     // Notify winner
                     Notification notification = Notification.builder()
@@ -345,6 +355,7 @@ public class BadgeSetService {
                             .build();
                     notificationRepository.save(notification);
                 }
+                currentValidSAs.add(sa);
             }
 
             // Language Master Badge Auto Awarding
@@ -357,12 +368,13 @@ public class BadgeSetService {
                 String badgeName = badgeSet.getLanguageBadgeName() != null ? badgeSet.getLanguageBadgeName() : "☕ " + langName + " Expert";
                 String badgeIcon = badgeSet.getLanguageBadgeIcon() != null ? badgeSet.getLanguageBadgeIcon() : "☕";
 
-                boolean alreadyAwardedLang = languageMasterBadgeRepository
-                        .findByStudentIdOrderByAwardedDateDesc(student.getId()).stream()
-                        .anyMatch(lmb -> lmb.getTest() != null && lmb.getTest().getId().equals(test.getId()) && lmb.getAwardedRank() != null && lmb.getAwardedRank() == currentRank);
+                LanguageMasterBadge lmb = existingLMBs.stream()
+                        .filter(x -> x.getStudent().getId().equals(student.getId()) && x.getAwardedRank() != null && x.getAwardedRank().equals(currentRank))
+                        .findFirst()
+                        .orElse(null);
 
-                if (!alreadyAwardedLang) {
-                    LanguageMasterBadge lmb = LanguageMasterBadge.builder()
+                if (lmb == null) {
+                    lmb = LanguageMasterBadge.builder()
                             .student(student)
                             .test(test)
                             .subject(test.getSubject() != null ? test.getSubject().getName() : "")
@@ -383,12 +395,27 @@ public class BadgeSetService {
                             .build();
                     notificationRepository.save(langNotification);
                 }
+                currentValidLMBs.add(lmb);
             }
 
             rank++;
         }
 
-        return allocated;
+        // Delete any achievements that are no longer valid for this test
+        for (StudentAchievement oldSa : existingSAs) {
+            if (!currentValidSAs.contains(oldSa)) {
+                studentAchievementRepository.delete(oldSa);
+            }
+        }
+
+        // Delete any language badges that are no longer valid for this test
+        for (LanguageMasterBadge oldLmb : existingLMBs) {
+            if (!currentValidLMBs.contains(oldLmb)) {
+                languageMasterBadgeRepository.delete(oldLmb);
+            }
+        }
+
+        return currentValidSAs;
     }
 
     // --- Student & Admin Achievements ---

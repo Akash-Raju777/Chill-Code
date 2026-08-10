@@ -208,7 +208,7 @@ export default function QuestionManagement() {
           (qCode && bs.testCode === qCode) ||
           (bs.subjectId === q.subjectId)
         );
-        if (existing) {
+        if (existing && existing.status !== 'INACTIVE') {
           setEnableBadgeManagement(true);
           setExistingBadgeSetId(existing.id);
           if (existing.name) setBadgeSetName(existing.name);
@@ -428,6 +428,22 @@ export default function QuestionManagement() {
             await updateBadgeSet(existingSet.id, badgePayload);
           } else {
             await createBadgeSet(badgePayload);
+          }
+        }
+      } else {
+        // Explicitly set BadgeSet status to INACTIVE if unchecked
+        const subId = formSubjectId || selectedSubjectId;
+        const testsData = await apiCall('/api/admin/tests');
+        const subjectTests = (testsData || []).filter((t: any) => (t.subject?.id || t.subjectId) === subId);
+        let testObj = subjectTests.length > 0 ? subjectTests[0] : null;
+        if (testObj) {
+          const badgeSets = await fetchBadgeSets();
+          const existingSet = (badgeSets || []).find((bs: any) => bs.testId === testObj.id);
+          if (existingSet && existingSet.status !== 'INACTIVE') {
+            await updateBadgeSet(existingSet.id, {
+              ...existingSet,
+              status: 'INACTIVE'
+            });
           }
         }
       }
@@ -956,7 +972,7 @@ export default function QuestionManagement() {
               <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
                 {badgeDefs.map((def, idx) => (
                   <div key={def.rankPosition} className="p-4 bg-[#181a25] border border-white/10 rounded-xl space-y-2 text-center">
-                    <div className="text-2xl mb-1">{def.badgeName.includes('🥇') ? '🥇' : def.badgeName.includes('🥈') ? '🥈' : def.badgeName.includes('🥉') ? '🥉' : '🎖️'}</div>
+                    <div className="text-2xl mb-1">{(def.badgeName || '').includes('🥇') ? '🥇' : (def.badgeName || '').includes('🥈') ? '🥈' : (def.badgeName || '').includes('🥉') ? '🥉' : '🎖️'}</div>
                     <div className="text-slate-300 font-bold text-xs">Rank {def.rankPosition} Winner</div>
                     <input
                       type="text"

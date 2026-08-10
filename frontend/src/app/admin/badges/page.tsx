@@ -882,7 +882,7 @@ export default function AdminBadgeSetsPage() {
               ) : (
                 <div className="space-y-3 max-h-[400px] overflow-y-auto pr-1">
                   {definedBadges.map((badge) => (
-                    <div key={badge.id} className="p-3 bg-[#181a25] border border-white/5 rounded-xl flex items-center justify-between gap-4">
+                    <div key={badge.id} className="p-3 bg-[#181a25] border border-white/5 rounded-xl flex flex-col sm:flex-row sm:items-center justify-between gap-4">
                       <div className="flex items-center gap-3">
                         <div className="w-9 h-9 rounded-lg bg-purple-500/10 border border-purple-500/20 flex items-center justify-center text-lg">
                           {renderBadgeIcon(badge.icon)}
@@ -1083,7 +1083,7 @@ export default function AdminBadgeSetsPage() {
                     </div>
                     <input
                       type="text"
-                      value={def.badgeName}
+                      value={def.badgeName || ''}
                       onChange={(e) => {
                         const updated = [...badgeDefs];
                         updated[idx].badgeName = e.target.value;
