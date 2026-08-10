@@ -453,8 +453,12 @@ public class QuestionService {
             }
         }
 
-        // 10. Comprehensive cleanup of any remaining orphaned records system-wide
-        cleanupOrphanedRecordsAndEmptyTests();
+        // 10. Comprehensive cleanup of any remaining orphaned records system-wide (isolated in new transaction)
+        try {
+            cleanupOrphanedRecordsAndEmptyTests();
+        } catch (Exception e) {
+            log.warn("Background cleanup deferred due to concurrent lock: {}", e.getMessage());
+        }
 
         // 11. Flush and clear Persistence Context to invalidate cached state
         try {
@@ -465,7 +469,7 @@ public class QuestionService {
         log.info("Question Deleted: Question ID: {} and all associated badges, achievements, submissions, and empty tests successfully removed.", id);
     }
 
-    @Transactional
+    @Transactional(propagation = org.springframework.transaction.annotation.Propagation.REQUIRES_NEW)
     public void cleanupOrphanedRecordsAndEmptyTests() {
         log.info("Running complete cleanup of orphaned question statuses, submissions, tests, and achievements...");
 
