@@ -139,36 +139,39 @@ function CodingWorkspaceInner() {
 
   // Auto-restore test session state and configure security immediately before interactions
   useEffect(() => {
-    if (!mounted || !user?.id) return;
-    // Only skip re-fetch if the store belongs to THIS user for THIS test
+    if (!mounted) return;
     const store = useTestStore.getState();
-    if (store.isSessionActive && store.questions.length > 0 && store.activeTestId === testId && store.lastUserId === user.id) return;
+    const currentUserId = user?.id;
+    if (store.isSessionActive && store.questions.length > 0 && (store.activeTestId === testId || store.activeStudentTestId === testId) && (currentUserId ? store.lastUserId === currentUserId : true)) return;
     // Prevent duplicate async calls
     if (recoverSessionCalledRef.current) return;
     recoverSessionCalledRef.current = true;
 
     // If stale session from different user or test, force-clear before re-init
-    if (store.isSessionActive && (store.lastUserId !== user.id || store.activeTestId !== testId)) {
+    if (store.isSessionActive && ((currentUserId && store.lastUserId !== currentUserId) || (store.activeTestId !== testId && store.activeStudentTestId !== testId))) {
       store.clearTestSession();
     }
 
     const recoverSession = async () => {
       try {
         // Sync profile immediately to get the latest student status (e.g. NO_SECURITY)
-        const updatedProfile = await apiCall('/api/student/profile');
-        if (updatedProfile) {
-          useAuthStore.getState().setUser(updatedProfile);
-        }
+        let updatedProfile = null;
+        try {
+          updatedProfile = await apiCall('/api/student/profile');
+          if (updatedProfile) {
+            useAuthStore.getState().setUser(updatedProfile);
+          }
+        } catch (_) {}
         const currentUserStatus = updatedProfile?.status || user?.status || 'ACTIVE';
 
         const tests = await apiCall('/api/student/tests');
-        const activeTest = tests.find((st: any) => st.test.id === testId);
+        const activeTest = tests.find((st: any) => st.test?.id === testId || st.id === testId);
         if (!activeTest) {
           router.push('/student/tests');
           return;
         }
 
-        const isEnabled = activeTest.test.securityShieldEnabled ?? false;
+        const isEnabled = activeTest.test?.securityShieldEnabled ?? false;
         setSecurityShieldEnabled(isEnabled);
 
         const isSecActive = currentUserStatus === 'ACTIVE' && isEnabled;
@@ -181,28 +184,42 @@ function CodingWorkspaceInner() {
 
         setWarnings(activeTest.warningsCount || 0);
 
-        const subjectId = activeTest.test.subject.id;
-        const allQuestions = await apiCall(`/api/student/subjects/${subjectId}/questions`);
+        const subjectId = activeTest.test?.subject?.id;
+        let allQuestions: any[] = [];
+        if (subjectId) {
+          try {
+            allQuestions = await apiCall(`/api/student/subjects/${subjectId}/questions`);
+          } catch (_) {
+            allQuestions = await apiCall('/api/student/questions');
+          }
+        } else {
+          allQuestions = await apiCall('/api/student/questions');
+        }
 
-        // If this is a brand new start, clear any leftover local storage backups
-        if (activeTest.status === 'ASSIGNED' && user?.id) {
-          allQuestions.forEach((q: any) => {
-            localStorage.removeItem(`chillcode_code_backup_${user.id}_${q.id}`);
-          });
+        if (!allQuestions || allQuestions.length === 0) {
+          try {
+            allQuestions = await apiCall('/api/student/questions');
+          } catch (_) {}
         }
 
         if (allQuestions && allQuestions.length > 0) {
           let targetQuestions = allQuestions;
           if (questionIdParam) {
             const qId = Number(questionIdParam);
-            targetQuestions = allQuestions.filter((q: any) => q.id === qId);
-            if (targetQuestions.length === 0) {
-              targetQuestions = [allQuestions[0]];
+            let matchedQ = allQuestions.find((q: any) => q.id === qId);
+            if (!matchedQ) {
+              try {
+                matchedQ = await apiCall(`/api/student/questions/${qId}`);
+                if (matchedQ && matchedQ.id) {
+                  allQuestions.push(matchedQ);
+                }
+              } catch (_) {}
             }
+            targetQuestions = matchedQ ? [matchedQ] : [allQuestions[0]];
           }
 
           // Calculate remaining time
-          const baseMinutes = targetQuestions[0]?.timer || activeTest.test.durationMinutes || 60;
+          const baseMinutes = targetQuestions[0]?.timer || activeTest.test?.durationMinutes || 60;
           const totalSeconds = baseMinutes * 60;
           let remainingSeconds = totalSeconds;
           if (activeTest.startedAt) {
@@ -221,46 +238,57 @@ function CodingWorkspaceInner() {
           }
 
           startTestSession(
-            activeTest.test.id,
+            activeTest.test?.id || testId,
             activeTest.id,
-            targetQuestions[0]?.title || '',
+            targetQuestions[0]?.title || activeTest.test?.name || 'Assessment',
             targetQuestions,
-            isDone ? 0 : remainingSeconds / 60,
+            isDone ? 0 : Math.max(1, Math.round(remainingSeconds / 60)),
             isDone,
             isEnabled,
-            user?.id
+            user?.id || updatedProfile?.id
           );
 
-          // Restore student's written & submitted code per question across all test states
-          for (const q of targetQuestions) {
-            try {
-              let subs = await apiCall(`/api/student/submissions/test/${activeTest.id}/question/${q.id}`);
-              if (!subs || subs.length === 0) {
-                subs = await apiCall(`/api/student/submissions/question/${q.id}`);
-              }
-              if (subs && subs.length > 0) {
-                const sorted = [...subs].sort((a: any, b: any) => (b.id || 0) - (a.id || 0));
-                const latestCode = sorted[0].code || '';
-                const latestLang = sorted[0].language || 'java';
-                if (latestCode) {
-                  useTestStore.getState().updateCode(q.id, latestCode);
-                  useTestStore.getState().updateLanguage(q.id, latestLang);
-                }
-              } else if (user?.id) {
-                const backup = localStorage.getItem(`chillcode_code_backup_${user.id}_${q.id}`);
-                if (backup) {
-                  useTestStore.getState().updateCode(q.id, backup);
-                }
-              }
-            } catch (e) {
-              if (user?.id) {
-                const backup = localStorage.getItem(`chillcode_code_backup_${user.id}_${q.id}`);
-                if (backup) {
-                  useTestStore.getState().updateCode(q.id, backup);
-                }
-              }
-            }
+          // If this is a brand new start, clear any leftover local storage backups
+          if (activeTest.status === 'ASSIGNED' && (user?.id || updatedProfile?.id)) {
+            const activeUid = user?.id || updatedProfile?.id;
+            targetQuestions.forEach((q: any) => {
+              localStorage.removeItem(`chillcode_code_backup_${activeUid}_${q.id}`);
+            });
           }
+
+          // Restore student's written & submitted code per question in parallel
+          await Promise.all(
+            targetQuestions.map(async (q: any) => {
+              const uid = user?.id || updatedProfile?.id;
+              try {
+                let subs = await apiCall(`/api/student/submissions/test/${activeTest.id}/question/${q.id}`);
+                if (!subs || subs.length === 0) {
+                  subs = await apiCall(`/api/student/submissions/question/${q.id}`);
+                }
+                if (subs && subs.length > 0) {
+                  const sorted = [...subs].sort((a: any, b: any) => (b.id || 0) - (a.id || 0));
+                  const latestCode = sorted[0].code || '';
+                  const latestLang = sorted[0].language || 'java';
+                  if (latestCode) {
+                    useTestStore.getState().updateCode(q.id, latestCode);
+                    useTestStore.getState().updateLanguage(q.id, latestLang);
+                  }
+                } else if (uid) {
+                  const backup = localStorage.getItem(`chillcode_code_backup_${uid}_${q.id}`);
+                  if (backup) {
+                    useTestStore.getState().updateCode(q.id, backup);
+                  }
+                }
+              } catch (e) {
+                if (uid) {
+                  const backup = localStorage.getItem(`chillcode_code_backup_${uid}_${q.id}`);
+                  if (backup) {
+                    useTestStore.getState().updateCode(q.id, backup);
+                  }
+                }
+              }
+            })
+          );
         } else {
           router.push('/student/tests');
         }

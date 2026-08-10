@@ -74,7 +74,9 @@ export const useTestStore = create<TestState>((set) => ({
     const languages: Record<number, string> = {};
 
     questions.forEach((q) => {
-      const allowed = q.allowedLanguages.split(',').map(l => l.trim().toLowerCase());
+      if (!q) return;
+      const allowedStr = q.allowedLanguages || 'java';
+      const allowed = allowedStr.split(',').map(l => l.trim().toLowerCase());
       const defaultLang = allowed[0] || 'java';
       languages[q.id] = defaultLang;
       codes[q.id] = ''; // Code starts completely empty
