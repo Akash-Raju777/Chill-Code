@@ -135,7 +135,6 @@ function CodingWorkspaceInner() {
       });
   }, [setUser]);
 
-  // Guard ref to prevent duplicate recoverSession calls from dependency changes
   const recoverSessionCalledRef = useRef<boolean>(false);
 
   // Auto-restore test session state and configure security immediately before interactions
@@ -358,6 +357,43 @@ function CodingWorkspaceInner() {
   // Fetch submissions history
   const currentQuestion = questions && questions[activeQuestionIndex];
   
+  // Handle implicit exit (navigating away or closing tab)
+  useEffect(() => {
+    const handleBeforeUnload = (e: BeforeUnloadEvent) => {
+      const state = useTestStore.getState();
+      if (state.isSessionActive && !state.isViewMode && !isTestSuspended && !submittingExam) {
+        const token = localStorage.getItem('token');
+        if (token && currentQuestion) {
+          fetch(`http://localhost:8080/api/student/tests/${testId}/exit?questionId=${currentQuestion.id}`, {
+            method: 'POST',
+            headers: { 'Authorization': `Bearer ${token}` },
+            keepalive: true
+          }).catch(console.error);
+        }
+      }
+    };
+
+    window.addEventListener('beforeunload', handleBeforeUnload);
+
+    return () => {
+      window.removeEventListener('beforeunload', handleBeforeUnload);
+      
+      const state = useTestStore.getState();
+      // If unmounting while still active (e.g. client-side routing to dashboard)
+      if (state.isSessionActive && !state.isViewMode && !submittingExam) {
+        const token = localStorage.getItem('token');
+        if (token && currentQuestion) {
+          fetch(`http://localhost:8080/api/student/tests/${testId}/exit?questionId=${currentQuestion.id}`, {
+            method: 'POST',
+            headers: { 'Authorization': `Bearer ${token}` },
+            keepalive: true
+          }).catch(console.error);
+        }
+        state.clearTestSession();
+      }
+    };
+  }, [testId, currentQuestion, submittingExam, isTestSuspended]);
+
   const fetchSubmissionsHistory = async () => {
     if (!currentQuestion || !activeStudentTestId) return;
     try {
@@ -504,9 +540,11 @@ function CodingWorkspaceInner() {
           if (document.fullscreenElement) {
             try { await document.exitFullscreen(); } catch (_) {}
           }
+          useTestStore.getState().clearTestSession();
           router.push('/student/tests');
         } catch (err: any) {
           console.error("Failed to exit properly", err);
+          useTestStore.getState().clearTestSession();
           router.push('/student/tests');
         }
       }

@@ -341,7 +341,7 @@ export default function TestsWorkspace() {
 
   const pendingQuestions = filteredQuestions.filter((q) => {
     const isSolved = (q.score !== undefined && q.score !== null ? q.score : 0) >= (q.passingMarks || 10) && (q.overallResult === 'PASS' || q.status === 'COMPLETED');
-    return !isSolved && ['PENDING', 'FAILED', 'SUSPENDED', 'PENDING_REATTEMPT'].includes(q.status);
+    return !isSolved && ['PENDING', 'FAILED', 'SUSPENDED', 'PENDING_REATTEMPT', 'IN_PROGRESS'].includes(q.status);
   });
 
   const renderQuestionsTable = (list: any[], isCompletedTable: boolean) => {
