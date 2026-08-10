@@ -40,6 +40,15 @@ public class RankingService {
     @Autowired
     private com.chillcode.assessment.repository.TestRepository testRepository;
 
+    @Autowired
+    private com.chillcode.assessment.repository.StudentAchievementRepository studentAchievementRepository;
+
+    @Autowired
+    private com.chillcode.assessment.repository.StudentBadgeRepository studentBadgeRepository;
+
+    @Autowired
+    private com.chillcode.assessment.repository.LanguageMasterBadgeRepository languageMasterBadgeRepository;
+
     private String getLanguageCodeForSubject(String subjectName) {
         if (subjectName == null) return "java";
         String lower = subjectName.toLowerCase();
@@ -235,6 +244,26 @@ public class RankingService {
 
         String dept = ranking.getStudent() != null && ranking.getStudent().getDepartment() != null ? ranking.getStudent().getDepartment() : "CS";
 
+        int totalBadgesForSubject = 0;
+        try {
+            Long studentId = ranking.getStudent().getId();
+            String subjectName = ranking.getSubject().getName();
+
+            long achievementsCount = studentAchievementRepository.findByStudentIdOrderByAwardedAtDesc(studentId).stream()
+                    .filter(sa -> "ACTIVE".equalsIgnoreCase(sa.getStatus()) && sa.getSubjectName() != null && sa.getSubjectName().equalsIgnoreCase(subjectName))
+                    .count();
+
+            long manualBadgesCount = studentBadgeRepository.findByStudentId(studentId).stream()
+                    .filter(sb -> "ACTIVE".equalsIgnoreCase(sb.getStatus()) && sb.getSourceTest() != null && sb.getSourceTest().getSubject() != null && sb.getSourceTest().getSubject().getName().equalsIgnoreCase(subjectName))
+                    .count();
+
+            long languageBadgesCount = languageMasterBadgeRepository.findByStudentIdOrderByAwardedDateDesc(studentId).stream()
+                    .filter(lmb -> lmb.getSubject() != null && lmb.getSubject().equalsIgnoreCase(subjectName))
+                    .count();
+
+            totalBadgesForSubject = (int) (achievementsCount + manualBadgesCount + languageBadgesCount);
+        } catch (Exception ignored) {}
+
         return SubjectRankingDto.builder()
                 .id(ranking.getId())
                 .subjectId(ranking.getSubject().getId())
@@ -251,6 +280,8 @@ public class RankingService {
                 .lastSubmissionTime(ranking.getLastSubmissionTime())
                 .badgeIcon(icon)
                 .resultStatus(ranking.getTotalScore() > 0 ? "Pass" : "Not Attended")
+                .totalBadges(totalBadgesForSubject)
+                .badgesEarned(totalBadgesForSubject)
                 .build();
     }
 
