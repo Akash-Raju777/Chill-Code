@@ -26,6 +26,11 @@ public class Achievement {
     @JoinColumn(name = "student_id", nullable = false)
     private User student;
 
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "admin_id", nullable = false)
+    @com.fasterxml.jackson.annotation.JsonIgnore
+    private User admin;
+
     @Column(nullable = false, length = 100)
     private String title;
 

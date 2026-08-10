@@ -1098,8 +1098,34 @@ public class CodeExecutionService {
                 .count();
 
         if (acceptedCount >= 1 && achievementRepository.findByStudentId(studentTest.getStudent().getId()).isEmpty()) {
+            User admin = null;
+            if (studentTest.getTest() != null && studentTest.getTest().getAdmin() != null) {
+                admin = studentTest.getTest().getAdmin();
+            } else if (studentTest.getAdmin() != null) {
+                admin = studentTest.getAdmin();
+            } else if (studentTest.getStudent() != null && studentTest.getStudent().getAdmin() != null) {
+                admin = studentTest.getStudent().getAdmin();
+            }
+
+            if (admin == null) {
+                String diagnostics = String.format(
+                    "studentTestId=%s, testId=%s, studentId=%s",
+                    studentTest.getId(),
+                    studentTest.getTest() != null ? studentTest.getTest().getId() : "null",
+                    studentTest.getStudent() != null ? studentTest.getStudent().getId() : "null"
+                );
+                throw new IllegalStateException("Cannot resolve admin ownership for Achievement. Diagnostics: " + diagnostics);
+            }
+
+            System.out.println(String.format(
+                "[Achievement] Creating First Success Badge: studentId=%s, adminId=%d",
+                studentTest.getStudent().getId(),
+                admin.getId()
+            ));
+
             Achievement badge = Achievement.builder()
                     .student(studentTest.getStudent())
+                    .admin(admin)
                     .title("First Success Badge")
                     .type("GOLD")
                     .badgeIcon("Award")
