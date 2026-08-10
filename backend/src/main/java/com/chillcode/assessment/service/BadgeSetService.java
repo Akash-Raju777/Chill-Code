@@ -109,6 +109,12 @@ public class BadgeSetService {
             seedDefaultDefinitions(savedSet);
         }
 
+        if (savedSet.getTest() != null) {
+            try {
+                allocateBadgesForTest(savedSet.getTest().getId());
+            } catch (Exception ignored) {}
+        }
+
         return getBadgeSetById(savedSet.getId());
     }
 
@@ -158,6 +164,12 @@ public class BadgeSetService {
                 set.getBadges().add(def);
             }
             savedSet = badgeSetRepository.save(set);
+        }
+
+        if (savedSet.getTest() != null) {
+            try {
+                allocateBadgesForTest(savedSet.getTest().getId());
+            } catch (Exception ignored) {}
         }
 
         return getBadgeSetById(savedSet.getId());
@@ -216,11 +228,15 @@ public class BadgeSetService {
         return mapBadgeSetToDto(set);
     }
 
-    @Transactional(readOnly = true)
+    @Transactional
     public List<StudentAchievementDto> getBadgeSetWinners(Long badgeSetId) {
         BadgeSet set = badgeSetRepository.findById(badgeSetId)
                 .orElseThrow(() -> new RuntimeException("Badge Set not found: " + badgeSetId));
         if (set.getTest() == null) return Collections.emptyList();
+
+        try {
+            allocateBadgesForTest(set.getTest().getId());
+        } catch (Exception ignored) {}
 
         List<StudentAchievement> achievements = studentAchievementRepository.findByTestIdOrderByAwardedAtDesc(set.getTest().getId());
         return achievements.stream()
@@ -243,7 +259,7 @@ public class BadgeSetService {
         // Fetch all evaluated / submitted student tests for this test
         List<StudentTest> studentTests = studentTestRepository.findAll().stream()
                 .filter(st -> st.getTest() != null && st.getTest().getId().equals(testId)
-                        && ("SUBMITTED".equalsIgnoreCase(st.getStatus()) || "EVALUATED".equalsIgnoreCase(st.getStatus()) || "COMPLETED".equalsIgnoreCase(st.getStatus())))
+                        && ("SUBMITTED".equalsIgnoreCase(st.getStatus()) || "EVALUATED".equalsIgnoreCase(st.getStatus()) || "COMPLETED".equalsIgnoreCase(st.getStatus()) || "PENDING".equalsIgnoreCase(st.getStatus())))
                 .collect(Collectors.toList());
 
         // Sort by Priority: 1. Highest Marks, 2. Highest Test Cases Passed, 3. Lowest Time Taken, 4. Earliest Submission
@@ -361,14 +377,19 @@ public class BadgeSetService {
 
     // --- Student & Admin Achievements ---
 
-    @Transactional(readOnly = true)
+    @Transactional
     public List<StudentAchievementDto> getStudentAchievements(Long studentId) {
-        List<Submission> subs = submissionRepository.findAllByStudentIdOrderByCreatedAtDesc(studentId);
+        // Dynamically trigger allocation for all tests completed by this student to ensure sync
+        try {
+            List<StudentTest> completedTests = studentTestRepository.findByStudentId(studentId).stream()
+                    .filter(st -> st.getTest() != null && st.getSubmittedAt() != null)
+                    .collect(Collectors.toList());
+            for (StudentTest st : completedTests) {
+                allocateBadgesForTest(st.getTest().getId());
+            }
+        } catch (Exception ignored) {}
+
         List<StudentAchievementDto> achievements = studentAchievementRepository.findByStudentIdOrderByAwardedAtDesc(studentId).stream()
-                .filter(sa -> sa.getTest() != null && sa.getTest().getQuestions() != null && !sa.getTest().getQuestions().isEmpty())
-                .filter(sa -> subs.stream().anyMatch(sub -> sub.getQuestion() != null && 
-                        sa.getTest().getQuestions().contains(sub.getQuestion()) && 
-                        ("ACCEPTED".equals(sub.getStatus()) || "PASS".equalsIgnoreCase(sub.getOverallResult()))))
                 .map(this::mapAchievementToDto)
                 .collect(Collectors.toCollection(ArrayList::new));
 
@@ -400,20 +421,15 @@ public class BadgeSetService {
 
     @Transactional(readOnly = true)
     public List<LanguageMasterBadgeDto> getStudentLanguageBadges(Long studentId) {
-        List<Submission> subs = submissionRepository.findAllByStudentIdOrderByCreatedAtDesc(studentId);
         return languageMasterBadgeRepository.findByStudentIdOrderByAwardedDateDesc(studentId).stream()
-                .filter(lmb -> lmb.getTest() != null && lmb.getTest().getQuestions() != null && !lmb.getTest().getQuestions().isEmpty())
-                .filter(lmb -> subs.stream().anyMatch(sub -> sub.getQuestion() != null && 
-                        lmb.getTest().getQuestions().contains(sub.getQuestion()) && 
-                        ("ACCEPTED".equals(sub.getStatus()) || "PASS".equalsIgnoreCase(sub.getOverallResult()))))
                 .map(lmb -> LanguageMasterBadgeDto.builder()
                         .id(lmb.getId())
                         .studentId(lmb.getStudent().getId())
                         .studentName(lmb.getStudent().getName())
                         .studentRegisterNumber(lmb.getStudent().getRegisterNumber())
-                        .testId(lmb.getTest().getId())
-                        .testCode(lmb.getTest().getTestCode())
-                        .testName(lmb.getTest().getName())
+                        .testId(lmb.getTest() != null ? lmb.getTest().getId() : null)
+                        .testCode(lmb.getTest() != null ? lmb.getTest().getTestCode() : null)
+                        .testName(lmb.getTest() != null ? lmb.getTest().getName() : null)
                         .subject(lmb.getSubject())
                         .badgeName(lmb.getBadgeName())
                         .badgeIcon(lmb.getBadgeIcon())
@@ -448,7 +464,6 @@ public class BadgeSetService {
 
         List<StudentAchievementDto> list = studentAchievementRepository.findAll().stream()
                 .filter(sa -> adminId == null || (sa.getTest() != null && sa.getTest().getAdmin() != null && sa.getTest().getAdmin().getId().equals(adminId)))
-                .filter(sa -> sa.getTest() != null && sa.getTest().getQuestions() != null && !sa.getTest().getQuestions().isEmpty())
                 .map(sa -> mapAchievementToDtoWithRanks(sa, overallRankMap, subjectRankMap))
                 .collect(Collectors.toCollection(ArrayList::new));
 
