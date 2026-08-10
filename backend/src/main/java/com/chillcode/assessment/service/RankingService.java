@@ -238,9 +238,7 @@ public class RankingService {
         else if (ranking.getRankPosition() == 3) icon = "🥉";
 
         String regNo = ranking.getStudent() != null ? ranking.getStudent().getRegisterNumber() : null;
-        if (regNo == null || regNo.trim().isEmpty() || "student_demo".equalsIgnoreCase(regNo)) {
-            regNo = "2024CS001";
-        }
+        if (regNo == null) regNo = "";
 
         String dept = ranking.getStudent() != null && ranking.getStudent().getDepartment() != null ? ranking.getStudent().getDepartment() : "CS";
 

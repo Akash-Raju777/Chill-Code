@@ -487,7 +487,9 @@ public class BadgeSetService {
     }
 
     /**
-     * Resolves the admin user for a badge assignment, with multiple fallbacks.
+     * Resolves the admin user for a badge assignment.
+     * Priority: test.admin → student.admin → current authenticated admin.
+     * Never falls back to an arbitrary admin across tenants.
      */
     private User resolveAdmin(Test test, User student) {
         if (test.getAdmin() != null) return test.getAdmin();
@@ -499,12 +501,8 @@ public class BadgeSetService {
                 if (admin != null) return admin;
             }
         } catch (Exception ignored) {}
-        User admin = userRepository.findByUsername("admin_demo").orElse(null);
-        if (admin != null) return admin;
-        return userRepository.findAll().stream()
-                .filter(u -> u.getRole() != null && u.getRole().toString().contains("ADMIN"))
-                .findFirst()
-                .orElse(null);
+        // Cannot determine admin safely without crossing tenant boundary — return null
+        return null;
     }
 
     // --- Student & Admin Achievements ---
