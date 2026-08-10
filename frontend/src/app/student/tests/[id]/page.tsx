@@ -137,6 +137,8 @@ function CodingWorkspaceInner() {
 
   const recoverSessionCalledRef = useRef<boolean>(false);
 
+  const [recoverError, setRecoverError] = useState<string | null>(null);
+
   // Auto-restore test session state and configure security immediately before interactions
   useEffect(() => {
     if (!mounted) return;
@@ -154,17 +156,24 @@ function CodingWorkspaceInner() {
 
     const recoverSession = async () => {
       try {
-        // Sync profile immediately to get the latest student status (e.g. NO_SECURITY)
-        let updatedProfile = null;
-        try {
-          updatedProfile = await apiCall('/api/student/profile');
-          if (updatedProfile) {
-            useAuthStore.getState().setUser(updatedProfile);
-          }
-        } catch (_) {}
+        setRecoverError(null);
+
+        // Fetch tests and questions IN PARALLEL for maximum speed
+        const [testsRes, questionsRes, profileRes] = await Promise.allSettled([
+          apiCall('/api/student/tests'),
+          apiCall('/api/student/questions'),
+          apiCall('/api/student/profile')
+        ]);
+
+        const tests = testsRes.status === 'fulfilled' ? testsRes.value : [];
+        const allQuestions = questionsRes.status === 'fulfilled' ? questionsRes.value : [];
+        const updatedProfile = profileRes.status === 'fulfilled' ? profileRes.value : null;
+
+        if (updatedProfile) {
+          useAuthStore.getState().setUser(updatedProfile);
+        }
         const currentUserStatus = updatedProfile?.status || user?.status || 'ACTIVE';
 
-        const tests = await apiCall('/api/student/tests');
         const activeTest = tests.find((st: any) => st.test?.id === testId || st.id === testId);
         if (!activeTest) {
           router.push('/student/tests');
@@ -184,117 +193,82 @@ function CodingWorkspaceInner() {
 
         setWarnings(activeTest.warningsCount || 0);
 
-        const subjectId = activeTest.test?.subject?.id;
-        let allQuestions: any[] = [];
-        if (subjectId) {
-          try {
-            allQuestions = await apiCall(`/api/student/subjects/${subjectId}/questions`);
-          } catch (_) {
-            allQuestions = await apiCall('/api/student/questions');
+        let targetQuestions = allQuestions;
+        if (questionIdParam) {
+          const qId = Number(questionIdParam);
+          let matchedQ = allQuestions.find((q: any) => q.id === qId);
+          if (!matchedQ) {
+            try {
+              matchedQ = await apiCall(`/api/student/questions/${qId}`);
+            } catch (_) {}
           }
-        } else {
-          allQuestions = await apiCall('/api/student/questions');
+          if (matchedQ) {
+            targetQuestions = [matchedQ];
+          }
         }
 
-        if (!allQuestions || allQuestions.length === 0) {
-          try {
-            allQuestions = await apiCall('/api/student/questions');
-          } catch (_) {}
+        if (!targetQuestions || targetQuestions.length === 0) {
+          router.push('/student/tests');
+          return;
         }
 
-        if (allQuestions && allQuestions.length > 0) {
-          let targetQuestions = allQuestions;
-          if (questionIdParam) {
-            const qId = Number(questionIdParam);
-            let matchedQ = allQuestions.find((q: any) => q.id === qId);
-            if (!matchedQ) {
-              try {
-                matchedQ = await apiCall(`/api/student/questions/${qId}`);
-                if (matchedQ && matchedQ.id) {
-                  allQuestions.push(matchedQ);
-                }
-              } catch (_) {}
+        // Calculate remaining time
+        const baseMinutes = targetQuestions[0]?.timer || activeTest.test?.durationMinutes || 60;
+        const totalSeconds = baseMinutes * 60;
+        let remainingSeconds = totalSeconds;
+        if (activeTest.startedAt) {
+          const startTime = new Date(activeTest.startedAt).getTime();
+          const elapsedSeconds = Math.floor((Date.now() - startTime) / 1000);
+          remainingSeconds = Math.max(0, totalSeconds - elapsedSeconds);
+        }
+
+        // View mode for submitted, evaluated, completed tests, or explicit view mode request
+        const viewFromSearch = typeof window !== 'undefined' ? new URLSearchParams(window.location.search).get('view') === 'true' : false;
+        const isViewParam = searchParams.get('view') === 'true' || viewFromSearch;
+        const isDone = isViewParam || activeTest.status === 'SUBMITTED' || activeTest.status === 'EVALUATED' || activeTest.status === 'COMPLETED';
+        if (remainingSeconds <= 0 && !isDone) {
+          remainingSeconds = totalSeconds;
+        }
+
+        // 1. INSTANT START SESSION
+        startTestSession(
+          activeTest.test?.id || testId,
+          activeTest.id,
+          targetQuestions[0]?.title || activeTest.test?.name || 'Assessment',
+          targetQuestions,
+          isDone ? 0 : Math.max(1, Math.round(remainingSeconds / 60)),
+          isDone,
+          isEnabled,
+          user?.id || updatedProfile?.id
+        );
+
+        // 2. RESTORE CODE (Non-blocking background sync)
+        const uid = user?.id || updatedProfile?.id;
+        targetQuestions.forEach((q: any) => {
+          if (uid) {
+            const backup = localStorage.getItem(`chillcode_code_backup_${uid}_${q.id}`);
+            if (backup) {
+              useTestStore.getState().updateCode(q.id, backup);
             }
-            targetQuestions = matchedQ ? [matchedQ] : [allQuestions[0]];
           }
-
-          // Calculate remaining time
-          const baseMinutes = targetQuestions[0]?.timer || activeTest.test?.durationMinutes || 60;
-          const totalSeconds = baseMinutes * 60;
-          let remainingSeconds = totalSeconds;
-          if (activeTest.startedAt) {
-            const startTime = new Date(activeTest.startedAt).getTime();
-            const elapsedSeconds = Math.floor((Date.now() - startTime) / 1000);
-            remainingSeconds = Math.max(0, totalSeconds - elapsedSeconds);
-          }
-
-          // View mode for submitted, evaluated, completed tests, or explicit view mode request
-          const viewFromSearch = typeof window !== 'undefined' ? new URLSearchParams(window.location.search).get('view') === 'true' : false;
-          const isViewParam = searchParams.get('view') === 'true' || viewFromSearch;
-          const isDone = isViewParam || activeTest.status === 'SUBMITTED' || activeTest.status === 'EVALUATED' || activeTest.status === 'COMPLETED';
-          // If time expired but not submitted, restart with full duration
-          if (remainingSeconds <= 0 && !isDone) {
-            remainingSeconds = totalSeconds;
-          }
-
-          startTestSession(
-            activeTest.test?.id || testId,
-            activeTest.id,
-            targetQuestions[0]?.title || activeTest.test?.name || 'Assessment',
-            targetQuestions,
-            isDone ? 0 : Math.max(1, Math.round(remainingSeconds / 60)),
-            isDone,
-            isEnabled,
-            user?.id || updatedProfile?.id
-          );
-
-          // If this is a brand new start, clear any leftover local storage backups
-          if (activeTest.status === 'ASSIGNED' && (user?.id || updatedProfile?.id)) {
-            const activeUid = user?.id || updatedProfile?.id;
-            targetQuestions.forEach((q: any) => {
-              localStorage.removeItem(`chillcode_code_backup_${activeUid}_${q.id}`);
-            });
-          }
-
-          // Restore student's written & submitted code per question in parallel
-          await Promise.all(
-            targetQuestions.map(async (q: any) => {
-              const uid = user?.id || updatedProfile?.id;
-              try {
-                let subs = await apiCall(`/api/student/submissions/test/${activeTest.id}/question/${q.id}`);
-                if (!subs || subs.length === 0) {
-                  subs = await apiCall(`/api/student/submissions/question/${q.id}`);
-                }
-                if (subs && subs.length > 0) {
-                  const sorted = [...subs].sort((a: any, b: any) => (b.id || 0) - (a.id || 0));
-                  const latestCode = sorted[0].code || '';
-                  const latestLang = sorted[0].language || 'java';
-                  if (latestCode) {
-                    useTestStore.getState().updateCode(q.id, latestCode);
-                    useTestStore.getState().updateLanguage(q.id, latestLang);
-                  }
-                } else if (uid) {
-                  const backup = localStorage.getItem(`chillcode_code_backup_${uid}_${q.id}`);
-                  if (backup) {
-                    useTestStore.getState().updateCode(q.id, backup);
-                  }
-                }
-              } catch (e) {
-                if (uid) {
-                  const backup = localStorage.getItem(`chillcode_code_backup_${uid}_${q.id}`);
-                  if (backup) {
-                    useTestStore.getState().updateCode(q.id, backup);
-                  }
+          apiCall(`/api/student/submissions/test/${activeTest.id}/question/${q.id}`)
+            .then((subs) => {
+              if (subs && subs.length > 0) {
+                const sorted = [...subs].sort((a: any, b: any) => (b.id || 0) - (a.id || 0));
+                const latestCode = sorted[0].code || '';
+                const latestLang = sorted[0].language || 'java';
+                if (latestCode) {
+                  useTestStore.getState().updateCode(q.id, latestCode);
+                  useTestStore.getState().updateLanguage(q.id, latestLang);
                 }
               }
             })
-          );
-        } else {
-          router.push('/student/tests');
-        }
-      } catch (err) {
+            .catch(() => {});
+        });
+
+      } catch (err: any) {
         console.error('Failed to recover exam session', err);
-        router.push('/student/tests');
+        setRecoverError(err?.message || 'Failed to initialize exam session. Please check connection.');
       } finally {
         recoverSessionCalledRef.current = false;
       }
@@ -807,6 +781,32 @@ function CodingWorkspaceInner() {
           >
             Re-enter Fullscreen
           </button>
+        </div>
+      </div>
+    );
+  }
+
+  if (recoverError) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-[#0b0c10] p-4 text-center">
+        <div className="max-w-md bg-[#11131c] p-8 rounded-2xl border border-red-500/20 space-y-6 shadow-2xl">
+          <AlertTriangle className="w-12 h-12 text-red-400 mx-auto" />
+          <h1 className="text-xl font-bold text-white">Session Recovery Notice</h1>
+          <p className="text-xs text-gray-400 leading-relaxed">{recoverError}</p>
+          <div className="flex gap-3 justify-center pt-2">
+            <button
+              onClick={() => { setRecoverError(null); recoverSessionCalledRef.current = false; window.location.reload(); }}
+              className="px-4 py-2 bg-[#7c3aed] hover:bg-[#8b5cf6] rounded-xl text-xs font-bold text-white shadow-lg"
+            >
+              Retry Connection
+            </button>
+            <button
+              onClick={() => { clearTestSession(); router.push('/student/tests'); }}
+              className="px-4 py-2 bg-white/5 hover:bg-white/10 border border-white/5 rounded-xl text-xs font-semibold text-gray-300"
+            >
+              Return to Practice
+            </button>
+          </div>
         </div>
       </div>
     );

@@ -255,16 +255,10 @@ export default function TestsWorkspace() {
     if (!selectedTest || !selectedQuestion) return;
     setStartingTest(true);
     try {
-      // Sync profile immediately to get the latest student status (e.g. NO_SECURITY)
-      const updatedProfile = await apiCall('/api/student/profile');
-      if (updatedProfile) {
-        useAuthStore.getState().setUser(updatedProfile);
-      }
-
       const latestUser = useAuthStore.getState().user;
       const isSecActive = latestUser?.status === 'ACTIVE' && (selectedTest.test.securityShieldEnabled ?? false);
 
-      // Auto fullscreen request on interaction gesture only if security shield is enabled and student is ACTIVE
+      // Auto fullscreen request on interaction gesture if security shield enabled
       if (isSecActive) {
         try {
           const docEl = document.documentElement;
@@ -276,23 +270,49 @@ export default function TestsWorkspace() {
         }
       }
 
-      const updatedSt = await apiCall(`/api/student/tests/${selectedTest.test.id}/start?questionId=${selectedQuestion.id}`, {
-        method: 'POST',
-      });
       resetWarnings();
 
+      // 1. INSTANT TEST SESSION START - Zero latency UI transition
       startTestSession(
         selectedTest.test.id,
-        updatedSt.id,
+        selectedTest.id,
         selectedQuestion.title,
         [selectedQuestion],
-        selectedQuestion.timer || selectedTest.test.durationMinutes,
+        selectedQuestion.timer || selectedTest.test.durationMinutes || 60,
         false, // isViewMode = false
-        selectedTest.test.securityShieldEnabled ?? false
+        selectedTest.test.securityShieldEnabled ?? false,
+        latestUser?.id
       );
 
+      // Check local code backup for this user & question
+      if (latestUser?.id) {
+        const backup = localStorage.getItem(`chillcode_code_backup_${latestUser.id}_${selectedQuestion.id}`);
+        if (backup) {
+          useTestStore.getState().updateCode(selectedQuestion.id, backup);
+        }
+      }
+
+      // Close modal and navigate immediately
       setShowConfirmModal(false);
       router.push(`/student/tests/${selectedTest.test.id}?question=${selectedQuestion.id}`);
+
+      // 2. BACKGROUND ASYNC SYNC (Non-blocking)
+      apiCall(`/api/student/tests/${selectedTest.test.id}/start?questionId=${selectedQuestion.id}`, {
+        method: 'POST',
+      }).then((updatedSt) => {
+        if (updatedSt && updatedSt.id) {
+          useTestStore.setState({ activeStudentTestId: updatedSt.id });
+        }
+      }).catch((err) => {
+        console.warn("Background start sync notice:", err);
+      });
+
+      apiCall('/api/student/profile').then((updatedProfile) => {
+        if (updatedProfile) {
+          useAuthStore.getState().setUser(updatedProfile);
+        }
+      }).catch(() => {});
+
     } catch (err: any) {
       toast.error(err.message || 'Failed to start test session.');
       setShowConfirmModal(false);
