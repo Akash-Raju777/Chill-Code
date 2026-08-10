@@ -119,6 +119,20 @@ public class DatabaseSeeder implements CommandLineRunner {
 
         // Default subjects and questions seeding removed per user request.
 
+        // Retroactively fix existing tests to have securityShieldEnabled = true
+        java.util.List<com.chillcode.assessment.entity.Test> allTests = testRepository.findAll();
+        boolean testsPatched = false;
+        for (com.chillcode.assessment.entity.Test t : allTests) {
+            if (t.getSecurityShieldEnabled() == null || !t.getSecurityShieldEnabled()) {
+                t.setSecurityShieldEnabled(true);
+                testRepository.save(t);
+                testsPatched = true;
+            }
+        }
+        if (testsPatched) {
+            System.out.println("Retroactively enabled security shield on all existing tests.");
+        }
+
         // Seed tests and assign to students
         java.util.List<com.chillcode.assessment.entity.Subject> subjects = subjectRepository.findAll();
         java.util.List<User> students = userRepository.findAll().stream()
