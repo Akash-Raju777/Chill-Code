@@ -135,7 +135,7 @@ interface ManualBadgeAssignment {
 }
 
 export default function AdminBadgeSetsPage() {
-  const [activeTab, setActiveTab] = useState<'sets' | 'manual'>('sets');
+  const [activeTab, setActiveTab] = useState<'sets' | 'manual'>('manual');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
 
@@ -237,23 +237,26 @@ export default function AdminBadgeSetsPage() {
   }, []);
 
   useEffect(() => {
-    loadData();
-    if (activeTab === 'manual') {
-      loadManualData();
-    }
-  }, [activeTab, loadData, loadManualData]);
+    const initLoad = async () => {
+      try {
+        await Promise.all([
+          loadData(false),
+          loadManualData(false)
+        ]);
+      } catch (e) {
+        console.error("Initial load failed", e);
+      }
+    };
+    initLoad();
+  }, [loadData, loadManualData]);
 
-  // Auto-refresh dynamic sets or manual lists
+  // Auto-refresh manual lists in background silently
   useEffect(() => {
     const interval = setInterval(() => {
-      if (activeTab === 'sets') {
-        loadData(true);
-      } else {
-        loadManualData(true);
-      }
+      loadManualData(true);
     }, 15000);
     return () => clearInterval(interval);
-  }, [activeTab, loadData, loadManualData]);
+  }, [loadManualData]);
 
   const selectedTestObj = tests.find(t => t.id === Number(selectedTestId));
 
@@ -527,30 +530,12 @@ export default function AdminBadgeSetsPage() {
         </div>
       )}
 
-      {/* Tabs Layout */}
-      <div className="flex border-b border-white/10 gap-6">
-        <button
-          onClick={() => setActiveTab('sets')}
-          className={`pb-3 text-sm font-bold border-b-2 flex items-center gap-2 transition-all ${
-            activeTab === 'sets' 
-              ? 'border-amber-500 text-white font-extrabold' 
-              : 'border-transparent text-gray-400 hover:text-gray-200'
-          }`}
-        >
-          <Layers className="w-4 h-4" />
-          Dynamic Test Winner Sets
-        </button>
-        <button
-          onClick={() => setActiveTab('manual')}
-          className={`pb-3 text-sm font-bold border-b-2 flex items-center gap-2 transition-all ${
-            activeTab === 'manual' 
-              ? 'border-amber-500 text-white font-extrabold' 
-              : 'border-transparent text-gray-400 hover:text-gray-200'
-          }`}
-        >
-          <Award className="w-4 h-4" />
+      {/* Section Subheader */}
+      <div className="flex border-b border-white/10 pb-3">
+        <h2 className="text-sm font-extrabold text-white flex items-center gap-2">
+          <Award className="w-4 h-4 text-amber-500" />
           Badge Definitions & Manual Awards
-        </button>
+        </h2>
       </div>
 
       {activeTab === 'sets' ? (
