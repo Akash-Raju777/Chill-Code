@@ -300,8 +300,24 @@ public class BadgeSetService {
                         .anyMatch(sa -> sa.getRankAchieved() != null && sa.getRankAchieved().equals("Badge " + currentRank));
 
                 if (!alreadyAwarded) {
+                    User correctAdmin = null;
+                    if (test.getAdmin() != null) {
+                        correctAdmin = test.getAdmin();
+                    } else if (student.getAdmin() != null) {
+                        correctAdmin = student.getAdmin();
+                    } else {
+                        Long currentAdminId = com.chillcode.assessment.security.SecurityUtils.getCurrentAdminId();
+                        if (currentAdminId != null) {
+                            correctAdmin = userRepository.findById(currentAdminId).orElse(null);
+                        }
+                    }
+                    if (correctAdmin == null) {
+                        correctAdmin = userRepository.findByUsername("admin_demo").orElse(null);
+                    }
+
                     StudentAchievement sa = StudentAchievement.builder()
                             .student(student)
+                            .admin(correctAdmin)
                             .badgeName(def.getBadgeName())
                             .badgeIcon(def.getBadgeIcon())
                             .badgeCategory("TEST_WINNER")
