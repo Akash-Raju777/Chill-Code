@@ -32,6 +32,11 @@ public class StudentBadge {
     @JoinColumn(name = "badge_id", nullable = false)
     private Badge badge;
 
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "admin_id", nullable = false)
+    @com.fasterxml.jackson.annotation.JsonIgnore
+    private User admin;
+
     @Column(name = "earned_at", nullable = false)
     @Builder.Default
     private LocalDateTime earnedAt = LocalDateTime.now();

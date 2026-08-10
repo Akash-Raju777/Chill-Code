@@ -79,17 +79,21 @@ public class BadgeController {
 
     @PostMapping("/admin/badges/assign")
     @PreAuthorize("hasRole('ADMIN')")
-    public ResponseEntity<StudentBadgeDto> assignBadgeManually(@RequestBody Map<String, Long> payload) {
-        Long studentId = payload.get("studentId");
-        Long badgeId = payload.get("badgeId");
-        return ResponseEntity.ok(badgeService.assignBadgeManually(studentId, badgeId));
+    public ResponseEntity<StudentBadgeDto> assignBadgeManually(@RequestBody Map<String, Object> payload) {
+        Long studentId = ((Number) payload.get("studentId")).longValue();
+        Long badgeId = ((Number) payload.get("badgeId")).longValue();
+        Long testId = null;
+        if (payload.containsKey("testId") && payload.get("testId") != null) {
+            testId = ((Number) payload.get("testId")).longValue();
+        }
+        return ResponseEntity.ok(badgeService.assignBadgeManually(studentId, badgeId, testId));
     }
 
     @PostMapping("/admin/badges/remove")
     @PreAuthorize("hasRole('ADMIN')")
-    public ResponseEntity<Void> removeBadgeManually(@RequestBody Map<String, Long> payload) {
-        Long studentId = payload.get("studentId");
-        Long badgeId = payload.get("badgeId");
+    public ResponseEntity<Void> removeBadgeManually(@RequestBody Map<String, Object> payload) {
+        Long studentId = ((Number) payload.get("studentId")).longValue();
+        Long badgeId = ((Number) payload.get("badgeId")).longValue();
         badgeService.removeBadgeManually(studentId, badgeId);
         return ResponseEntity.ok().build();
     }

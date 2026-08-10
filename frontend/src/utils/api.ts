@@ -123,7 +123,8 @@ export const updateBadge = (id: number, data: any) => apiCall(`/api/admin/badges
 export const deleteBadge = (id: number) => apiCall(`/api/admin/badges/${id}`, { method: 'DELETE' });
 export const toggleBadgeStatus = (id: number, status: string) => apiCall(`/api/admin/badges/${id}/status`, { method: 'PATCH', body: JSON.stringify({ status }) });
 export const fetchAllStudentAchievements = () => apiCall('/api/admin/achievements');
-export const assignBadgeManually = (studentId: number, badgeId: number) => apiCall('/api/admin/badges/assign', { method: 'POST', body: JSON.stringify({ studentId, badgeId }) });
+export const fetchAllEarnedBadges = () => apiCall('/api/admin/badges/student-badges');
+export const assignBadgeManually = (studentId: number, badgeId: number, testId?: number) => apiCall('/api/admin/badges/assign', { method: 'POST', body: JSON.stringify({ studentId, badgeId, testId }) });
 export const removeBadgeManually = (studentId: number, badgeId: number) => apiCall('/api/admin/badges/remove', { method: 'POST', body: JSON.stringify({ studentId, badgeId }) });
 
 // Badge Set Management APIs

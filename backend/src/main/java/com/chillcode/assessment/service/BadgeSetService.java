@@ -48,6 +48,9 @@ public class BadgeSetService {
     private LanguageMasterBadgeRepository languageMasterBadgeRepository;
 
     @Autowired
+    private StudentBadgeRepository studentBadgeRepository;
+
+    @Autowired
     private OverallLeaderboardService overallLeaderboardService;
 
     @Autowired
@@ -361,13 +364,38 @@ public class BadgeSetService {
     @Transactional(readOnly = true)
     public List<StudentAchievementDto> getStudentAchievements(Long studentId) {
         List<Submission> subs = submissionRepository.findAllByStudentIdOrderByCreatedAtDesc(studentId);
-        return studentAchievementRepository.findByStudentIdOrderByAwardedAtDesc(studentId).stream()
+        List<StudentAchievementDto> achievements = studentAchievementRepository.findByStudentIdOrderByAwardedAtDesc(studentId).stream()
                 .filter(sa -> sa.getTest() != null && sa.getTest().getQuestions() != null && !sa.getTest().getQuestions().isEmpty())
                 .filter(sa -> subs.stream().anyMatch(sub -> sub.getQuestion() != null && 
                         sa.getTest().getQuestions().contains(sub.getQuestion()) && 
                         ("ACCEPTED".equals(sub.getStatus()) || "PASS".equalsIgnoreCase(sub.getOverallResult()))))
                 .map(this::mapAchievementToDto)
-                .collect(Collectors.toList());
+                .collect(Collectors.toCollection(ArrayList::new));
+
+        // Merge manual badges
+        List<StudentBadge> manualBadges = studentBadgeRepository.findByStudentId(studentId);
+        for (StudentBadge sb : manualBadges) {
+            StudentAchievementDto dto = StudentAchievementDto.builder()
+                    .id(sb.getId())
+                    .studentId(studentId)
+                    .studentName(sb.getStudent().getName())
+                    .studentRegisterNumber(sb.getStudent().getRegisterNumber())
+                    .badgeName(sb.getBadge().getName())
+                    .badgeIcon(sb.getBadge().getIcon())
+                    .badgeCategory(sb.getBadge().getType() != null ? sb.getBadge().getType() : "CUSTOM")
+                    .testId(sb.getSourceTest() != null ? sb.getSourceTest().getId() : null)
+                    .testCode(sb.getSourceTest() != null ? sb.getSourceTest().getTestCode() : null)
+                    .testName(sb.getSourceTest() != null ? sb.getSourceTest().getName() : null)
+                    .subjectName(sb.getSourceTest() != null && sb.getSourceTest().getSubject() != null ? sb.getSourceTest().getSubject().getName() : null)
+                    .awardedAt(sb.getEarnedAt())
+                    .awardedBy(sb.getBadge().getAdmin() != null ? sb.getBadge().getAdmin().getName() : "Administrator")
+                    .status(sb.getStatus())
+                    .build();
+            achievements.add(dto);
+        }
+
+        achievements.sort((a, b) -> b.getAwardedAt().compareTo(a.getAwardedAt()));
+        return achievements;
     }
 
     @Transactional(readOnly = true)
@@ -418,11 +446,41 @@ public class BadgeSetService {
 
         Long adminId = com.chillcode.assessment.security.SecurityUtils.getCurrentAdminId();
 
-        return studentAchievementRepository.findAll().stream()
+        List<StudentAchievementDto> list = studentAchievementRepository.findAll().stream()
                 .filter(sa -> adminId == null || (sa.getTest() != null && sa.getTest().getAdmin() != null && sa.getTest().getAdmin().getId().equals(adminId)))
                 .filter(sa -> sa.getTest() != null && sa.getTest().getQuestions() != null && !sa.getTest().getQuestions().isEmpty())
                 .map(sa -> mapAchievementToDtoWithRanks(sa, overallRankMap, subjectRankMap))
-                .collect(Collectors.toList());
+                .collect(Collectors.toCollection(ArrayList::new));
+
+        // Merge manual badges
+        List<StudentBadge> manualBadges = studentBadgeRepository.findAll();
+        for (StudentBadge sb : manualBadges) {
+            Long badgeAdminId = sb.getBadge().getAdmin() != null ? sb.getBadge().getAdmin().getId() : null;
+            if (adminId != null && badgeAdminId != null && !badgeAdminId.equals(adminId)) {
+                continue;
+            }
+
+            StudentAchievementDto dto = StudentAchievementDto.builder()
+                    .id(sb.getId() + 1000000L) // Avoid collision
+                    .studentId(sb.getStudent().getId())
+                    .studentName(sb.getStudent().getName())
+                    .studentRegisterNumber(sb.getStudent().getRegisterNumber())
+                    .badgeName(sb.getBadge().getName())
+                    .badgeIcon(sb.getBadge().getIcon())
+                    .badgeCategory(sb.getBadge().getType() != null ? sb.getBadge().getType() : "CUSTOM")
+                    .testId(sb.getSourceTest() != null ? sb.getSourceTest().getId() : null)
+                    .testCode(sb.getSourceTest() != null ? sb.getSourceTest().getTestCode() : null)
+                    .testName(sb.getSourceTest() != null ? sb.getSourceTest().getName() : null)
+                    .subjectName(sb.getSourceTest() != null && sb.getSourceTest().getSubject() != null ? sb.getSourceTest().getSubject().getName() : null)
+                    .awardedAt(sb.getEarnedAt())
+                    .awardedBy(sb.getBadge().getAdmin() != null ? sb.getBadge().getAdmin().getName() : "Administrator")
+                    .status(sb.getStatus())
+                    .build();
+            list.add(dto);
+        }
+
+        list.sort((a, b) -> b.getAwardedAt().compareTo(a.getAwardedAt()));
+        return list;
     }
 
     // --- Helper Methods ---

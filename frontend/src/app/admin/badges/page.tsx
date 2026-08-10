@@ -2,7 +2,24 @@
 
 import React, { useEffect, useState, useCallback } from 'react';
 import ConfirmModal from '../../../components/ConfirmModal';
-import { apiCall, fetchBadgeSets, createBadgeSet, updateBadgeSet, deleteBadgeSet, toggleBadgeSetStatus, fetchBadgeSetWinners } from '../../../utils/api';
+import { 
+  apiCall, 
+  fetchBadgeSets, 
+  createBadgeSet, 
+  updateBadgeSet, 
+  deleteBadgeSet, 
+  toggleBadgeSetStatus, 
+  fetchBadgeSetWinners,
+  fetchAllBadges,
+  createBadge,
+  deleteBadge,
+  toggleBadgeStatus,
+  assignBadgeManually,
+  removeBadgeManually,
+  fetchAllEarnedBadges,
+  formatISTDateTime,
+  formatISTDate
+} from '../../../utils/api';
 import { toast } from '../../../store/toastStore';
 import { 
   Award, 
@@ -22,9 +39,14 @@ import {
   Eye,
   Calendar,
   Medal,
-  Star
+  Star,
+  ShieldCheck,
+  Coffee,
+  Terminal,
+  Code2,
+  Flame,
+  Globe
 } from 'lucide-react';
-
 
 interface BadgeWinner {
   id: number;
@@ -40,10 +62,7 @@ interface BadgeWinner {
   subjectName: string;
   rankAchieved: string;
   awardedAt: string;
-  awardedBy: string;
   status: string;
-  subjectRank?: number;
-  overallRank?: number;
 }
 
 interface TestOption {
@@ -81,11 +100,48 @@ interface BadgeSet {
   badges: BadgeDef[];
 }
 
+interface StudentOption {
+  id: number;
+  name: string;
+  registerNumber: string;
+  status: string;
+}
+
+interface ManualBadgeDef {
+  id: number;
+  name: string;
+  description: string;
+  icon: string;
+  type: string;
+  status: string;
+}
+
+interface ManualBadgeAssignment {
+  id: number;
+  studentId: number;
+  studentName: string;
+  studentRegisterNumber: string;
+  badge: {
+    id: number;
+    name: string;
+    icon: string;
+    type: string;
+    description: string;
+  };
+  earnedAt: string;
+  sourceTestId?: number;
+  sourceTestName?: string;
+  status: string;
+}
+
 export default function AdminBadgeSetsPage() {
-  const [badgeSets, setBadgeSets] = useState<BadgeSet[]>([]);
-  const [tests, setTests] = useState<TestOption[]>([]);
+  const [activeTab, setActiveTab] = useState<'sets' | 'manual'>('sets');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+
+  // --- Badge Sets States ---
+  const [badgeSets, setBadgeSets] = useState<BadgeSet[]>([]);
+  const [tests, setTests] = useState<TestOption[]>([]);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingSet, setEditingSet] = useState<BadgeSet | null>(null);
   const [confirmDelete, setConfirmDelete] = useState<{ open: boolean; id: number | null }>({ open: false, id: null });
@@ -96,7 +152,7 @@ export default function AdminBadgeSetsPage() {
   const [winners, setWinners] = useState<BadgeWinner[]>([]);
   const [selectedBadgeSetForWinners, setSelectedBadgeSetForWinners] = useState<BadgeSet | null>(null);
 
-  // Form states
+  // Badge Sets Form states
   const [setName, setSetName] = useState('');
   const [selectedTestId, setSelectedTestId] = useState<number | ''>('');
   const [numberOfWinners, setNumberOfWinners] = useState(3);
@@ -112,6 +168,23 @@ export default function AdminBadgeSetsPage() {
   const [languageBadgeName, setLanguageBadgeName] = useState('☕ Java Expert');
   const [languageBadgeIcon, setLanguageBadgeIcon] = useState('☕');
   const [languageAwardRank, setLanguageAwardRank] = useState(1);
+
+  // --- Manual Badge Assignment States ---
+  const [definedBadges, setDefinedBadges] = useState<ManualBadgeDef[]>([]);
+  const [students, setStudents] = useState<StudentOption[]>([]);
+  const [manualAssignments, setManualAssignments] = useState<ManualBadgeAssignment[]>([]);
+  const [manualLoading, setManualLoading] = useState(false);
+
+  // Create Badge Def Form
+  const [newBadgeName, setNewBadgeName] = useState('');
+  const [newBadgeIcon, setNewBadgeIcon] = useState('Award');
+  const [newBadgeDesc, setNewBadgeDesc] = useState('');
+  const [newBadgeType, setNewBadgeType] = useState('CUSTOM');
+
+  // Assign Badge Form
+  const [assignStudentId, setAssignStudentId] = useState<number | ''>('');
+  const [assignBadgeId, setAssignBadgeId] = useState<number | ''>('');
+  const [assignTestId, setAssignTestId] = useState<number | ''>('');
 
   const loadData = useCallback(async () => {
     try {
@@ -140,14 +213,42 @@ export default function AdminBadgeSetsPage() {
     }
   }, []);
 
+  const loadManualData = useCallback(async () => {
+    setManualLoading(true);
+    try {
+      const [badgesData, studentsData, earnedData] = await Promise.all([
+        fetchAllBadges(),
+        apiCall('/api/admin/students'),
+        fetchAllEarnedBadges(),
+      ]);
+      setDefinedBadges(badgesData || []);
+      setStudents(studentsData || []);
+      setManualAssignments(earnedData || []);
+    } catch (err: any) {
+      toast.error('Failed to load manual badge data');
+    } finally {
+      setManualLoading(false);
+    }
+  }, []);
+
   useEffect(() => {
     loadData();
-    // Auto-refresh every 15 seconds
+    if (activeTab === 'manual') {
+      loadManualData();
+    }
+  }, [activeTab, loadData, loadManualData]);
+
+  // Auto-refresh dynamic sets or manual lists
+  useEffect(() => {
     const interval = setInterval(() => {
-      loadData();
+      if (activeTab === 'sets') {
+        loadData();
+      } else {
+        loadManualData();
+      }
     }, 15000);
     return () => clearInterval(interval);
-  }, [loadData]);
+  }, [activeTab, loadData, loadManualData]);
 
   const selectedTestObj = tests.find(t => t.id === Number(selectedTestId));
 
@@ -155,6 +256,7 @@ export default function AdminBadgeSetsPage() {
     !badgeSets.some((bs) => bs.testId === t.id && (!editingSet || editingSet.id !== bs.id))
   );
 
+  // --- Dynamic sets handlers ---
   const handleOpenCreateModal = () => {
     setEditingSet(null);
     setSetName('');
@@ -290,10 +392,73 @@ export default function AdminBadgeSetsPage() {
     }
   };
 
-  const formatDate = (dateStr: string) => {
-    if (!dateStr) return 'N/A';
-    const d = new Date(dateStr);
-    return d.toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }) + ' ' + d.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' });
+  // --- Manual assignment handlers ---
+  const handleCreateBadgeDef = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newBadgeName.trim()) {
+      toast.warning('Please enter a badge name.');
+      return;
+    }
+    try {
+      await createBadge({
+        name: newBadgeName.trim(),
+        icon: newBadgeIcon,
+        description: newBadgeDesc.trim(),
+        type: newBadgeType,
+        status: 'ACTIVE'
+      });
+      setNewBadgeName('');
+      setNewBadgeDesc('');
+      setNewBadgeIcon('Award');
+      setNewBadgeType('CUSTOM');
+      loadManualData();
+      toast.success('Badge definition created successfully!');
+    } catch (err: any) {
+      toast.error(err.message || 'Failed to create badge definition.');
+    }
+  };
+
+  const handleDeleteBadgeDef = async (id: number) => {
+    try {
+      await deleteBadge(id);
+      loadManualData();
+      toast.success('Badge definition deleted.');
+    } catch (err: any) {
+      toast.error(err.message || 'Failed to delete badge definition.');
+    }
+  };
+
+  const handleAssignBadge = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!assignStudentId) {
+      toast.warning('Please select a student.');
+      return;
+    }
+    if (!assignBadgeId) {
+      toast.warning('Please select a badge.');
+      return;
+    }
+    try {
+      const testIdVal = assignTestId ? Number(assignTestId) : undefined;
+      await assignBadgeManually(Number(assignStudentId), Number(assignBadgeId), testIdVal);
+      setAssignStudentId('');
+      setAssignBadgeId('');
+      setAssignTestId('');
+      loadManualData();
+      toast.success('Badge assigned successfully!');
+    } catch (err: any) {
+      toast.error(err.message || 'Failed to assign badge.');
+    }
+  };
+
+  const handleRemoveAssignment = async (studentId: number, badgeId: number) => {
+    try {
+      await removeBadgeManually(studentId, badgeId);
+      loadManualData();
+      toast.success('Badge assignment revoked.');
+    } catch (err: any) {
+      toast.error(err.message || 'Failed to revoke badge assignment.');
+    }
   };
 
   const getRankBadgeLabel = (rankStr: string) => {
@@ -304,12 +469,23 @@ export default function AdminBadgeSetsPage() {
     return rankStr;
   };
 
+  const renderBadgeIcon = (iconName: string) => {
+    switch (iconName?.toLowerCase()) {
+      case 'coffee': case '☕': return <Coffee className="w-5 h-5 text-amber-400" />;
+      case 'terminal': case '💻': return <Terminal className="w-5 h-5 text-emerald-400" />;
+      case 'code2': case '💻 code': return <Code2 className="w-5 h-5 text-blue-400" />;
+      case 'flame': case '🔥': return <Flame className="w-5 h-5 text-orange-500" />;
+      case 'globe': case '🌐': return <Globe className="w-5 h-5 text-cyan-400" />;
+      default: return <Award className="w-5 h-5 text-purple-400" />;
+    }
+  };
+
   if (loading) {
     return (
       <div className="min-h-[60vh] flex items-center justify-center bg-[#0b0c10]">
         <div className="text-center space-y-4">
           <Loader2 className="w-8 h-8 animate-spin text-[#7c3aed] mx-auto" />
-          <p className="text-gray-400 font-sans text-xs">Loading badge set management...</p>
+          <p className="text-gray-400 font-sans text-xs">Loading badge dashboard...</p>
         </div>
       </div>
     );
@@ -322,9 +498,9 @@ export default function AdminBadgeSetsPage() {
         <div>
           <h1 className="text-2xl font-black text-white tracking-tight flex items-center gap-2">
             <Layers className="w-6 h-6 text-amber-400" />
-            Badge Set Management
+            Badge & Gamification control
           </h1>
-          <p className="text-xs text-gray-400">Configure dynamic test winner badge sets linked to Unique Test IDs</p>
+          <p className="text-xs text-gray-400">Configure dynamic test winner sets or manually reward outstanding student achievements</p>
         </div>
       </div>
 
@@ -334,105 +510,405 @@ export default function AdminBadgeSetsPage() {
         </div>
       )}
 
-      {/* Badge Sets List */}
-      {badgeSets.length === 0 ? (
-        <div className="glass-panel p-16 rounded-2xl text-center space-y-4 border border-white/5 bg-[#11131c]/50">
-          <Award className="w-16 h-16 text-gray-600 mx-auto opacity-40" />
-          <h3 className="font-bold text-white text-lg">No Badge Sets Configured</h3>
-          <p className="text-xs text-gray-500 max-w-md mx-auto">
-            Create a badge set linked to a Test ID to automatically assign Gold, Silver, and Bronze badges to test winners!
-          </p>
-        </div>
-      ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-          {badgeSets.map((set) => {
-            const isActive = set.status === 'ACTIVE';
+      {/* Tabs Layout */}
+      <div className="flex border-b border-white/10 gap-6">
+        <button
+          onClick={() => setActiveTab('sets')}
+          className={`pb-3 text-sm font-bold border-b-2 flex items-center gap-2 transition-all ${
+            activeTab === 'sets' 
+              ? 'border-amber-500 text-white font-extrabold' 
+              : 'border-transparent text-gray-400 hover:text-gray-200'
+          }`}
+        >
+          <Layers className="w-4 h-4" />
+          Dynamic Test Winner Sets
+        </button>
+        <button
+          onClick={() => setActiveTab('manual')}
+          className={`pb-3 text-sm font-bold border-b-2 flex items-center gap-2 transition-all ${
+            activeTab === 'manual' 
+              ? 'border-amber-500 text-white font-extrabold' 
+              : 'border-transparent text-gray-400 hover:text-gray-200'
+          }`}
+        >
+          <Award className="w-4 h-4" />
+          Badge Definitions & Manual Awards
+        </button>
+      </div>
 
-            return (
-              <div 
-                key={set.id}
-                className={`glass-panel p-6 rounded-2xl border ${isActive ? 'border-amber-500/30 bg-[#11131c]' : 'border-white/5 bg-[#11131c]/40 opacity-75'} space-y-5 transition-all`}
-              >
-                {/* Header Info */}
-                <div className="flex items-start justify-between gap-4">
-                  <div className="space-y-1">
-                    <div className="flex items-center gap-2">
-                      <span className="text-[10px] font-mono font-bold text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded border border-emerald-500/20">
-                        {set.testCode}
-                      </span>
-                      <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${isActive ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20' : 'bg-red-500/10 text-red-400 border border-red-500/20'}`}>
-                        {set.status}
-                      </span>
+      {activeTab === 'sets' ? (
+        <>
+          {/* Create Button */}
+          <div className="flex justify-end">
+            <button
+              onClick={handleOpenCreateModal}
+              className="px-4 py-2.5 bg-gradient-to-r from-purple-600 to-indigo-600 text-white font-bold rounded-xl shadow-lg shadow-indigo-500/10 flex items-center gap-2 hover:from-purple-500 hover:to-indigo-500 transition-all text-xs"
+            >
+              <Plus className="w-4 h-4" />
+              Configure New Set
+            </button>
+          </div>
+
+          {/* Badge Sets List */}
+          {badgeSets.length === 0 ? (
+            <div className="glass-panel p-16 rounded-2xl text-center space-y-4 border border-white/5 bg-[#11131c]/50">
+              <Award className="w-16 h-16 text-gray-600 mx-auto opacity-40" />
+              <h3 className="font-bold text-white text-lg">No Badge Sets Configured</h3>
+              <p className="text-xs text-gray-500 max-w-md mx-auto">
+                Create a badge set linked to a Test ID to automatically assign Gold, Silver, and Bronze badges to test winners!
+              </p>
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              {badgeSets.map((set) => {
+                const isActive = set.status === 'ACTIVE';
+
+                return (
+                  <div 
+                    key={set.id}
+                    className={`glass-panel p-6 rounded-2xl border ${isActive ? 'border-amber-500/30 bg-[#11131c]' : 'border-white/5 bg-[#11131c]/40 opacity-75'} space-y-5 transition-all`}
+                  >
+                    {/* Header Info */}
+                    <div className="flex items-start justify-between gap-4">
+                      <div className="space-y-1">
+                        <div className="flex items-center gap-2">
+                          <span className="text-[10px] font-mono font-bold text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded border border-emerald-500/20">
+                            {set.testCode}
+                          </span>
+                          <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${isActive ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20' : 'bg-red-500/10 text-red-400 border border-red-500/20'}`}>
+                            {set.status}
+                          </span>
+                        </div>
+                        <h2 className="text-xl font-extrabold text-white">{set.testName || set.name}</h2>
+                        <p className="text-xs text-gray-400 font-medium">
+                          {set.subjectName} • {set.name}
+                        </p>
+                      </div>
+
+                      <div className="flex items-center gap-2">
+                        <button
+                          onClick={() => handleViewWinners(set)}
+                          title="View Badge Winners"
+                          className="p-2 bg-indigo-500/10 hover:bg-indigo-500/20 border border-indigo-500/30 text-indigo-400 rounded-lg transition-all"
+                        >
+                          <Users className="w-4 h-4" />
+                        </button>
+                        <button
+                          onClick={() => handleToggleStatus(set.id, set.status)}
+                          title={isActive ? 'Disable Badge Set' : 'Enable Badge Set'}
+                          className={`p-2 rounded-lg border text-xs font-bold transition-all ${isActive ? 'bg-amber-500/10 border-amber-500/30 text-amber-400 hover:bg-amber-500/20' : 'bg-emerald-500/10 border-emerald-500/30 text-emerald-400 hover:bg-emerald-500/20'}`}
+                        >
+                          <Power className="w-4 h-4" />
+                        </button>
+                        <button
+                          onClick={() => handleOpenEditModal(set)}
+                          className="p-2 bg-white/5 hover:bg-white/10 border border-white/10 text-gray-300 rounded-lg transition-all"
+                        >
+                          <Edit3 className="w-4 h-4" />
+                        </button>
+                        <button
+                          onClick={() => handleDelete(set.id)}
+                          className="p-2 bg-red-500/10 hover:bg-red-500/20 border border-red-500/20 text-red-400 rounded-lg transition-all"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      </div>
                     </div>
-                    <h2 className="text-xl font-extrabold text-white">{set.testName || set.name}</h2>
-                    <p className="text-xs text-gray-400 font-medium">
-                      {set.subjectName} • {set.name}
-                    </p>
-                  </div>
 
-                  <div className="flex items-center gap-2">
+                    <div className="h-px bg-white/5 w-full" />
+
+                    {/* Configured Badges */}
+                    <div className="space-y-3">
+                      <div className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">
+                        Configured Winner Badges ({set.badges?.length || 0})
+                      </div>
+                      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                        {set.badges?.map((b) => (
+                          <div key={b.rankPosition} className="bg-white/5 border border-white/5 p-3 rounded-xl space-y-1 text-center">
+                            <div className="text-2xl">{b.badgeName.includes('🥇') ? '🥇' : b.badgeName.includes('🥈') ? '🥈' : b.badgeName.includes('🥉') ? '🥉' : '🎖️'}</div>
+                            <div className="text-xs font-bold text-white truncate">{b.badgeName}</div>
+                            <div className="text-[10px] text-amber-400 font-bold">Rank {b.rankPosition}</div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+
+                    {/* View Students Button */}
                     <button
                       onClick={() => handleViewWinners(set)}
-                      title="View Badge Winners"
-                      className="p-2 bg-indigo-500/10 hover:bg-indigo-500/20 border border-indigo-500/30 text-indigo-400 rounded-lg transition-all"
+                      className="w-full py-2.5 bg-indigo-500/10 hover:bg-indigo-500/20 border border-indigo-500/20 rounded-xl text-indigo-400 text-xs font-bold flex items-center justify-center gap-2 transition-all"
                     >
-                      <Users className="w-4 h-4" />
+                      <Eye className="w-4 h-4" />
+                      View Students
                     </button>
-                    <button
-                      onClick={() => handleToggleStatus(set.id, set.status)}
-                      title={isActive ? 'Disable Badge Set' : 'Enable Badge Set'}
-                      className={`p-2 rounded-lg border text-xs font-bold transition-all ${isActive ? 'bg-amber-500/10 border-amber-500/30 text-amber-400 hover:bg-amber-500/20' : 'bg-emerald-500/10 border-emerald-500/30 text-emerald-400 hover:bg-emerald-500/20'}`}
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </>
+      ) : (
+        /* Manual badge and assignment tab views */
+        <div className="space-y-8 animate-in fade-in duration-300">
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+            
+            {/* Create Badge Definition Form */}
+            <div className="glass-panel p-6 rounded-2xl border border-white/10 bg-[#11131c] space-y-4 shadow-xl">
+              <h2 className="text-lg font-extrabold text-white flex items-center gap-2">
+                <Plus className="w-5 h-5 text-purple-400" />
+                Define a New Badge
+              </h2>
+              <p className="text-xs text-gray-400">Configure global badge definitions for manual distribution</p>
+
+              <form onSubmit={handleCreateBadgeDef} className="space-y-4 text-xs">
+                <div className="space-y-1">
+                  <label className="text-gray-400 font-bold uppercase tracking-wider text-[10px]">Badge Name</label>
+                  <input
+                    type="text"
+                    required
+                    value={newBadgeName}
+                    onChange={(e) => setNewBadgeName(e.target.value)}
+                    placeholder="e.g. Java Specialist, Contest winner"
+                    className="w-full bg-[#181a25] border border-white/10 rounded-xl px-4 py-2.5 text-white focus:outline-none focus:border-amber-400"
+                  />
+                </div>
+
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-1">
+                    <label className="text-gray-400 font-bold uppercase tracking-wider text-[10px]">Icon Emoji/Lucide</label>
+                    <select
+                      value={newBadgeIcon}
+                      onChange={(e) => setNewBadgeIcon(e.target.value)}
+                      className="w-full bg-[#181a25] border border-white/10 rounded-xl px-4 py-2.5 text-white focus:outline-none focus:border-amber-400"
                     >
-                      <Power className="w-4 h-4" />
-                    </button>
-                    <button
-                      onClick={() => handleOpenEditModal(set)}
-                      className="p-2 bg-white/5 hover:bg-white/10 border border-white/10 text-gray-300 rounded-lg transition-all"
+                      <option value="Award">🏆 Award</option>
+                      <option value="Medal">🎖️ Medal</option>
+                      <option value="Star">⭐️ Star</option>
+                      <option value="Coffee">☕ Coffee</option>
+                      <option value="Terminal">💻 Terminal</option>
+                      <option value="Code2">💻 Code</option>
+                      <option value="Flame">🔥 Flame</option>
+                      <option value="Globe">🌐 Globe</option>
+                    </select>
+                  </div>
+
+                  <div className="space-y-1">
+                    <label className="text-gray-400 font-bold uppercase tracking-wider text-[10px]">Category Type</label>
+                    <select
+                      value={newBadgeType}
+                      onChange={(e) => setNewBadgeType(e.target.value)}
+                      className="w-full bg-[#181a25] border border-white/10 rounded-xl px-4 py-2.5 text-white focus:outline-none focus:border-amber-400"
                     >
-                      <Edit3 className="w-4 h-4" />
-                    </button>
-                    <button
-                      onClick={() => handleDelete(set.id)}
-                      className="p-2 bg-red-500/10 hover:bg-red-500/20 border border-red-500/20 text-red-400 rounded-lg transition-all"
-                    >
-                      <Trash2 className="w-4 h-4" />
-                    </button>
+                      <option value="CUSTOM">Custom Badge</option>
+                      <option value="LANGUAGE_MASTER">Language Master</option>
+                      <option value="CONTEST">Contest Winner</option>
+                      <option value="SUBJECT_RANKING">Subject Ranking</option>
+                    </select>
                   </div>
                 </div>
 
-                <div className="h-px bg-white/5 w-full" />
-
-                {/* Configured Badges */}
-                <div className="space-y-3">
-                  <div className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">
-                    Configured Winner Badges ({set.badges?.length || 0})
-                  </div>
-                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                    {set.badges?.map((b) => (
-                      <div key={b.rankPosition} className="bg-white/5 border border-white/5 p-3 rounded-xl space-y-1 text-center">
-                        <div className="text-2xl">{b.badgeName.includes('🥇') ? '🥇' : b.badgeName.includes('🥈') ? '🥈' : b.badgeName.includes('🥉') ? '🥉' : '🎖️'}</div>
-                        <div className="text-xs font-bold text-white truncate">{b.badgeName}</div>
-                        <div className="text-[10px] text-amber-400 font-bold">Rank {b.rankPosition}</div>
-                      </div>
-                    ))}
-                  </div>
+                <div className="space-y-1">
+                  <label className="text-gray-400 font-bold uppercase tracking-wider text-[10px]">Description</label>
+                  <textarea
+                    rows={2}
+                    value={newBadgeDesc}
+                    onChange={(e) => setNewBadgeDesc(e.target.value)}
+                    placeholder="Award criteria details or notes..."
+                    className="w-full bg-[#181a25] border border-white/10 rounded-xl px-4 py-2.5 text-white focus:outline-none focus:border-amber-400 resize-none"
+                  />
                 </div>
 
-                {/* View Students Button */}
                 <button
-                  onClick={() => handleViewWinners(set)}
-                  className="w-full py-2.5 bg-indigo-500/10 hover:bg-indigo-500/20 border border-indigo-500/20 rounded-xl text-indigo-400 text-xs font-bold flex items-center justify-center gap-2 transition-all"
+                  type="submit"
+                  className="w-full py-2.5 bg-gradient-to-r from-purple-600 to-indigo-600 text-white font-bold rounded-xl shadow-lg flex items-center justify-center gap-2 hover:from-purple-500 hover:to-indigo-500 transition-all text-xs"
                 >
-                  <Eye className="w-4 h-4" />
-                  View Students
+                  <Check className="w-4 h-4" />
+                  Define Badge
                 </button>
-              </div>
-            );
-          })}
+              </form>
+            </div>
+
+            {/* Manual Assignment Form */}
+            <div className="glass-panel p-6 rounded-2xl border border-white/10 bg-[#11131c] space-y-4 shadow-xl">
+              <h2 className="text-lg font-extrabold text-white flex items-center gap-2">
+                <ShieldCheck className="w-5 h-5 text-amber-400" />
+                Assign Badge to Student
+              </h2>
+              <p className="text-xs text-gray-400">Award a defined badge directly to a student's profile</p>
+
+              <form onSubmit={handleAssignBadge} className="space-y-4 text-xs">
+                <div className="space-y-1">
+                  <label className="text-gray-400 font-bold uppercase tracking-wider text-[10px]">Select Student</label>
+                  <select
+                    required
+                    value={assignStudentId}
+                    onChange={(e) => setAssignStudentId(e.target.value ? Number(e.target.value) : '')}
+                    className="w-full bg-[#181a25] border border-white/10 rounded-xl px-4 py-2.5 text-white focus:outline-none focus:border-amber-400"
+                  >
+                    <option value="">-- Choose Student --</option>
+                    {students.map(s => (
+                      <option key={s.id} value={s.id}>
+                        {s.name} ({s.registerNumber})
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div className="space-y-1">
+                    <label className="text-gray-400 font-bold uppercase tracking-wider text-[10px]">Select Badge</label>
+                    <select
+                      required
+                      value={assignBadgeId}
+                      onChange={(e) => setAssignBadgeId(e.target.value ? Number(e.target.value) : '')}
+                      className="w-full bg-[#181a25] border border-white/10 rounded-xl px-4 py-2.5 text-white focus:outline-none focus:border-amber-400"
+                    >
+                      <option value="">-- Choose Badge --</option>
+                      {definedBadges.map(b => (
+                        <option key={b.id} value={b.id}>
+                          {b.icon} {b.name}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div className="space-y-1">
+                    <label className="text-gray-400 font-bold uppercase tracking-wider text-[10px]">Select Test (Optional)</label>
+                    <select
+                      value={assignTestId}
+                      onChange={(e) => setAssignTestId(e.target.value ? Number(e.target.value) : '')}
+                      className="w-full bg-[#181a25] border border-white/10 rounded-xl px-4 py-2.5 text-white focus:outline-none focus:border-amber-400"
+                    >
+                      <option value="">-- No Test Reference --</option>
+                      {tests.map(t => (
+                        <option key={t.id} value={t.id}>
+                          {t.testCode} — {t.name}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+
+                <button
+                  type="submit"
+                  className="w-full py-2.5 bg-gradient-to-r from-amber-500 to-orange-500 text-slate-950 font-black rounded-xl shadow-lg flex items-center justify-center gap-2 hover:from-amber-400 hover:to-orange-400 transition-all text-xs"
+                >
+                  <Check className="w-4 h-4" />
+                  Assign Badge
+                </button>
+              </form>
+            </div>
+          </div>
+
+          {/* Assignments Table & Definition list */}
+          <div className="grid grid-cols-1 xl:grid-cols-3 gap-8">
+            {/* Table of Manual Assignments */}
+            <div className="xl:col-span-2 glass-panel p-6 rounded-2xl border border-white/10 bg-[#11131c]/50 space-y-4 shadow-xl">
+              <h2 className="text-base font-extrabold text-white flex items-center gap-2">
+                <Users className="w-4 h-4 text-emerald-400" />
+                Active Manual Badge Assignments
+              </h2>
+
+              {manualLoading ? (
+                <div className="py-8 text-center text-slate-500">Loading assignments...</div>
+              ) : manualAssignments.length === 0 ? (
+                <div className="py-8 text-center text-slate-500">No manual assignments found.</div>
+              ) : (
+                <div className="overflow-x-auto rounded-xl border border-white/10">
+                  <table className="w-full text-xs text-slate-300">
+                    <thead className="bg-[#181a25] text-gray-400 uppercase tracking-wider text-[10px]">
+                      <tr>
+                        <th className="px-4 py-3 text-left">Student</th>
+                        <th className="px-4 py-3 text-left">Badge Name</th>
+                        <th className="px-4 py-3 text-left">Type</th>
+                        <th className="px-4 py-3 text-left">Test Reference</th>
+                        <th className="px-4 py-3 text-left">Award Date</th>
+                        <th className="px-4 py-3 text-center">Action</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-white/5">
+                      {manualAssignments.map((ma) => (
+                        <tr key={ma.id} className="hover:bg-white/5 transition-colors">
+                          <td className="px-4 py-3">
+                            <div className="font-bold text-white">{ma.studentName}</div>
+                            <div className="text-[10px] text-gray-500 font-mono">{ma.studentRegisterNumber}</div>
+                          </td>
+                          <td className="px-4 py-3">
+                            <div className="flex items-center gap-2">
+                              <span className="text-lg">{renderBadgeIcon(ma.badge.icon)}</span>
+                              <span className="font-extrabold text-white">{ma.badge.name}</span>
+                            </div>
+                          </td>
+                          <td className="px-4 py-3">
+                            <span className="px-2 py-0.5 rounded-full text-[9px] font-bold bg-purple-500/10 border border-purple-500/20 text-purple-400 uppercase tracking-wider">
+                              {ma.badge.type}
+                            </span>
+                          </td>
+                          <td className="px-4 py-3 text-gray-400 font-medium">
+                            {ma.sourceTestName ? ma.sourceTestName : <span className="text-gray-600">-</span>}
+                          </td>
+                          <td className="px-4 py-3 text-gray-400 flex items-center gap-1 mt-1">
+                            <Calendar className="w-3 h-3 text-indigo-400" />
+                            {formatISTDate(ma.earnedAt)}
+                          </td>
+                          <td className="px-4 py-3 text-center">
+                            <button
+                              onClick={() => handleRemoveAssignment(ma.studentId, ma.badge.id)}
+                              title="Revoke Badge Assignment"
+                              className="p-2 bg-red-500/10 hover:bg-red-500/20 border border-red-500/20 text-red-400 rounded-lg transition-all"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
+
+            {/* List of Definitions */}
+            <div className="glass-panel p-6 rounded-2xl border border-white/10 bg-[#11131c]/50 space-y-4 shadow-xl">
+              <h2 className="text-base font-extrabold text-white flex items-center gap-2">
+                <Medal className="w-4 h-4 text-purple-400" />
+                Defined Badge Library
+              </h2>
+
+              {manualLoading ? (
+                <div className="py-8 text-center text-slate-500">Loading library...</div>
+              ) : definedBadges.length === 0 ? (
+                <div className="py-8 text-center text-slate-500 font-semibold">No badge definitions created yet.</div>
+              ) : (
+                <div className="space-y-3 max-h-[400px] overflow-y-auto pr-1">
+                  {definedBadges.map((badge) => (
+                    <div key={badge.id} className="p-3 bg-[#181a25] border border-white/5 rounded-xl flex items-center justify-between gap-4">
+                      <div className="flex items-center gap-3">
+                        <div className="w-9 h-9 rounded-lg bg-purple-500/10 border border-purple-500/20 flex items-center justify-center text-lg">
+                          {renderBadgeIcon(badge.icon)}
+                        </div>
+                        <div>
+                          <h4 className="font-extrabold text-white leading-tight">{badge.name}</h4>
+                          <span className="text-[9px] text-purple-400 font-bold uppercase tracking-wider">{badge.type}</span>
+                          {badge.description && <p className="text-[10px] text-gray-500 mt-1 line-clamp-1">{badge.description}</p>}
+                        </div>
+                      </div>
+                      <button
+                        onClick={() => handleDeleteBadgeDef(badge.id)}
+                        className="p-1.5 bg-red-500/10 hover:bg-red-500/20 border border-red-500/20 text-red-400 rounded-lg transition-all"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
         </div>
       )}
 
-      {/* View Students / Badge Winners Modal */}
+      {/* View Students / Badge Winners Modal (For Dynamic sets tab) */}
       {winnersModalOpen && selectedBadgeSetForWinners && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/80 backdrop-blur-md p-4 animate-in fade-in duration-200">
           <div className="bg-[#11131c] border border-white/10 rounded-2xl p-6 max-w-3xl w-full space-y-6 shadow-2xl overflow-y-auto max-h-[90vh]">
@@ -493,7 +969,7 @@ export default function AdminBadgeSetsPage() {
                         </td>
                         <td className="px-4 py-3 text-gray-400 flex items-center gap-1">
                           <Calendar className="w-3 h-3" />
-                          {formatDate(w.awardedAt)}
+                          {formatISTDateTime(w.awardedAt)}
                         </td>
                       </tr>
                     ))}
@@ -505,7 +981,7 @@ export default function AdminBadgeSetsPage() {
         </div>
       )}
 
-      {/* Modal for Create / Edit Badge Set */}
+      {/* Modal for Create / Edit Badge Set (Dynamic sets tab) */}
       {isModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/80 backdrop-blur-md p-4 animate-in fade-in duration-200">
           <div className="bg-[#11131c] border border-white/10 rounded-2xl p-6 max-w-xl w-full space-y-6 shadow-2xl overflow-y-auto max-h-[90vh]">

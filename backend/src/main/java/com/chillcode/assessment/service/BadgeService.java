@@ -50,12 +50,14 @@ public class BadgeService {
 
     @Transactional
     public BadgeDto createBadge(BadgeDto dto) {
+        User admin = com.chillcode.assessment.security.SecurityUtils.getCurrentUser();
         Badge badge = Badge.builder()
                 .name(dto.getName())
                 .description(dto.getDescription())
                 .icon(dto.getIcon() != null ? dto.getIcon() : "Award")
                 .type(dto.getType() != null ? dto.getType() : "CUSTOM")
                 .status(dto.getStatus() != null ? dto.getStatus() : "ACTIVE")
+                .admin(admin)
                 .build();
         badge = badgeRepository.save(badge);
 
@@ -149,20 +151,68 @@ public class BadgeService {
 
     @Transactional
     public StudentBadgeDto assignBadgeManually(Long studentId, Long badgeId) {
+        return assignBadgeManually(studentId, badgeId, null);
+    }
+
+    @Transactional
+    public StudentBadgeDto assignBadgeManually(Long studentId, Long badgeId, Long testId) {
         User student = userRepository.findById(studentId)
                 .orElseThrow(() -> new RuntimeException("Student not found: " + studentId));
         Badge badge = badgeRepository.findById(badgeId)
                 .orElseThrow(() -> new RuntimeException("Badge not found: " + badgeId));
 
+        Test test = null;
+        if (testId != null) {
+            test = testRepository.findById(testId).orElse(null);
+        }
+
+        User admin = badge.getAdmin();
+        if (admin == null) {
+            admin = com.chillcode.assessment.security.SecurityUtils.getCurrentUser();
+        }
+        if (admin == null && student.getAdmin() != null) {
+            admin = student.getAdmin();
+        }
+        if (admin == null && test != null) {
+            admin = test.getAdmin();
+        }
+        if (admin == null) {
+            admin = userRepository.findAll().stream()
+                    .filter(u -> u.getRole() == com.chillcode.assessment.entity.Role.ADMIN)
+                    .findFirst()
+                    .orElse(null);
+        }
+        if (admin == null) {
+            throw new RuntimeException("Could not determine admin_id to fulfill the database constraint.");
+        }
+
+        final User resolvedAdmin = admin;
+
         StudentBadge sb = studentBadgeRepository.findByStudentIdAndBadgeId(studentId, badgeId)
-                .orElse(StudentBadge.builder()
+                .orElseGet(() -> StudentBadge.builder()
                         .student(student)
                         .badge(badge)
+                        .admin(resolvedAdmin)
                         .earnedAt(LocalDateTime.now())
                         .status("ACTIVE")
                         .build());
 
+        sb.setAdmin(resolvedAdmin);
+        sb.setSourceTest(test);
+        sb.setStatus("ACTIVE");
+        sb.setEarnedAt(LocalDateTime.now());
         sb = studentBadgeRepository.save(sb);
+
+        Long resolvedAdminId = resolvedAdmin.getId();
+        System.out.println(String.format(
+            "[BadgeAssignment] adminId=%d studentId=%d badgeId=%d testId=%s assignmentId=%d",
+            resolvedAdminId,
+            studentId,
+            badgeId,
+            testId != null ? testId.toString() : "null",
+            sb.getId()
+        ));
+
         createBadgeNotification(student, badge);
         return mapStudentBadgeToDto(sb);
     }
