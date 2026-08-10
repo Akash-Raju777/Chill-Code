@@ -37,6 +37,30 @@ const formatDate = (dateStr?: string) => {
   return formatISTDateTime(dateStr);
 };
 
+const formatDuration = (seconds?: number, startedAt?: string, submittedAt?: string) => {
+  let totalSec = seconds;
+  if ((totalSec === undefined || totalSec === null || totalSec <= 0) && startedAt && submittedAt) {
+    const start = new Date(startedAt).getTime();
+    const end = new Date(submittedAt).getTime();
+    if (!isNaN(start) && !isNaN(end) && end > start) {
+      totalSec = Math.floor((end - start) / 1000);
+    }
+  }
+  if (!totalSec || totalSec <= 0) return 'N/A';
+  
+  const hrs = Math.floor(totalSec / 3600);
+  const mins = Math.floor((totalSec % 3600) / 60);
+  const secs = totalSec % 60;
+
+  if (hrs > 0) {
+    return `${hrs} hr ${mins} min ${secs} sec`;
+  }
+  if (mins > 0) {
+    return `${mins} min ${secs} sec`;
+  }
+  return `${secs} sec`;
+};
+
 export default function StudentResults() {
   const router = useRouter();
   const [submissions, setSubmissions] = useState<SubmissionResult[]>([]);
@@ -164,9 +188,9 @@ export default function StudentResults() {
                       <span className="text-indigo-400 font-bold text-[10px] tracking-wider bg-indigo-500/10 border border-indigo-500/20 px-2 py-0.5 rounded">
                         Attempts: {item.attempts ?? 0}
                       </span>
-                      <span className="flex items-center gap-1">
-                        <Clock className="w-3.5 h-3.5" />
-                        {item.runTimeMs !== null ? `${item.runTimeMs} ms` : 'N/A'}
+                      <span className="flex items-center gap-1 text-indigo-300 font-medium">
+                        <Clock className="w-3.5 h-3.5 text-indigo-400" />
+                        {formatDuration((item as any).timeTakenSeconds, (item as any).startedAt, (item as any).submittedAt || item.createdAt)}
                       </span>
                       <span className="flex items-center gap-1">
                         <Database className="w-3.5 h-3.5" />

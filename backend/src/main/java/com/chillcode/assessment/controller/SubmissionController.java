@@ -136,8 +136,13 @@ public class SubmissionController {
             int displayAttempts = isComp ? Math.max(0, rawAttempts - 1) : rawAttempts;
             map.put("attempts", displayAttempts);
 
-            if (sub.getStudentTest() != null && sub.getStudentTest().getTest() != null) {
-                map.put("testId", sub.getStudentTest().getTest().getId());
+            if (sub.getStudentTest() != null) {
+                if (sub.getStudentTest().getTest() != null) {
+                    map.put("testId", sub.getStudentTest().getTest().getId());
+                }
+                map.put("startedAt", sub.getStudentTest().getStartedAt());
+                map.put("submittedAt", sub.getStudentTest().getSubmittedAt());
+                map.put("timeTakenSeconds", sub.getStudentTest().getTimeTakenSeconds());
             }
             result.add(map);
         }
@@ -235,8 +240,13 @@ public class SubmissionController {
             }
         }
         
-        if (sub.getStudentTest() != null && sub.getStudentTest().getTest() != null) {
-            res.put("testId", sub.getStudentTest().getTest().getId());
+        if (sub.getStudentTest() != null) {
+            if (sub.getStudentTest().getTest() != null) {
+                res.put("testId", sub.getStudentTest().getTest().getId());
+            }
+            res.put("startedAt", sub.getStudentTest().getStartedAt());
+            res.put("submittedAt", sub.getStudentTest().getSubmittedAt());
+            res.put("timeTakenSeconds", sub.getStudentTest().getTimeTakenSeconds());
         }
         
         return ResponseEntity.ok(res);

@@ -1088,6 +1088,12 @@ public class CodeExecutionService {
         int maxMarks = studentTest.getTest().getMaxMarks() != null ? studentTest.getTest().getMaxMarks() : 100;
         studentTest.setPassFailStatus(totalScore >= (maxMarks / 2) ? "PASS" : "FAIL");
 
+        studentTest.setSubmittedAt(java.time.LocalDateTime.now());
+        if (studentTest.getStartedAt() != null) {
+            long seconds = java.time.Duration.between(studentTest.getStartedAt(), studentTest.getSubmittedAt()).getSeconds();
+            studentTest.setTimeTakenSeconds(Math.max(1L, seconds));
+        }
+
         studentTestRepository.save(studentTest);
 
         // Check if student earned achievement (e.g. solve 1 problem successfully)

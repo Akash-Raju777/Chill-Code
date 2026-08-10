@@ -19,3 +19,17 @@ This file guides all future AI pair-programming agents to maintain the critical 
   - `JwtRequestFilter.java` must perform database checks on every incoming request, returning `403 Forbidden` if the student status is `INACTIVE` or `SUSPENDED`.
   - Student layout must query `/api/student/profile` every 5 seconds. If a `403` occurs, the frontend must dynamically log out the student.
   - Layout header must show `Security Status: Active` when not in a test session, and dynamically toggle the active security status on change.
+
+## 4. Strict Development Rules & Guardrails
+- **Stable Baseline**: Treat the current Git version as the stable baseline. Do NOT modify, refactor, migrate, delete, drop, truncate, or redesign any existing working functionality unless explicitly requested.
+- **Workflow**:
+  1. Inspect existing implementation first.
+  2. Identify exact root cause.
+  3. Modify only minimum required files/code.
+  4. Show which files will be changed and why before modifying if existing functionality could be affected.
+  5. Do not change database schema or existing data.
+  6. Never execute SQL such as DROP TABLE, TRUNCATE, DELETE FROM without specific user approval.
+  7. If database migration or destructive operation is required, STOP and ask for confirmation.
+  8. Run backend compilation and frontend build after changes.
+  9. Verify affected feature thoroughly before declaring success (never assume successful build means feature is correct).
+

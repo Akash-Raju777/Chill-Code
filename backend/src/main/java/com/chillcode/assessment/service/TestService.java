@@ -246,7 +246,7 @@ public class TestService {
             }
         }
 
-        // If re-attempting a failed test (PENDING), deactivate previous attempt's submissions and clear score
+        // If re-attempting a failed test (PENDING), deactivate previous attempt's submissions and clear score & startedAt
         if ("PENDING".equals(st.getStatus())) {
             List<Submission> submissions = submissionRepository.findByStudentTestId(st.getId());
             if (submissions != null && !submissions.isEmpty()) {
@@ -265,11 +265,14 @@ public class TestService {
                 submissionRepository.saveAll(submissions);
             }
             st.setScore(0);
+            st.setStartedAt(LocalDateTime.now()); // Set fresh start time for reattempt
         }
 
         if (!"COMPLETED".equals(st.getStatus()) && !"SUBMITTED".equals(st.getStatus()) && !"EVALUATED".equals(st.getStatus())) {
             st.setStatus("STARTED");
-            st.setStartedAt(LocalDateTime.now());
+            if (st.getStartedAt() == null) {
+                st.setStartedAt(LocalDateTime.now());
+            }
             st = studentTestRepository.save(st);
         }
 
