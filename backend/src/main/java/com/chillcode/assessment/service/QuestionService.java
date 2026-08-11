@@ -492,13 +492,6 @@ public class QuestionService {
             }
         }
 
-        // 11. Run system-wide orphan cleanup
-        try {
-            cleanupOrphanedRecordsAndEmptyTests();
-        } catch (Exception e) {
-            log.warn("Background cleanup deferred: {}", e.getMessage());
-        }
-
         // 12. Flush and clear Persistence Context
         try {
             entityManager.flush();
