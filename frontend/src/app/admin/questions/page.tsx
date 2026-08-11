@@ -161,27 +161,48 @@ export default function QuestionManagement() {
     setShowForm(true);
   };
 
-  const handleOpenEdit = (q: Question) => {
+  const handleOpenEdit = async (q: Question) => {
+    // Show form immediately with list data so the modal opens instantly
     setEditingQuestion(q);
-    setTitle(q.title);
-    setDifficulty(q.difficulty);
-    setProblemStatement(q.problemStatement);
-    setConstraints(q.constraints || '');
-    setInputFormat(q.inputFormat || '');
-    setOutputFormat(q.outputFormat || '');
-    setTags(q.tags || '');
-    setQuestionCode(q.questionCode || '');
-    setTimer(q.timer || '');
-    setPassingMarks(q.passingMarks || 10);
-    setTestCases(
-      q.testCases?.map((tc) => ({
-        ...tc,
-        marks: tc.marks ?? 5,
-      })) || [{ inputData: '', expectedOutput: '', isHidden: false, marks: 5 }]
-    );
-    
+    setShowForm(true);
+
+    // Fetch the full question details from the API to get all saved test cases
+    let fullQ: any = q;
+    try {
+      const fetched = await apiCall(`/api/admin/questions/${q.id}`);
+      if (fetched && fetched.id) {
+        fullQ = fetched;
+      }
+    } catch (e) {
+      console.warn('Failed to fetch full question details for edit, using list data:', e);
+    }
+
+    setEditingQuestion(fullQ);
+    setTitle(fullQ.title);
+    setDifficulty(fullQ.difficulty);
+    setProblemStatement(fullQ.problemStatement);
+    setConstraints(fullQ.constraints || '');
+    setInputFormat(fullQ.inputFormat || '');
+    setOutputFormat(fullQ.outputFormat || '');
+    setTags(fullQ.tags || '');
+    setQuestionCode(fullQ.questionCode || '');
+    setTimer(fullQ.timer || '');
+    setPassingMarks(fullQ.passingMarks || 10);
+
+    // Load ALL saved test cases from the full question details
+    const loadedTestCases = (fullQ.testCases && fullQ.testCases.length > 0)
+      ? fullQ.testCases.map((tc: any) => ({
+          id: tc.id,
+          inputData: tc.inputData || '',
+          expectedOutput: tc.expectedOutput || '',
+          isHidden: tc.isHidden ?? false,
+          marks: tc.marks ?? 5,
+        }))
+      : [{ inputData: '', expectedOutput: '', isHidden: false, marks: 5 }];
+    setTestCases(loadedTestCases);
+
     // Allowed languages parsing
-    const langs = q.allowedLanguages ? q.allowedLanguages.split(',').map(l => l.trim().toLowerCase()) : [];
+    const langs = fullQ.allowedLanguages ? fullQ.allowedLanguages.split(',').map((l: string) => l.trim().toLowerCase()) : [];
     setAllowedLangs({
       java: langs.includes('java'),
       python: langs.includes('python'),
@@ -189,52 +210,50 @@ export default function QuestionManagement() {
       c: langs.includes('c'),
       javascript: langs.includes('javascript'),
     });
-    
+
     setEnableBadgeManagement(false);
     setExistingBadgeSetId(null);
     setTargetTestId(null);
-    setFormSubjectId(q.subjectId);
-    const subName = subjects.find(s => s.id === q.subjectId)?.name || 'Subject';
+    setFormSubjectId(fullQ.subjectId);
+    const subName = subjects.find(s => s.id === fullQ.subjectId)?.name || 'Subject';
     setTargetSubjectName(subName);
-    setTargetTestId((q as any).testId || null);
-    setTargetTestCode(q.questionCode || '');
-    setTargetTestName(q.title);
+    setTargetTestId(fullQ.testId || null);
+    setTargetTestCode(fullQ.questionCode || '');
+    setTargetTestName(fullQ.title);
 
     // Persistent badge state loaded directly from backend Question DTO
-    const isBadgesEnabled = (q as any).enableBadgeManagement !== undefined
-      ? Boolean((q as any).enableBadgeManagement)
-      : ((q as any).badgeSet ? (q as any).badgeSet.status === 'ACTIVE' : false);
+    const isBadgesEnabled = fullQ.enableBadgeManagement !== undefined
+      ? Boolean(fullQ.enableBadgeManagement)
+      : (fullQ.badgeSet ? fullQ.badgeSet.status === 'ACTIVE' : false);
 
     setEnableBadgeManagement(isBadgesEnabled);
-    setExistingBadgeSetId((q as any).badgeSetId || (q as any).badgeSet?.id || null);
-    setBadgeSetName((q as any).badgeSetName || (q as any).badgeSet?.name || `${q.title} Badge Set`);
-    setBadgeWinnersCount((q as any).badgeWinnersCount || (q as any).badgeSet?.numberOfWinners || 3);
+    setExistingBadgeSetId(fullQ.badgeSetId || fullQ.badgeSet?.id || null);
+    setBadgeSetName(fullQ.badgeSetName || fullQ.badgeSet?.name || `${fullQ.title} Badge Set`);
+    setBadgeWinnersCount(fullQ.badgeWinnersCount || fullQ.badgeSet?.numberOfWinners || 3);
 
-    const isLangEnabled = (q as any).enableLanguageBadge !== undefined
-      ? Boolean((q as any).enableLanguageBadge)
-      : Boolean((q as any).badgeSet?.enableLanguageBadge);
+    const isLangEnabled = fullQ.enableLanguageBadge !== undefined
+      ? Boolean(fullQ.enableLanguageBadge)
+      : Boolean(fullQ.badgeSet?.enableLanguageBadge);
 
     setEnableLanguageBadge(isLangEnabled);
 
     const defaultLang = subName.includes('Python') ? 'Python' : subName.includes('C++') ? 'C++' : subName.includes('C') ? 'C' : subName.includes('JavaScript') ? 'JavaScript' : 'Java';
-    setLanguageName((q as any).languageName || (q as any).badgeSet?.languageName || defaultLang);
-    setLanguageBadgeName((q as any).languageBadgeName || (q as any).badgeSet?.languageBadgeName || (defaultLang === 'Java' ? '☕ Java Expert' : defaultLang === 'Python' ? '🐍 Python Master' : '🎖️ Language Expert'));
-    setLanguageBadgeIcon((q as any).languageBadgeIcon || (q as any).badgeSet?.languageBadgeIcon || (defaultLang === 'Java' ? '☕' : defaultLang === 'Python' ? '🐍' : '🎖️'));
-    setLanguageAwardRank((q as any).languageAwardRank || (q as any).badgeSet?.languageAwardRank || 1);
+    setLanguageName(fullQ.languageName || fullQ.badgeSet?.languageName || defaultLang);
+    setLanguageBadgeName(fullQ.languageBadgeName || fullQ.badgeSet?.languageBadgeName || (defaultLang === 'Java' ? '☕ Java Expert' : defaultLang === 'Python' ? '🐍 Python Master' : '🎖️ Language Expert'));
+    setLanguageBadgeIcon(fullQ.languageBadgeIcon || fullQ.badgeSet?.languageBadgeIcon || (defaultLang === 'Java' ? '☕' : defaultLang === 'Python' ? '🐍' : '🎖️'));
+    setLanguageAwardRank(fullQ.languageAwardRank || fullQ.badgeSet?.languageAwardRank || 1);
 
-    if ((q as any).badgeDefs && (q as any).badgeDefs.length > 0) {
-      setBadgeDefs((q as any).badgeDefs);
-    } else if ((q as any).badgeSet?.badges && (q as any).badgeSet.badges.length > 0) {
-      setBadgeDefs((q as any).badgeSet.badges);
+    if (fullQ.badgeDefs && fullQ.badgeDefs.length > 0) {
+      setBadgeDefs(fullQ.badgeDefs);
+    } else if (fullQ.badgeSet?.badges && fullQ.badgeSet.badges.length > 0) {
+      setBadgeDefs(fullQ.badgeSet.badges);
     } else {
       setBadgeDefs([
-        { rankPosition: 1, badgeName: `🥇 ${q.title} Gold Winner`, badgeIcon: 'Award', badgeColor: '#f59e0b', badgeOrder: 1 },
-        { rankPosition: 2, badgeName: `🥈 ${q.title} Silver Winner`, badgeIcon: 'Award', badgeColor: '#94a3b8', badgeOrder: 2 },
-        { rankPosition: 3, badgeName: `🥉 ${q.title} Bronze Winner`, badgeIcon: 'Award', badgeColor: '#b45309', badgeOrder: 3 },
+        { rankPosition: 1, badgeName: `🥇 ${fullQ.title} Gold Winner`, badgeIcon: 'Award', badgeColor: '#f59e0b', badgeOrder: 1 },
+        { rankPosition: 2, badgeName: `🥈 ${fullQ.title} Silver Winner`, badgeIcon: 'Award', badgeColor: '#94a3b8', badgeOrder: 2 },
+        { rankPosition: 3, badgeName: `🥉 ${fullQ.title} Bronze Winner`, badgeIcon: 'Award', badgeColor: '#b45309', badgeOrder: 3 },
       ]);
     }
-
-    setShowForm(true);
   };
 
   const handleAddTestCase = () => {

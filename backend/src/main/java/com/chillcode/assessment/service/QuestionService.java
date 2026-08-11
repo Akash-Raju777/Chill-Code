@@ -145,8 +145,21 @@ public class QuestionService {
             }
         }
 
-        return questionRepository.findByAdminId(adminId).stream()
-                .map(q -> convertToDto(q, statusMap, java.util.Collections.emptyList(), solvedSet, latestSubmissionMap))
+        List<Question> allQuestions = questionRepository.findByAdminId(adminId);
+        List<Long> questionIds = allQuestions.stream().map(Question::getId).collect(Collectors.toList());
+        // Load all test cases for these questions in a single batch query grouped by question ID
+        java.util.Map<Long, List<TestCase>> testCasesMap = new java.util.HashMap<>();
+        if (!questionIds.isEmpty()) {
+            List<TestCase> allTestCases = testCaseRepository.findAll().stream()
+                    .filter(tc -> tc.getQuestion() != null && questionIds.contains(tc.getQuestion().getId()))
+                    .collect(Collectors.toList());
+            for (TestCase tc : allTestCases) {
+                testCasesMap.computeIfAbsent(tc.getQuestion().getId(), k -> new java.util.ArrayList<>()).add(tc);
+            }
+        }
+
+        return allQuestions.stream()
+                .map(q -> convertToDto(q, statusMap, testCasesMap.getOrDefault(q.getId(), java.util.Collections.emptyList()), solvedSet, latestSubmissionMap))
                 .collect(Collectors.toList());
     }
 
