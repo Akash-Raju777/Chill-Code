@@ -201,10 +201,6 @@ public class BadgeSetService {
 
     @Transactional
     public List<BadgeSetDto> getAllBadgeSets() {
-        try {
-            questionService.cleanupOrphanedRecordsAndEmptyTests();
-        } catch (Exception ignored) {}
-
         List<BadgeSet> sets = badgeSetRepository.findAll();
         Long adminId = com.chillcode.assessment.security.SecurityUtils.getCurrentAdminId();
         
@@ -287,7 +283,7 @@ public class BadgeSetService {
 
         BadgeSet badgeSet = badgeSetOpt.get();
         List<BadgeDefinition> definitions = badgeDefinitionRepository.findByBadgeSetIdAndStatus(badgeSet.getId(), "ACTIVE");
-        definitions.sort(Comparator.comparingInt(BadgeDefinition::getRankPosition));
+        definitions.sort(Comparator.comparingInt(d -> d.getRankPosition() != null ? d.getRankPosition() : 1));
 
         // 1. Fetch all student tests for THIS test only (scoped, efficient)
         List<StudentTest> studentTests = studentTestRepository.findByTestId(testId).stream()
@@ -343,8 +339,9 @@ public class BadgeSetService {
 
         // 4. Assign ranks to the top N students
         int rank = 1;
+        int maxWinners = badgeSet.getNumberOfWinners() != null ? badgeSet.getNumberOfWinners() : 3;
         for (StudentTest st : studentTests) {
-            if (rank > badgeSet.getNumberOfWinners()) break;
+            if (rank > maxWinners) break;
 
             final int currentRank = rank;
             BadgeDefinition def = definitions.stream()
@@ -488,12 +485,11 @@ public class BadgeSetService {
 
     /**
      * Resolves the admin user for a badge assignment.
-     * Priority: test.admin → student.admin → current authenticated admin.
-     * Never falls back to an arbitrary admin across tenants.
+     * Priority: test.admin → student.admin → current authenticated admin → first active admin.
      */
     private User resolveAdmin(Test test, User student) {
-        if (test.getAdmin() != null) return test.getAdmin();
-        if (student.getAdmin() != null) return student.getAdmin();
+        if (test != null && test.getAdmin() != null) return test.getAdmin();
+        if (student != null && student.getAdmin() != null) return student.getAdmin();
         try {
             Long currentAdminId = com.chillcode.assessment.security.SecurityUtils.getCurrentAdminId();
             if (currentAdminId != null) {
@@ -501,7 +497,12 @@ public class BadgeSetService {
                 if (admin != null) return admin;
             }
         } catch (Exception ignored) {}
-        // Cannot determine admin safely without crossing tenant boundary — return null
+        try {
+            return userRepository.findAll().stream()
+                    .filter(u -> u.getRole() == com.chillcode.assessment.entity.Role.ADMIN)
+                    .findFirst()
+                    .orElse(null);
+        } catch (Exception ignored) {}
         return null;
     }
 
@@ -509,16 +510,6 @@ public class BadgeSetService {
 
     @Transactional
     public List<StudentAchievementDto> getStudentAchievements(Long studentId) {
-        // Dynamically trigger allocation for all tests completed by this student to ensure sync
-        try {
-            List<StudentTest> completedTests = studentTestRepository.findByStudentId(studentId).stream()
-                    .filter(st -> st.getTest() != null && st.getSubmittedAt() != null)
-                    .collect(Collectors.toList());
-            for (StudentTest st : completedTests) {
-                allocateBadgesForTest(st.getTest().getId());
-            }
-        } catch (Exception ignored) {}
-
         List<StudentAchievementDto> achievements = studentAchievementRepository.findByStudentIdOrderByAwardedAtDesc(studentId).stream()
                 .map(this::mapAchievementToDto)
                 .collect(Collectors.toCollection(ArrayList::new));

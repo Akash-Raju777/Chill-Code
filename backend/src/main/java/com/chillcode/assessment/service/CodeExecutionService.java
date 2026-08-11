@@ -948,9 +948,9 @@ public class CodeExecutionService {
             if (backendToolsW64.exists()) {
                 return backendToolsW64.getAbsolutePath();
             }
-            File hardcodedW64 = new File("c:/Users/Administrator/Desktop/Chill-Code3/backend/tools/w64devkit/bin/" + defaultCmd + ".exe");
-            if (hardcodedW64.exists()) {
-                return hardcodedW64.getAbsolutePath();
+            File parentToolsW64 = new File(userDir, "../tools/w64devkit/bin/" + defaultCmd + ".exe");
+            if (parentToolsW64.exists()) {
+                return parentToolsW64.getAbsolutePath();
             }
             // Try system PATH on Windows
             try {
@@ -992,8 +992,8 @@ public class CodeExecutionService {
             if (localPy.exists()) return localPy.getAbsolutePath();
             File backendPy = new File(userDir, "backend/tools/python/python.exe");
             if (backendPy.exists()) return backendPy.getAbsolutePath();
-            File hardcodedPy = new File("c:/Users/Administrator/Desktop/Chill-Code3/backend/tools/python/python.exe");
-            if (hardcodedPy.exists()) return hardcodedPy.getAbsolutePath();
+            File parentPy = new File(userDir, "../tools/python/python.exe");
+            if (parentPy.exists()) return parentPy.getAbsolutePath();
             // Try system PATH
             try {
                 Process p = new ProcessBuilder("where.exe", "python").start();

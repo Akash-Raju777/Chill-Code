@@ -268,10 +268,24 @@ public class TestService {
             st.setStartedAt(LocalDateTime.now()); // Set fresh start time for reattempt
         }
 
-        if (!"COMPLETED".equals(st.getStatus()) && !"SUBMITTED".equals(st.getStatus()) && !"EVALUATED".equals(st.getStatus())) {
+        if (!("COMPLETED".equals(st.getStatus())) && !("SUBMITTED".equals(st.getStatus())) && !("EVALUATED".equals(st.getStatus()))) {
+            String prevStatus = st.getStatus();
             st.setStatus("STARTED");
             if (st.getStartedAt() == null) {
+                // No startedAt yet — set it now (fresh first entry)
                 st.setStartedAt(LocalDateTime.now());
+            } else if ("ASSIGNED".equals(prevStatus)) {
+                // Transitioning from ASSIGNED → STARTED: always set a fresh start time
+                st.setStartedAt(LocalDateTime.now());
+            } else {
+                // Already STARTED (navigating between questions in same session).
+                // If startedAt is stale (>12 hours old), it's from a previous abandoned session —
+                // reset it so the time taken is measured from the current actual session.
+                long hoursAgo = java.time.Duration.between(st.getStartedAt(), LocalDateTime.now()).toHours();
+                if (hoursAgo >= 12) {
+                    st.setStartedAt(LocalDateTime.now());
+                }
+                // Otherwise preserve startedAt to keep the running session clock accurate.
             }
             st = studentTestRepository.save(st);
         }

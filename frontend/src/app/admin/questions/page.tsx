@@ -152,6 +152,28 @@ export default function QuestionManagement() {
     setEnableBadgeManagement(false);
     setExistingBadgeSetId(null);
     setTargetTestId(null);
+    setTargetTestCode('');
+    setTargetTestName('');
+    setTargetSubjectName('');
+
+    // Reset badge configuration to defaults so each new question starts fresh
+    setBadgeSetName('');
+    setBadgeWinnersCount(3);
+    setBadgeDefs([
+      { rankPosition: 1, badgeName: '🥇 Gold Champion', badgeIcon: 'Award', badgeColor: '#f59e0b', badgeOrder: 1 },
+      { rankPosition: 2, badgeName: '🥈 Silver Champion', badgeIcon: 'Award', badgeColor: '#94a3b8', badgeOrder: 2 },
+      { rankPosition: 3, badgeName: '🥉 Bronze Champion', badgeIcon: 'Award', badgeColor: '#b45309', badgeOrder: 3 },
+    ]);
+    setEnableLanguageBadge(false);
+    setLanguageName('Java');
+    setLanguageBadgeName('☕ Java Expert');
+    setLanguageBadgeIcon('☕');
+    setLanguageAwardRank(1);
+    setBadgeDefs([
+      { rankPosition: 1, badgeName: '🥇 Gold Winner', badgeIcon: 'Award', badgeColor: '#f59e0b', badgeOrder: 1 },
+      { rankPosition: 2, badgeName: '🥈 Silver Winner', badgeIcon: 'Award', badgeColor: '#94a3b8', badgeOrder: 2 },
+      { rankPosition: 3, badgeName: '🥉 Bronze Winner', badgeIcon: 'Award', badgeColor: '#b45309', badgeOrder: 3 },
+    ]);
 
     setAllowedLangs({ java: true, python: true, cpp: false, c: false, javascript: false });
     setTags('');

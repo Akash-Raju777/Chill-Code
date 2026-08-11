@@ -378,7 +378,7 @@ export default function AdminBadgeSetsPage() {
       languageBadgeName,
       languageBadgeIcon,
       languageAwardRank: Number(languageAwardRank),
-      status: editingSet ? editingSet.status : 'ACTIVE',
+      status: editingSet && editingSet.status !== 'INACTIVE' ? editingSet.status : 'ACTIVE',
       badges: badgeDefs
     };
 

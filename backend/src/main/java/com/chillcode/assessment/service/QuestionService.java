@@ -65,7 +65,6 @@ public class QuestionService {
     private jakarta.persistence.EntityManager entityManager;
 
     @org.springframework.context.event.EventListener(org.springframework.boot.context.event.ApplicationReadyEvent.class)
-    @org.springframework.transaction.annotation.Transactional
     public void onApplicationReady() {
         log.info("Application started: Running retroactive cleanup for orphaned deleted questions...");
         try {
@@ -948,8 +947,10 @@ public class QuestionService {
 
         badgeSet = badgeSetRepository.save(badgeSet);
 
-        // Save custom badge definitions if provided in dto
-        if (dto != null && dto.getBadgeDefs() != null && !dto.getBadgeDefs().isEmpty()) {
+        // Save custom badge definitions ONLY when badge management is explicitly enabled by the admin.
+        // When disabled, preserve existing definitions unchanged to avoid stale frontend state
+        // from overwriting correctly configured badge definitions on other tests.
+        if (enabled && dto != null && dto.getBadgeDefs() != null && !dto.getBadgeDefs().isEmpty()) {
             List<com.chillcode.assessment.entity.BadgeDefinition> oldDefs = badgeDefinitionRepository.findByBadgeSetIdAndStatus(badgeSet.getId(), "ACTIVE");
             for (com.chillcode.assessment.entity.BadgeDefinition oldDef : oldDefs) {
                 try { badgeDefinitionRepository.delete(oldDef); } catch (Exception ignored) {}
@@ -967,7 +968,7 @@ public class QuestionService {
                 badgeDefinitionRepository.save(bd);
             }
         } else if (badgeDefinitionRepository.findByBadgeSetIdAndStatus(badgeSet.getId(), "ACTIVE").isEmpty()) {
-            // Seed defaults if no definitions exist
+            // Seed defaults if no definitions exist yet
             String titlePrefix = question.getTitle() != null ? question.getTitle() : subject.getName();
             String[][] defaults = {
                     {"1", "🥇 " + titlePrefix + " Gold Winner", "Award", "#f59e0b"},
