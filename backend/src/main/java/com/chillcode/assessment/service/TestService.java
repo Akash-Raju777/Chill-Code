@@ -359,10 +359,12 @@ public class TestService {
             totalPassingMarks = maxMarks / 2;
         }
 
-        // Use the actual accumulated score if available
+        // Use the actual accumulated score if available, or 0 if null
         if (totalEarnedScore > 0 && score == 0) {
             score = totalEarnedScore;
             st.setScore(score);
+        } else if (st.getScore() == null) {
+            st.setScore(0);
         }
 
         st.setTestCasesPassed(totalTestCasesPassed);
