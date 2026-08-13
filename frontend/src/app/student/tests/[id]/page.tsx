@@ -461,15 +461,19 @@ function CodingWorkspaceInner() {
     
     setSubmittingExam(true);
     try {
+      const currentStore = useTestStore.getState();
+      const currentCodes = currentStore.codes;
+      const currentLanguages = currentStore.languages;
+
       const questionCodes: Record<string, { code: string; language: string }> = {};
-      Object.keys(codes).forEach((qId) => {
+      Object.keys(currentCodes).forEach((qId) => {
         questionCodes[qId] = {
-          code: codes[Number(qId)],
-          language: languages[Number(qId)] || 'java',
+          code: currentCodes[Number(qId)] ?? '',
+          language: currentLanguages[Number(qId)] || 'java',
         };
       });
 
-      await apiCall(`/api/student/tests/${testId}/submit`, {
+      await apiCall(`/api/student/tests/${testId}/submit?isAutoSubmitted=true`, {
         method: 'POST',
         body: JSON.stringify(questionCodes),
       });
@@ -500,6 +504,9 @@ function CodingWorkspaceInner() {
       title: 'Submit Exam',
       message: 'Are you sure you want to finish and submit your exam?',
       onConfirm: async () => {
+        if (autoSubmittedRef.current) return;
+        autoSubmittedRef.current = true;
+        
         setSubmittingExam(true);
         try {
           const questionCodes: Record<string, { code: string; language: string }> = {};

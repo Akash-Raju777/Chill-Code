@@ -1092,6 +1092,10 @@ public class CodeExecutionService {
         if (studentTest.getStartedAt() != null) {
             long seconds = java.time.Duration.between(studentTest.getStartedAt(), studentTest.getSubmittedAt()).getSeconds();
             studentTest.setTimeTakenSeconds(Math.max(1L, seconds));
+        } else if (studentTest.getAutoSubmitted() != null && studentTest.getAutoSubmitted() && studentTest.getTest() != null && studentTest.getTest().getDurationMinutes() != null) {
+            studentTest.setTimeTakenSeconds((long) studentTest.getTest().getDurationMinutes() * 60);
+        } else {
+            studentTest.setTimeTakenSeconds(1L); // Prevent 0 sec
         }
 
         studentTestRepository.save(studentTest);

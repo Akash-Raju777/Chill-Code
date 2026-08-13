@@ -386,6 +386,10 @@ public class TestService {
         if (st.getStartedAt() != null) {
             long seconds = java.time.Duration.between(st.getStartedAt(), st.getSubmittedAt()).getSeconds();
             st.setTimeTakenSeconds(Math.max(1L, seconds));
+        } else if (isAutoSubmitted && st.getTest() != null && st.getTest().getDurationMinutes() != null) {
+            st.setTimeTakenSeconds((long) st.getTest().getDurationMinutes() * 60);
+        } else {
+            st.setTimeTakenSeconds(1L); // Prevent 0 sec
         }
 
         StudentTest savedSt = studentTestRepository.save(st);
@@ -702,11 +706,16 @@ public class TestService {
 
     @Transactional
     public com.chillcode.assessment.dto.StudentTestDto submitTestDto(Long testId, Long studentId) {
-        return submitTestDto(testId, studentId, null);
+        return submitTestDto(testId, studentId, null, false);
     }
 
     @Transactional
     public com.chillcode.assessment.dto.StudentTestDto submitTestDto(Long testId, Long studentId, java.util.Map<String, java.util.Map<String, String>> questionCodes) {
+        return submitTestDto(testId, studentId, questionCodes, false);
+    }
+
+    @Transactional
+    public com.chillcode.assessment.dto.StudentTestDto submitTestDto(Long testId, Long studentId, java.util.Map<String, java.util.Map<String, String>> questionCodes, boolean isAutoSubmitted) {
         StudentTest st = studentTestRepository.findByStudentIdAndTestId(studentId, testId)
                 .orElseGet(() -> studentTestRepository.findById(testId)
                         .orElseThrow(() -> new RuntimeException("Student-Test mapping not found.")));
@@ -756,7 +765,7 @@ public class TestService {
         }
 
         // Now submit and finalize the test (calculates score and status)
-        st = submitTest(testId, studentId);
+        st = submitTest(testId, studentId, isAutoSubmitted);
 
         return convertToStudentTestDto(st);
     }

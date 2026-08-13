@@ -20,13 +20,24 @@ import {
 const formatDuration = (seconds?: number, startedAt?: string, submittedAt?: string) => {
   let totalSec = seconds;
   if ((totalSec === undefined || totalSec === null || totalSec <= 0) && startedAt && submittedAt) {
-    const start = new Date(startedAt).getTime();
-    const end = new Date(submittedAt).getTime();
-    if (!isNaN(start) && !isNaN(end) && end > start) {
-      totalSec = Math.floor((end - start) / 1000);
+    // Check if dates are array formatted (Jackson LocalDateTime serialization)
+    let startStr = startedAt;
+    let endStr = submittedAt;
+    if (Array.isArray(startedAt)) {
+      const [y, m, d, h = 0, min = 0, s = 0] = startedAt as any;
+      startStr = new Date(Date.UTC(y, m - 1, d, h, min, s)).toISOString();
+    }
+    if (Array.isArray(submittedAt)) {
+      const [y, m, d, h = 0, min = 0, s = 0] = submittedAt as any;
+      endStr = new Date(Date.UTC(y, m - 1, d, h, min, s)).toISOString();
+    }
+    const start = new Date(startStr).getTime();
+    const end = new Date(endStr).getTime();
+    if (!isNaN(start) && !isNaN(end) && end >= start) {
+      totalSec = Math.max(1, Math.floor((end - start) / 1000));
     }
   }
-  if (!totalSec || totalSec <= 0) return 'N/A';
+  if (totalSec === undefined || totalSec === null || totalSec < 0) return 'N/A';
   
   const hrs = Math.floor(totalSec / 3600);
   const mins = Math.floor((totalSec % 3600) / 60);

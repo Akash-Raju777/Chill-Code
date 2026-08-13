@@ -75,9 +75,10 @@ public class TestController {
     @PostMapping("/student/tests/{id}/submit")
     public ResponseEntity<com.chillcode.assessment.dto.StudentTestDto> submitTest(
             @PathVariable("id") Long id,
+            @RequestParam(value = "isAutoSubmitted", required = false, defaultValue = "false") boolean isAutoSubmitted,
             @RequestBody(required = false) java.util.Map<String, java.util.Map<String, String>> questionCodes) {
         User student = getCurrentUser();
-        return ResponseEntity.ok(testService.submitTestDto(id, student.getId(), questionCodes));
+        return ResponseEntity.ok(testService.submitTestDto(id, student.getId(), questionCodes, isAutoSubmitted));
     }
 
     @PostMapping("/student/tests/{id}/exit")
