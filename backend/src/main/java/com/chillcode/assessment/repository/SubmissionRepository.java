@@ -2,6 +2,9 @@ package com.chillcode.assessment.repository;
 
 import com.chillcode.assessment.entity.Submission;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Modifying;
+import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 import java.util.List;
 import java.util.Optional;
@@ -11,6 +14,10 @@ public interface SubmissionRepository extends JpaRepository<Submission, Long> {
     List<Submission> findByStudentTestId(Long studentTestId);
     List<Submission> findByStudentTestIdAndQuestionId(Long studentTestId, Long questionId);
     Optional<Submission> findFirstByStudentTestIdAndQuestionIdOrderByCreatedAtDesc(Long studentTestId, Long questionId);
+
+    @Modifying(clearAutomatically = true)
+    @Query("UPDATE Submission s SET s.active = false WHERE s.studentTest.id = :studentTestId AND s.question.id = :questionId")
+    void deactivatePreviousSubmissions(@Param("studentTestId") Long studentTestId, @Param("questionId") Long questionId);
 
     @org.springframework.data.jpa.repository.Query("SELECT s FROM Submission s WHERE s.studentTest.student.id = :studentId AND s.question.id = :questionId ORDER BY s.createdAt DESC")
     List<Submission> findByStudentIdAndQuestionIdOrderByCreatedAtDesc(@org.springframework.data.repository.query.Param("studentId") Long studentId, @org.springframework.data.repository.query.Param("questionId") Long questionId);

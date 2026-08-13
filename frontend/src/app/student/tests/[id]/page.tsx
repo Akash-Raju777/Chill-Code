@@ -477,12 +477,9 @@ function CodingWorkspaceInner() {
         method: 'POST',
         body: JSON.stringify(questionCodes),
       });
+      
       toast.warning('Time is up! Your exam attempt has been auto-submitted.');
-    } catch (e) {
-      console.error('Auto submit failed', e);
-      toast.error('Time is up! Auto-submission encountered an error. Redirecting to results...');
-    } finally {
-      // Always clean up and redirect, even if the API call failed
+      
       if (user?.id) {
         Object.keys(codes).forEach((qId) => {
           localStorage.removeItem(`chillcode_code_backup_${user.id}_${qId}`);
@@ -493,8 +490,13 @@ function CodingWorkspaceInner() {
       }
       clearTestSession();
       resetWarnings();
-      setSubmittingExam(false);
       router.push('/student/results');
+    } catch (e: any) {
+      console.error('Auto submit failed', e);
+      autoSubmittedRef.current = false; // Allow manual retry
+      toast.error(e.message || 'Time is up! Auto-submission encountered an error. Please click Submit manually.');
+    } finally {
+      setSubmittingExam(false);
     }
   };
 
