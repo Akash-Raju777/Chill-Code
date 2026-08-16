@@ -42,6 +42,31 @@ import Link from 'next/link';
 import GloryCelebrationModal from '../../../../components/GloryCelebrationModal';
 import FailResultModal from '../../../../components/FailResultModal';
 
+const getParsedTime = (dateInput: any): number | null => {
+  if (!dateInput) return null;
+  try {
+    const pad = (n: number) => String(n).padStart(2, '0');
+    if (Array.isArray(dateInput)) {
+      const [y, m, d, h = 0, min = 0, s = 0] = dateInput;
+      const isoStr = `${y}-${pad(m)}-${pad(d)}T${pad(h)}:${pad(min)}:${pad(s)}+05:30`;
+      const parsed = new Date(isoStr).getTime();
+      return isNaN(parsed) ? null : parsed;
+    }
+    if (typeof dateInput === 'string') {
+      const trimmed = dateInput.trim();
+      const hasTimezone = trimmed.endsWith('Z') || /[-+]\d{2}:?\d{2}$/.test(trimmed);
+      const dateStr = hasTimezone ? trimmed : trimmed.replace(' ', 'T') + '+05:30';
+      const parsed = new Date(dateStr).getTime();
+      return isNaN(parsed) ? null : parsed;
+    }
+    const parsed = new Date(dateInput).getTime();
+    return isNaN(parsed) ? null : parsed;
+  } catch (e) {
+    console.error("Failed to parse date input:", dateInput, e);
+    return null;
+  }
+};
+
 function CodingWorkspaceInner() {
   const params = useParams();
   const searchParams = useSearchParams();
@@ -236,12 +261,14 @@ function CodingWorkspaceInner() {
 
         // Calculate remaining time
         const baseMinutes = targetQuestions[0]?.timer || activeTest.test?.durationMinutes || 60;
-        const totalSeconds = baseMinutes * 60;
+        const totalSeconds = (typeof baseMinutes === 'number' && !isNaN(baseMinutes) && baseMinutes > 0) ? baseMinutes * 60 : 3600;
         let remainingSeconds = totalSeconds;
         if (activeTest.startedAt) {
-          const startTime = new Date(activeTest.startedAt).getTime();
-          const elapsedSeconds = Math.floor((Date.now() - startTime) / 1000);
-          remainingSeconds = Math.max(0, totalSeconds - elapsedSeconds);
+          const startTimeMs = getParsedTime(activeTest.startedAt);
+          if (startTimeMs !== null) {
+            const elapsedSeconds = Math.floor((Date.now() - startTimeMs) / 1000);
+            remainingSeconds = Math.max(0, totalSeconds - elapsedSeconds);
+          }
         }
 
         const viewFromSearch = typeof window !== 'undefined' ? new URLSearchParams(window.location.search).get('view') === 'true' : false;
@@ -259,7 +286,7 @@ function CodingWorkspaceInner() {
           activeTest.id,
           targetQuestions[0]?.title || activeTest.test?.name || 'Assessment',
           targetQuestions,
-          isDone ? 0 : Math.max(1, Math.round(remainingSeconds / 60)),
+          isDone ? 0 : Math.max(1, remainingSeconds),
           isDone,
           isEnabled,
           user?.id || updatedProfile?.id
@@ -343,7 +370,10 @@ function CodingWorkspaceInner() {
     if (user?.status === 'NO_SECURITY') return;
 
     const interval = setInterval(() => {
-      decrementTime();
+      const currentSeconds = useTestStore.getState().timeLeftSeconds;
+      if (currentSeconds > 0 && !isNaN(currentSeconds)) {
+        decrementTime();
+      }
     }, 1000);
 
     return () => clearInterval(interval);
@@ -356,23 +386,30 @@ function CodingWorkspaceInner() {
   useEffect(() => {
     if (!mounted || isViewMode) return;
     warnedTimesRef.current.clear();
+    timerStartedRef.current = false;
     const unsubscribe = useTestStore.subscribe(
       (state, prevState) => {
         const seconds = state.timeLeftSeconds;
         if (!state.isViewMode && state.isSessionActive) {
-          if (seconds === 600 && !warnedTimesRef.current.has(600)) {
-            warnedTimesRef.current.add(600);
-            toast.warning('Timer Warning: 10 minutes remaining in your test!');
-          } else if (seconds === 300 && !warnedTimesRef.current.has(300)) {
-            warnedTimesRef.current.add(300);
-            toast.warning('Timer Warning: 5 minutes remaining in your test!');
-          } else if (seconds === 60 && !warnedTimesRef.current.has(60)) {
-            warnedTimesRef.current.add(60);
-            toast.warning('Timer Warning: 1 minute remaining! Please finalize your code.');
+          if (seconds > 0 && !isNaN(seconds)) {
+            timerStartedRef.current = true;
           }
 
-          if (seconds === 0 && prevState.timeLeftSeconds > 0) {
-            handleAutoSubmit();
+          if (timerStartedRef.current) {
+            if (seconds === 600 && !warnedTimesRef.current.has(600)) {
+              warnedTimesRef.current.add(600);
+              toast.warning('Timer Warning: 10 minutes remaining in your test!');
+            } else if (seconds === 300 && !warnedTimesRef.current.has(300)) {
+              warnedTimesRef.current.add(300);
+              toast.warning('Timer Warning: 5 minutes remaining in your test!');
+            } else if (seconds === 60 && !warnedTimesRef.current.has(60)) {
+              warnedTimesRef.current.add(60);
+              toast.warning('Timer Warning: 1 minute remaining! Please finalize your code.');
+            }
+
+            if (seconds === 0 && prevState.timeLeftSeconds > 0) {
+              handleAutoSubmit();
+            }
           }
         }
       }
@@ -536,6 +573,7 @@ function CodingWorkspaceInner() {
           toast.success('Exam submitted successfully!');
           router.push('/student/results');
         } catch (e: any) {
+          autoSubmittedRef.current = false; // Allow retry on failure
           toast.error(e.message || 'Failed to submit exam. Please try again.');
         } finally {
           setSubmittingExam(false);

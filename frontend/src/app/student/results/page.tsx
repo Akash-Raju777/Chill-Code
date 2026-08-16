@@ -8,8 +8,7 @@ import {
   Loader2, 
   Calendar, 
   ExternalLink,
-  Clock,
-  Database
+  Clock
 } from 'lucide-react';
 
 interface SubmissionResult {
@@ -202,10 +201,6 @@ export default function StudentResults() {
                       <span className="flex items-center gap-1 text-indigo-300 font-medium">
                         <Clock className="w-3.5 h-3.5 text-indigo-400" />
                         {formatDuration((item as any).timeTakenSeconds, (item as any).startedAt, (item as any).submittedAt || item.createdAt)}
-                      </span>
-                      <span className="flex items-center gap-1">
-                        <Database className="w-3.5 h-3.5" />
-                        {item.memoryUsedKb !== null ? `${item.memoryUsedKb} KB` : 'N/A'}
                       </span>
                       <span className="flex items-center gap-1">
                         <Calendar className="w-3.5 h-3.5" />

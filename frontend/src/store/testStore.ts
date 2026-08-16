@@ -42,7 +42,7 @@ interface TestState {
     studentTestId: number,
     testName: string,
     questions: Question[],
-    durationMinutes: number,
+    durationSeconds: number,
     isViewMode?: boolean,
     securityShieldEnabled?: boolean,
     userId?: number
@@ -68,7 +68,7 @@ export const useTestStore = create<TestState>((set) => ({
   securityShieldEnabled: false,
   lastUserId: null,
 
-  startTestSession: (testId, studentTestId, testName, questions, durationMinutes, isViewMode = false, securityShieldEnabled = false, userId) => {
+  startTestSession: (testId, studentTestId, testName, questions, durationSeconds, isViewMode = false, securityShieldEnabled = false, userId) => {
     // Initial codes and languages mapping
     const codes: Record<number, string> = {};
     const languages: Record<number, string> = {};
@@ -90,7 +90,7 @@ export const useTestStore = create<TestState>((set) => ({
       activeQuestionIndex: 0,
       codes,
       languages,
-      timeLeftSeconds: durationMinutes * 60,
+      timeLeftSeconds: Math.max(0, durationSeconds),
       isSessionActive: true,
       isViewMode,
       securityShieldEnabled,

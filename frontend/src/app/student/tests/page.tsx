@@ -272,13 +272,37 @@ export default function TestsWorkspace() {
 
       resetWarnings();
 
+      // Calculate remaining time
+      const baseMinutes = selectedQuestion.timer || selectedTest.test.durationMinutes || 60;
+      const totalSeconds = (typeof baseMinutes === 'number' && !isNaN(baseMinutes) && baseMinutes > 0) ? baseMinutes * 60 : 3600;
+      let remainingSeconds = totalSeconds;
+      if (selectedTest.startedAt) {
+        let startTimeMs: number | null = null;
+        if (Array.isArray(selectedTest.startedAt)) {
+          const [y, m, d, h = 0, min = 0, s = 0] = selectedTest.startedAt;
+          const pad = (n: number) => String(n).padStart(2, '0');
+          const isoStr = `${y}-${pad(m)}-${pad(d)}T${pad(h)}:${pad(min)}:${pad(s)}+05:30`;
+          startTimeMs = new Date(isoStr).getTime();
+        } else {
+          const trimmed = selectedTest.startedAt.trim();
+          const hasTimezone = trimmed.endsWith('Z') || /[-+]\d{2}:?\d{2}$/.test(trimmed);
+          const dateStr = hasTimezone ? trimmed : trimmed.replace(' ', 'T') + '+05:30';
+          startTimeMs = new Date(dateStr).getTime();
+        }
+
+        if (startTimeMs && !isNaN(startTimeMs)) {
+          const elapsedSeconds = Math.floor((Date.now() - startTimeMs) / 1000);
+          remainingSeconds = Math.max(0, totalSeconds - elapsedSeconds);
+        }
+      }
+
       // 1. INSTANT TEST SESSION START - Zero latency UI transition
       startTestSession(
         selectedTest.test.id,
         selectedTest.id,
         selectedQuestion.title,
         [selectedQuestion],
-        selectedQuestion.timer || selectedTest.test.durationMinutes || 60,
+        remainingSeconds,
         false, // isViewMode = false
         selectedTest.test.securityShieldEnabled ?? false,
         latestUser?.id
