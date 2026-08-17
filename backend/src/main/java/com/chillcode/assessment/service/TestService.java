@@ -839,10 +839,10 @@ public class TestService {
         StudentTest st = studentTestRepository.findById(studentTestId)
                 .orElseThrow(() -> new RuntimeException("Student test not found"));
         
-        st.setStatus("STARTED");
+        st.setStatus("PENDING");
         st.setIsSuspended(false);
         st.setWarningsCount(0);
-        st.setStartedAt(LocalDateTime.now());
+        st.setStartedAt(null);
         st.setSubmittedAt(null);
 
         List<Warning> warnings = warningRepository.findByStudentTestId(st.getId());

@@ -707,15 +707,13 @@ public class QuestionService {
                 dto.setStatus(isCompleted ? "COMPLETED" : status.getStatus());
             }
             int rawAttempts = status.getAttemptCount() != null ? status.getAttemptCount() : 0;
-            if (isCompleted) {
-                dto.setAttemptCount(Math.max(0, rawAttempts - 1));
-            } else {
-                dto.setAttemptCount(rawAttempts);
-            }
+            // attemptCount reflects only completed/submitted attempts.
+            // An IN_PROGRESS attempt is not yet submitted, so rawAttempts == 0 is correct.
+            dto.setAttemptCount(rawAttempts);
             dto.setLastAttemptAt(status.getLastAttemptAt() != null ? status.getLastAttemptAt().toString() : null);
         } else {
             dto.setStatus(hasAcceptedSubmission ? "COMPLETED" : "NOT_STARTED");
-            dto.setAttemptCount(0);
+            dto.setAttemptCount(hasAcceptedSubmission ? 1 : 0);
         }
         populateBadgeInfo(question, dto);
         return dto;

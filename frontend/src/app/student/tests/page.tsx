@@ -276,7 +276,7 @@ export default function TestsWorkspace() {
       const baseMinutes = selectedQuestion.timer || selectedTest.test.durationMinutes || 60;
       const totalSeconds = (typeof baseMinutes === 'number' && !isNaN(baseMinutes) && baseMinutes > 0) ? baseMinutes * 60 : 3600;
       let remainingSeconds = totalSeconds;
-      if (selectedTest.startedAt) {
+      if (selectedTest.startedAt && selectedQuestion.status !== 'NOT_STARTED' && selectedQuestion.status) {
         let startTimeMs: number | null = null;
         if (Array.isArray(selectedTest.startedAt)) {
           const [y, m, d, h = 0, min = 0, s = 0] = selectedTest.startedAt;

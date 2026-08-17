@@ -107,6 +107,8 @@ function CodingWorkspaceInner() {
 
   const lastWarningTimeRef = useRef<number>(0);
   const internalClipboardRef = useRef<string>('');
+  // Freeze timer when Submit Exam confirmation dialog is open
+  const timerFrozenRef = useRef<boolean>(false);
 
   // Page layout toggles
   const [mounted, setMounted] = useState(false);
@@ -263,7 +265,8 @@ function CodingWorkspaceInner() {
         const baseMinutes = targetQuestions[0]?.timer || activeTest.test?.durationMinutes || 60;
         const totalSeconds = (typeof baseMinutes === 'number' && !isNaN(baseMinutes) && baseMinutes > 0) ? baseMinutes * 60 : 3600;
         let remainingSeconds = totalSeconds;
-        if (activeTest.startedAt) {
+        const questionStatus = targetQuestions[0]?.status;
+        if (activeTest.startedAt && questionStatus !== 'NOT_STARTED' && questionStatus) {
           const startTimeMs = getParsedTime(activeTest.startedAt);
           if (startTimeMs !== null) {
             const elapsedSeconds = Math.floor((Date.now() - startTimeMs) / 1000);
@@ -370,6 +373,8 @@ function CodingWorkspaceInner() {
     if (user?.status === 'NO_SECURITY') return;
 
     const interval = setInterval(() => {
+      // FREEZE: do not decrement when Submit Exam confirm dialog is open
+      if (timerFrozenRef.current) return;
       const currentSeconds = useTestStore.getState().timeLeftSeconds;
       if (currentSeconds > 0 && !isNaN(currentSeconds)) {
         decrementTime();
@@ -538,6 +543,8 @@ function CodingWorkspaceInner() {
   };
 
   const handleManualSubmitExam = () => {
+    // FREEZE timer immediately when Submit Exam confirm dialog opens
+    timerFrozenRef.current = true;
     setConfirmDialog({
       isOpen: true,
       title: 'Submit Exam',
@@ -545,6 +552,8 @@ function CodingWorkspaceInner() {
       onConfirm: async () => {
         if (autoSubmittedRef.current) return;
         autoSubmittedRef.current = true;
+        // Timer stays frozen — session will be cleared after submission
+        timerFrozenRef.current = false;
         
         setSubmittingExam(true);
         try {
@@ -1721,7 +1730,11 @@ function CodingWorkspaceInner() {
             </div>
             <div className="flex justify-end gap-3 pt-2">
               <button
-                onClick={() => setConfirmDialog(prev => ({ ...prev, isOpen: false }))}
+                onClick={() => {
+                  // UNFREEZE timer when Cancel is clicked (resume from exact paused value)
+                  timerFrozenRef.current = false;
+                  setConfirmDialog(prev => ({ ...prev, isOpen: false }));
+                }}
                 className="px-4 py-2 rounded-xl text-xs font-bold text-gray-400 hover:text-white bg-white/5 hover:bg-white/10 border border-white/5 transition-all select-none"
               >
                 Cancel
