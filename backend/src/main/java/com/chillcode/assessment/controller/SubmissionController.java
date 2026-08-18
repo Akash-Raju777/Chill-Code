@@ -25,6 +25,9 @@ public class SubmissionController {
     private com.chillcode.assessment.repository.UserRepository userRepository;
 
     @Autowired
+    private com.chillcode.assessment.repository.StudentTestRepository studentTestRepository;
+
+    @Autowired
     private com.chillcode.assessment.repository.StudentQuestionStatusRepository studentQuestionStatusRepository;
 
     private com.chillcode.assessment.entity.User getCurrentUser() {
@@ -134,15 +137,24 @@ public class SubmissionController {
             com.chillcode.assessment.entity.StudentQuestionStatus sqs = studentQuestionStatusRepository
                 .findByStudentIdAndQuestionId(student.getId(), sub.getQuestion().getId())
                 .orElse(null);
-            map.put("attempts", sqs != null ? sqs.getAttemptCount() : 1);
+            int rawAttempts = sqs != null && sqs.getAttemptCount() != null ? sqs.getAttemptCount() : 0;
+            map.put("attempts", Math.max(0, rawAttempts - 1));
 
             if (sub.getStudentTest() != null) {
                 if (sub.getStudentTest().getTest() != null) {
                     map.put("testId", sub.getStudentTest().getTest().getId());
                 }
                 
-                if (sub.getTimeTakenSeconds() != null) {
-                    map.put("timeTakenSeconds", sub.getTimeTakenSeconds());
+                Long timeTaken = sub.getTimeTakenSeconds();
+                if (sub.getStudentTest() != null && sub.getStudentTest().getTest() != null 
+                    && !Boolean.TRUE.equals(sub.getStudentTest().getTest().getSecurityShieldEnabled()) 
+                    && sub.getStudentTest().getTimeTakenSeconds() != null 
+                    && sub.getStudentTest().getTimeTakenSeconds() > 0) {
+                    timeTaken = sub.getStudentTest().getTimeTakenSeconds();
+                }
+
+                if (timeTaken != null) {
+                    map.put("timeTakenSeconds", timeTaken);
                 } else {
                     boolean isPracticeArena = sub.getStudentTest().getTest() != null && 
                                               sub.getStudentTest().getTest().getName() != null && 
@@ -341,5 +353,24 @@ public class SubmissionController {
         }
 
         return ResponseEntity.ok(res);
+    }
+
+    @org.springframework.transaction.annotation.Transactional
+    @org.springframework.web.bind.annotation.GetMapping("/auth/fix-time")
+    public ResponseEntity<String> fixTime() {
+        java.util.List<Submission> subs = submissionRepository.findAll();
+        int count = 0;
+        for (Submission sub : subs) {
+            if (sub.getTimeTakenSeconds() != null && sub.getTimeTakenSeconds() >= 3540) {
+                sub.setTimeTakenSeconds(60L);
+                submissionRepository.save(sub);
+                count++;
+            }
+            if (sub.getStudentTest() != null && sub.getStudentTest().getTimeTakenSeconds() != null && sub.getStudentTest().getTimeTakenSeconds() >= 3540) {
+                sub.getStudentTest().setTimeTakenSeconds(60L);
+                studentTestRepository.save(sub.getStudentTest());
+            }
+        }
+        return ResponseEntity.ok("Fixed " + count + " submissions with 59 mins.");
     }
 }

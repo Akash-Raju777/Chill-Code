@@ -709,11 +709,12 @@ public class QuestionService {
             int rawAttempts = status.getAttemptCount() != null ? status.getAttemptCount() : 0;
             // attemptCount reflects only completed/submitted attempts.
             // An IN_PROGRESS attempt is not yet submitted, so rawAttempts == 0 is correct.
-            dto.setAttemptCount(rawAttempts);
+            // User requested to display re-attempts (so first pass/fail shows as 0, second as 1, etc.)
+            dto.setAttemptCount(Math.max(0, rawAttempts - 1));
             dto.setLastAttemptAt(status.getLastAttemptAt() != null ? status.getLastAttemptAt().toString() : null);
         } else {
             dto.setStatus(hasAcceptedSubmission ? "COMPLETED" : "NOT_STARTED");
-            dto.setAttemptCount(hasAcceptedSubmission ? 1 : 0);
+            dto.setAttemptCount(0);
         }
         populateBadgeInfo(question, dto);
         return dto;
