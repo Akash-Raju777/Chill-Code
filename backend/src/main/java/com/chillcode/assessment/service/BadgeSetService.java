@@ -510,13 +510,17 @@ public class BadgeSetService {
 
     @Transactional
     public List<StudentAchievementDto> getStudentAchievements(Long studentId) {
+        List<Long> validTestIds = testRepository.findTestIdsWithQuestions();
+        
         List<StudentAchievementDto> achievements = studentAchievementRepository.findByStudentIdOrderByAwardedAtDesc(studentId).stream()
+                .filter(sa -> sa.getTest() == null || validTestIds.contains(sa.getTest().getId()))
                 .map(this::mapAchievementToDto)
                 .collect(Collectors.toCollection(ArrayList::new));
 
         // Merge manual badges
         List<StudentBadge> manualBadges = studentBadgeRepository.findByStudentId(studentId);
         for (StudentBadge sb : manualBadges) {
+            if (sb.getSourceTest() != null && !validTestIds.contains(sb.getSourceTest().getId())) continue;
             StudentAchievementDto dto = StudentAchievementDto.builder()
                     .id(sb.getId())
                     .studentId(studentId)
@@ -542,7 +546,10 @@ public class BadgeSetService {
 
     @Transactional(readOnly = true)
     public List<LanguageMasterBadgeDto> getStudentLanguageBadges(Long studentId) {
+        List<Long> validTestIds = testRepository.findTestIdsWithQuestions();
+        
         return languageMasterBadgeRepository.findByStudentIdOrderByAwardedDateDesc(studentId).stream()
+                .filter(lmb -> lmb.getTest() == null || validTestIds.contains(lmb.getTest().getId()))
                 .map(lmb -> {
                     String effectiveTestCode = null;
                     String effectiveTestName = lmb.getTest() != null ? lmb.getTest().getName() : null;
@@ -600,15 +607,19 @@ public class BadgeSetService {
         }
 
         Long adminId = com.chillcode.assessment.security.SecurityUtils.getCurrentAdminId();
+        List<Long> validTestIds = testRepository.findTestIdsWithQuestions();
 
         List<StudentAchievementDto> list = studentAchievementRepository.findAll().stream()
                 .filter(sa -> adminId == null || (sa.getTest() != null && sa.getTest().getAdmin() != null && sa.getTest().getAdmin().getId().equals(adminId)))
+                .filter(sa -> sa.getTest() == null || validTestIds.contains(sa.getTest().getId()))
                 .map(sa -> mapAchievementToDtoWithRanks(sa, overallRankMap, subjectRankMap))
                 .collect(Collectors.toCollection(ArrayList::new));
 
         // Merge manual badges
         List<StudentBadge> manualBadges = studentBadgeRepository.findAll();
         for (StudentBadge sb : manualBadges) {
+            if (sb.getSourceTest() != null && !validTestIds.contains(sb.getSourceTest().getId())) continue;
+            
             Long badgeAdminId = sb.getBadge().getAdmin() != null ? sb.getBadge().getAdmin().getId() : null;
             if (adminId != null && badgeAdminId != null && !badgeAdminId.equals(adminId)) {
                 continue;

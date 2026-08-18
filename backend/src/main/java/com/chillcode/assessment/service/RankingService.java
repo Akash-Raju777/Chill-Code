@@ -119,13 +119,16 @@ public class RankingService {
             }
         }
 
+        List<Long> validTestIds = testRepository.findTestIdsWithQuestions();
+
         // Also check StudentTest records if student attempted a test for this subject and submitted in target language
         List<StudentTest> subjectStudentTests = studentTestRepository.findAll().stream()
                 .filter(st -> st.getTest() != null 
                         && st.getTest().getSubject() != null 
                         && st.getTest().getSubject().getId().equals(subjectId)
                         && st.getStudent() != null
-                        && (st.getScore() != null && st.getScore() > 0))
+                        && (st.getScore() != null && st.getScore() > 0)
+                        && validTestIds.contains(st.getTest().getId()))
                 .collect(Collectors.toList());
 
         for (StudentTest st : subjectStudentTests) {
@@ -223,15 +226,16 @@ public class RankingService {
     @Transactional
     public List<SubjectRankingDto> getSubjectLeaderboard(Long subjectId) {
         updateSubjectRankings(subjectId);
+        List<Long> validTestIds = testRepository.findTestIdsWithQuestions();
         List<SubjectRanking> rankings = subjectRankingRepository.findBySubjectIdOrderByRankPositionAsc(subjectId);
-        return rankings.stream().map(this::mapToDto).collect(Collectors.toList());
+        return rankings.stream().map(r -> mapToDto(r, validTestIds)).collect(Collectors.toList());
     }
 
     public List<SubjectRankingDto> getTopSubjectRankings(Long subjectId, int limit) {
         return getSubjectLeaderboard(subjectId).stream().limit(limit).collect(Collectors.toList());
     }
 
-    private SubjectRankingDto mapToDto(SubjectRanking ranking) {
+    private SubjectRankingDto mapToDto(SubjectRanking ranking, List<Long> validTestIds) {
         String icon = null;
         if (ranking.getRankPosition() == 1) icon = "🥇";
         else if (ranking.getRankPosition() == 2) icon = "🥈";
@@ -249,14 +253,17 @@ public class RankingService {
 
             long achievementsCount = studentAchievementRepository.findByStudentIdOrderByAwardedAtDesc(studentId).stream()
                     .filter(sa -> "ACTIVE".equalsIgnoreCase(sa.getStatus()) && sa.getSubjectName() != null && sa.getSubjectName().equalsIgnoreCase(subjectName))
+                    .filter(sa -> sa.getTest() == null || validTestIds.contains(sa.getTest().getId()))
                     .count();
 
             long manualBadgesCount = studentBadgeRepository.findByStudentId(studentId).stream()
                     .filter(sb -> "ACTIVE".equalsIgnoreCase(sb.getStatus()) && sb.getSourceTest() != null && sb.getSourceTest().getSubject() != null && sb.getSourceTest().getSubject().getName().equalsIgnoreCase(subjectName))
+                    .filter(sb -> sb.getSourceTest() == null || validTestIds.contains(sb.getSourceTest().getId()))
                     .count();
 
             long languageBadgesCount = languageMasterBadgeRepository.findByStudentIdOrderByAwardedDateDesc(studentId).stream()
                     .filter(lmb -> lmb.getSubject() != null && lmb.getSubject().equalsIgnoreCase(subjectName))
+                    .filter(lmb -> lmb.getTest() == null || validTestIds.contains(lmb.getTest().getId()))
                     .count();
 
             totalBadgesForSubject = (int) (achievementsCount + manualBadgesCount);

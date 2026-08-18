@@ -32,6 +32,9 @@ public class OverallLeaderboardService {
     @Autowired
     private com.chillcode.assessment.repository.LanguageMasterBadgeRepository languageMasterBadgeRepository;
 
+    @Autowired
+    private com.chillcode.assessment.repository.TestRepository testRepository;
+
     @Transactional(readOnly = true)
     public List<OverallLeaderboardEntry> getOverallLeaderboard(String timeFilter, String departmentFilter) {
         try {
@@ -53,11 +56,13 @@ public class OverallLeaderboardService {
                     studentTestRepository.findAllWithStudentsByAdminId(adminId) :
                     studentTestRepository.findAllWithStudents();
 
+            List<Long> validTestIds = testRepository.findTestIdsWithQuestions();
+
             List<OverallLeaderboardEntry> entries = new ArrayList<>();
 
             for (User student : students) {
                 List<StudentTest> myTests = allStudentTests.stream()
-                        .filter(st -> st.getStudent() != null && st.getStudent().getId().equals(student.getId()))
+                        .filter(st -> st.getStudent() != null && st.getStudent().getId().equals(student.getId()) && st.getTest() != null && validTestIds.contains(st.getTest().getId()))
                         .collect(Collectors.toList());
 
                 int totalMarks = myTests.stream().mapToInt(st -> st.getScore() != null ? st.getScore() : 0).sum();
@@ -95,9 +100,15 @@ public class OverallLeaderboardService {
 
                 int totalBadges = 0;
                 try {
-                    int achievementsCount = studentAchievementRepository.findByStudentIdOrderByAwardedAtDesc(student.getId()).size();
-                    int manualBadgesCount = studentBadgeRepository.findByStudentId(student.getId()).size();
-                    int languageBadgesCount = languageMasterBadgeRepository.findByStudentIdOrderByAwardedDateDesc(student.getId()).size();
+                    int achievementsCount = (int) studentAchievementRepository.findByStudentIdOrderByAwardedAtDesc(student.getId()).stream()
+                            .filter(sa -> sa.getTest() == null || validTestIds.contains(sa.getTest().getId()))
+                            .count();
+                    int manualBadgesCount = (int) studentBadgeRepository.findByStudentId(student.getId()).stream()
+                            .filter(sb -> sb.getSourceTest() == null || validTestIds.contains(sb.getSourceTest().getId()))
+                            .count();
+                    int languageBadgesCount = (int) languageMasterBadgeRepository.findByStudentIdOrderByAwardedDateDesc(student.getId()).stream()
+                            .filter(lmb -> lmb.getTest() == null || validTestIds.contains(lmb.getTest().getId()))
+                            .count();
                     totalBadges = achievementsCount + manualBadgesCount;
                 } catch (Exception ignored) {}
 
