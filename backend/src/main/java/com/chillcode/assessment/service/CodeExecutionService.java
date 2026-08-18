@@ -1089,13 +1089,18 @@ public class CodeExecutionService {
         studentTest.setPassFailStatus(totalScore >= (maxMarks / 2) ? "PASS" : "FAIL");
 
         studentTest.setSubmittedAt(java.time.LocalDateTime.now());
-        if (studentTest.getStartedAt() != null) {
-            long seconds = java.time.Duration.between(studentTest.getStartedAt(), studentTest.getSubmittedAt()).getSeconds();
-            studentTest.setTimeTakenSeconds(Math.max(1L, seconds));
-        } else if (studentTest.getAutoSubmitted() != null && studentTest.getAutoSubmitted() && studentTest.getTest() != null && studentTest.getTest().getDurationMinutes() != null) {
-            studentTest.setTimeTakenSeconds((long) studentTest.getTest().getDurationMinutes() * 60);
-        } else {
-            studentTest.setTimeTakenSeconds(1L); // Prevent 0 sec
+        
+        boolean isPracticeArena = studentTest.getTest() != null && studentTest.getTest().getName() != null && studentTest.getTest().getName().toLowerCase().contains("practice arena");
+        
+        if (!isPracticeArena) {
+            if (studentTest.getStartedAt() != null) {
+                long seconds = java.time.Duration.between(studentTest.getStartedAt(), studentTest.getSubmittedAt()).getSeconds();
+                studentTest.setTimeTakenSeconds(Math.max(1L, seconds));
+            } else if (studentTest.getAutoSubmitted() != null && studentTest.getAutoSubmitted() && studentTest.getTest() != null && studentTest.getTest().getDurationMinutes() != null) {
+                studentTest.setTimeTakenSeconds((long) studentTest.getTest().getDurationMinutes() * 60);
+            } else {
+                studentTest.setTimeTakenSeconds(1L); // Prevent 0 sec
+            }
         }
 
         studentTestRepository.save(studentTest);
@@ -1178,10 +1183,36 @@ public class CodeExecutionService {
             request.getLanguage()
         ));
 
+        Long timeTakenSeconds = null;
+        if (studentTest != null && studentTest.getStudent() != null && question != null) {
+            StudentQuestionStatus sqs = studentQuestionStatusRepository
+                    .findByStudentIdAndQuestionId(studentTest.getStudent().getId(), question.getId())
+                    .orElse(null);
+            
+            boolean isPracticeArena = studentTest.getTest() != null && 
+                                      studentTest.getTest().getName() != null && 
+                                      studentTest.getTest().getName().toLowerCase().contains("practice arena");
+                                      
+            if (isPracticeArena) {
+                if (sqs != null && sqs.getLastAttemptAt() != null) {
+                    long diff = java.time.Duration.between(sqs.getLastAttemptAt(), java.time.LocalDateTime.now()).getSeconds();
+                    timeTakenSeconds = Math.max(1L, diff);
+                }
+            } else {
+                if (studentTest.getStartedAt() != null) {
+                    long diff = java.time.Duration.between(studentTest.getStartedAt(), java.time.LocalDateTime.now()).getSeconds();
+                    timeTakenSeconds = Math.max(1L, diff);
+                } else if (studentTest.getTimeTakenSeconds() != null && studentTest.getTimeTakenSeconds() > 0) {
+                    timeTakenSeconds = studentTest.getTimeTakenSeconds();
+                }
+            }
+        }
+
         Submission sub = Submission.builder()
                 .studentTest(studentTest)
                 .question(question)
                 .admin(admin)
+                .timeTakenSeconds(timeTakenSeconds)
                 .code(request.getCode())
                 .language(request.getLanguage())
                 .status(result.getStatus())

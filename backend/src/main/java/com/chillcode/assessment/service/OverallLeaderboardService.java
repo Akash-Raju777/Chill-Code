@@ -97,6 +97,10 @@ public class OverallLeaderboardService {
                         .max(java.time.LocalDateTime::compareTo)
                         .orElse(null);
                 String latestAttemptDate = latestAttempt != null ? latestAttempt.toString() : "N/A";
+                
+                if (testsAttempted == 0) {
+                    continue; // Do not include students who have never attempted a test
+                }
 
                 int totalBadges = 0;
                 try {

@@ -71,6 +71,9 @@ public class Submission {
     @Column(name = "compile_error", columnDefinition = "TEXT")
     private String compileError;
 
+    @Column(name = "time_taken_seconds")
+    private Long timeTakenSeconds;
+
     @Column(columnDefinition = "TEXT")
     private String stdout;
 

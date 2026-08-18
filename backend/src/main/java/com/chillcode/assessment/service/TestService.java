@@ -312,11 +312,16 @@ public class TestService {
 
     @Transactional
     public StudentTest submitTest(Long testId, Long studentId) {
-        return submitTest(testId, studentId, false);
+        return submitTest(testId, studentId, false, null);
     }
 
     @Transactional
     public StudentTest submitTest(Long testId, Long studentId, boolean isAutoSubmitted) {
+        return submitTest(testId, studentId, isAutoSubmitted, null);
+    }
+
+    @Transactional
+    public StudentTest submitTest(Long testId, Long studentId, boolean isAutoSubmitted, Long frontendTimeTakenSeconds) {
         StudentTest st = studentTestRepository.findByStudentIdAndTestId(studentId, testId)
                 .orElseGet(() -> studentTestRepository.findById(testId)
                         .orElseThrow(() -> new RuntimeException("Student-Test mapping not found.")));
@@ -383,7 +388,9 @@ public class TestService {
         st.setAutoSubmitted(isAutoSubmitted);
         st.setSubmittedAt(LocalDateTime.now());
 
-        if (st.getStartedAt() != null) {
+        if (frontendTimeTakenSeconds != null && frontendTimeTakenSeconds > 0) {
+            st.setTimeTakenSeconds(frontendTimeTakenSeconds);
+        } else if (st.getStartedAt() != null) {
             long seconds = java.time.Duration.between(st.getStartedAt(), st.getSubmittedAt()).getSeconds();
             st.setTimeTakenSeconds(Math.max(1L, seconds));
         } else if (isAutoSubmitted && st.getTest() != null && st.getTest().getDurationMinutes() != null) {
@@ -706,16 +713,16 @@ public class TestService {
 
     @Transactional
     public com.chillcode.assessment.dto.StudentTestDto submitTestDto(Long testId, Long studentId) {
-        return submitTestDto(testId, studentId, null, false);
+        return submitTestDto(testId, studentId, null, false, null);
     }
 
     @Transactional
     public com.chillcode.assessment.dto.StudentTestDto submitTestDto(Long testId, Long studentId, java.util.Map<String, java.util.Map<String, String>> questionCodes) {
-        return submitTestDto(testId, studentId, questionCodes, false);
+        return submitTestDto(testId, studentId, questionCodes, false, null);
     }
 
     @Transactional
-    public com.chillcode.assessment.dto.StudentTestDto submitTestDto(Long testId, Long studentId, java.util.Map<String, java.util.Map<String, String>> questionCodes, boolean isAutoSubmitted) {
+    public com.chillcode.assessment.dto.StudentTestDto submitTestDto(Long testId, Long studentId, java.util.Map<String, java.util.Map<String, String>> questionCodes, boolean isAutoSubmitted, Long timeTakenSeconds) {
         StudentTest st = studentTestRepository.findByStudentIdAndTestId(studentId, testId)
                 .orElseGet(() -> studentTestRepository.findById(testId)
                         .orElseThrow(() -> new RuntimeException("Student-Test mapping not found.")));
@@ -765,7 +772,7 @@ public class TestService {
         }
 
         // Now submit and finalize the test (calculates score and status)
-        st = submitTest(testId, studentId, isAutoSubmitted);
+        st = submitTest(testId, studentId, isAutoSubmitted, timeTakenSeconds);
 
         return convertToStudentTestDto(st);
     }

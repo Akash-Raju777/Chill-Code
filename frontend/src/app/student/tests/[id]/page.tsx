@@ -124,7 +124,6 @@ function CodingWorkspaceInner() {
   const [customInput2, setCustomInput2] = useState('');
   const [customInput3, setCustomInput3] = useState('');
   const [consoleTab, setConsoleTab] = useState<'TESTCASE' | 'RESULT'>('TESTCASE');
-  const securityShieldEnabled = useTestStore((s) => s.securityShieldEnabled);
   const [submittingExam, setSubmittingExam] = useState(false);
   const [showExternalPasteWarning, setShowExternalPasteWarning] = useState(false);
   const [confirmDialog, setConfirmDialog] = useState<{
@@ -145,7 +144,10 @@ function CodingWorkspaceInner() {
   const [showFailModal, setShowFailModal] = useState(false);
   const [submissionResponse, setSubmissionResponse] = useState<any>(null);
 
-  const isSecurityStatusActive = user?.status === 'ACTIVE' && securityShieldEnabled;
+  const totalSecondsRef = useRef<number>(3600);
+  const frozenElapsedSecondsRef = useRef<number | null>(null);
+
+  const isSecurityStatusActive = user?.status === 'ACTIVE';
 
   const setUser = useAuthStore((s) => s.setUser);
 
@@ -264,6 +266,7 @@ function CodingWorkspaceInner() {
         // Calculate remaining time
         const baseMinutes = targetQuestions[0]?.timer || activeTest.test?.durationMinutes || 60;
         const totalSeconds = (typeof baseMinutes === 'number' && !isNaN(baseMinutes) && baseMinutes > 0) ? baseMinutes * 60 : 3600;
+        totalSecondsRef.current = totalSeconds;
         let remainingSeconds = totalSeconds;
         const questionStatus = targetQuestions[0]?.status;
         if (activeTest.startedAt && questionStatus !== 'NOT_STARTED' && questionStatus) {
@@ -515,7 +518,8 @@ function CodingWorkspaceInner() {
         };
       });
 
-      await apiCall(`/api/student/tests/${testId}/submit?isAutoSubmitted=true`, {
+      const timeTaken = totalSecondsRef.current || 3600;
+      await apiCall(`/api/student/tests/${testId}/submit?isAutoSubmitted=true&timeTakenSeconds=${timeTaken}`, {
         method: 'POST',
         body: JSON.stringify(questionCodes),
       });
@@ -545,6 +549,8 @@ function CodingWorkspaceInner() {
   const handleManualSubmitExam = () => {
     // FREEZE timer immediately when Submit Exam confirm dialog opens
     timerFrozenRef.current = true;
+    frozenElapsedSecondsRef.current = Math.max(1, totalSecondsRef.current - useTestStore.getState().timeLeftSeconds);
+
     setConfirmDialog({
       isOpen: true,
       title: 'Submit Exam',
@@ -565,7 +571,8 @@ function CodingWorkspaceInner() {
             };
           });
 
-          await apiCall(`/api/student/tests/${testId}/submit`, {
+          const timeTaken = frozenElapsedSecondsRef.current || 1;
+          await apiCall(`/api/student/tests/${testId}/submit?timeTakenSeconds=${timeTaken}`, {
             method: 'POST',
             body: JSON.stringify(questionCodes),
           });
@@ -1216,10 +1223,10 @@ function CodingWorkspaceInner() {
           {/* Security Status Indicator */}
           <div className="flex items-center gap-2 px-3 py-1.5 bg-[#0b0c10] border border-white/5 rounded-xl">
             <span className="text-[10px] text-gray-500 uppercase font-bold tracking-wider">
-              {securityShieldEnabled ? 'Security Shield' : 'Security Status'}
+              Security Shield
             </span>
              <span className={`text-xs font-bold ${isSecurityStatusActive ? 'text-emerald-400 animate-pulse' : 'text-red-400'}`}>
-               {isSecurityStatusActive ? 'Active' : 'Off'}
+               {isSecurityStatusActive ? 'Active' : (user?.status === 'NO_SECURITY' ? 'Off' : 'Inactive')}
              </span>
           </div>
 

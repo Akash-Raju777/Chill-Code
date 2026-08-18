@@ -98,53 +98,58 @@ public class RankingService {
                         && (sub.getScore() != null && sub.getScore() > 0 || "ACCEPTED".equalsIgnoreCase(sub.getStatus())))
                 .collect(Collectors.toList());
 
-        Map<Long, StudentAggregatedStats> studentStatsMap = new HashMap<>();
+        // studentId -> questionId -> bestSubmission
+        Map<Long, Map<Long, com.chillcode.assessment.entity.Submission>> bestSubmissionsMap = new HashMap<>();
 
         // Aggregate stats ONLY for students who actually submitted code in the target language for this subject
+        // Group by questionId to find the best attempt (max score) for each question to avoid duplicates
         for (com.chillcode.assessment.entity.Submission sub : subjectSubmissions) {
             User student = sub.getStudentTest().getStudent();
-            if (student == null) continue;
+            if (student == null || sub.getQuestion() == null) continue;
 
-            StudentAggregatedStats stats = studentStatsMap.computeIfAbsent(student.getId(), k -> new StudentAggregatedStats(student));
-            stats.totalScore += (sub.getScore() != null ? sub.getScore() : 0);
-            if (sub.getQuestion() != null && sub.getQuestion().getTestCases() != null && !sub.getQuestion().getTestCases().isEmpty()) {
-                stats.testCasesPassed += sub.getQuestion().getTestCases().size();
-            } else {
-                stats.testCasesPassed += 1;
-            }
-            stats.totalTimeTakenSeconds += (sub.getRunTimeMs() != null ? sub.getRunTimeMs() / 1000 : 0L);
+            bestSubmissionsMap.putIfAbsent(student.getId(), new HashMap<>());
+            Map<Long, com.chillcode.assessment.entity.Submission> studentSubs = bestSubmissionsMap.get(student.getId());
 
-            if (stats.lastSubmissionTime == null || (sub.getCreatedAt() != null && sub.getCreatedAt().isAfter(stats.lastSubmissionTime))) {
-                stats.lastSubmissionTime = sub.getCreatedAt();
+            Long qId = sub.getQuestion().getId();
+            com.chillcode.assessment.entity.Submission existing = studentSubs.get(qId);
+
+            int subScore = sub.getScore() != null ? sub.getScore() : 0;
+            int existingScore = (existing != null && existing.getScore() != null) ? existing.getScore() : -1;
+
+            if (existing == null || subScore > existingScore) {
+                studentSubs.put(qId, sub);
+            } else if (subScore == existingScore) {
+                int subTests = sub.getPassedTests() != null ? sub.getPassedTests() : 0;
+                int existingTests = existing.getPassedTests() != null ? existing.getPassedTests() : 0;
+                if (subTests > existingTests) {
+                    studentSubs.put(qId, sub);
+                }
             }
         }
 
-        List<Long> validTestIds = testRepository.findTestIdsWithQuestions();
+        Map<Long, StudentAggregatedStats> studentStatsMap = new HashMap<>();
 
-        // Also check StudentTest records if student attempted a test for this subject and submitted in target language
-        List<StudentTest> subjectStudentTests = studentTestRepository.findAll().stream()
-                .filter(st -> st.getTest() != null 
-                        && st.getTest().getSubject() != null 
-                        && st.getTest().getSubject().getId().equals(subjectId)
-                        && st.getStudent() != null
-                        && (st.getScore() != null && st.getScore() > 0)
-                        && validTestIds.contains(st.getTest().getId()))
-                .collect(Collectors.toList());
-
-        for (StudentTest st : subjectStudentTests) {
-            User student = st.getStudent();
-            if (student == null) continue;
-            boolean hasTargetLangSub = subjectSubmissions.stream().anyMatch(sub -> sub.getStudentTest() != null && sub.getStudentTest().getStudent().getId().equals(student.getId()));
-            if (hasTargetLangSub && !studentStatsMap.containsKey(student.getId())) {
-                StudentAggregatedStats stats = studentStatsMap.computeIfAbsent(student.getId(), k -> new StudentAggregatedStats(student));
-                stats.totalScore += (st.getScore() != null ? st.getScore() : 0);
-                stats.testCasesPassed += (st.getTestCasesPassed() != null ? st.getTestCasesPassed() : 0);
-                stats.totalTimeTakenSeconds += (st.getTimeTakenSeconds() != null ? st.getTimeTakenSeconds() : 0L);
-                LocalDateTime subTime = st.getSubmittedAt() != null ? st.getSubmittedAt() : st.getCreatedAt();
-                if (stats.lastSubmissionTime == null || (subTime != null && subTime.isAfter(stats.lastSubmissionTime))) {
-                    stats.lastSubmissionTime = subTime;
+        for (Map.Entry<Long, Map<Long, com.chillcode.assessment.entity.Submission>> entry : bestSubmissionsMap.entrySet()) {
+            Long studentId = entry.getKey();
+            Map<Long, com.chillcode.assessment.entity.Submission> bestSubs = entry.getValue();
+            
+            if (bestSubs.isEmpty()) continue;
+            User student = bestSubs.values().iterator().next().getStudentTest().getStudent();
+            
+            StudentAggregatedStats stats = new StudentAggregatedStats(student);
+            
+            for (com.chillcode.assessment.entity.Submission bestSub : bestSubs.values()) {
+                stats.totalScore += (bestSub.getScore() != null ? bestSub.getScore() : 0);
+                stats.testCasesPassed += (bestSub.getPassedTests() != null ? bestSub.getPassedTests() : 0);
+                
+                // Note: runTimeMs is execution time. We can accumulate it as tie-breaker.
+                stats.totalTimeTakenSeconds += (bestSub.getRunTimeMs() != null ? bestSub.getRunTimeMs() / 1000 : 0L);
+                
+                if (stats.lastSubmissionTime == null || (bestSub.getCreatedAt() != null && bestSub.getCreatedAt().isAfter(stats.lastSubmissionTime))) {
+                    stats.lastSubmissionTime = bestSub.getCreatedAt();
                 }
             }
+            studentStatsMap.put(studentId, stats);
         }
 
         List<StudentAggregatedStats> sortedStats = new ArrayList<>(studentStatsMap.values());

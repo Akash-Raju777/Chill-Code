@@ -186,6 +186,30 @@ export default function QuestionManagement() {
   const handleOpenEdit = async (q: Question) => {
     // Show form immediately with list data so the modal opens instantly
     setEditingQuestion(q);
+    setTitle(q.title || '');
+    setDifficulty(q.difficulty || 'MEDIUM');
+    setProblemStatement(q.problemStatement || '');
+    setConstraints(q.constraints || '');
+    setInputFormat(q.inputFormat || '');
+    setOutputFormat(q.outputFormat || '');
+    setTags(q.tags || '');
+    setQuestionCode(q.questionCode || '');
+    setTimer(q.timer || '');
+    setPassingMarks(q.passingMarks || 10);
+    
+    // Clear test cases or load basic ones while fetching full details
+    if (q.testCases && q.testCases.length > 0) {
+      setTestCases(q.testCases.map((tc: any) => ({
+        id: tc.id,
+        inputData: tc.inputData || '',
+        expectedOutput: tc.expectedOutput || '',
+        isHidden: tc.isHidden ?? false,
+        marks: tc.marks ?? 5,
+      })));
+    } else {
+      setTestCases([{ inputData: '', expectedOutput: '', isHidden: false, marks: 5 }]);
+    }
+    
     setShowForm(true);
 
     // Fetch the full question details from the API to get all saved test cases
@@ -449,17 +473,19 @@ export default function QuestionManagement() {
         } catch (_) {}
       }
 
-      // Refresh question list immediately
+      // Close modal instantly
+      showToast(editingQuestion ? 'Question updated successfully!' : 'Question uploaded successfully!');
+      setShowForm(false);
+
+      // Refresh question list in the background
       const activeSubjectId = formSubjectId || selectedSubjectId;
       if (activeSubjectId) {
         if (selectedSubjectId !== 'ALL' && typeof activeSubjectId === 'number') {
           setSelectedSubjectId(activeSubjectId);
         }
-        await fetchQuestions(selectedSubjectId);
+        fetchQuestions(selectedSubjectId).catch(console.error);
       }
 
-      showToast(editingQuestion ? 'Question updated successfully!' : 'Question uploaded successfully!');
-      setShowForm(false);
     } catch (err: any) {
       setError(err.message || 'Failed to save question');
       showToast('Failed to save question', 'error');

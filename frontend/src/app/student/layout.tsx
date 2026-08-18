@@ -35,9 +35,7 @@ export default function StudentLayout({ children }: { children: React.ReactNode 
 
   const isSessionActive = useTestStore((s) => s.isSessionActive);
   const isViewMode = useTestStore((s) => s.isViewMode);
-  const securityShieldEnabled = useTestStore((s) => s.securityShieldEnabled);
-
-  const isSecurityActive = isSessionActive && !isViewMode && user?.status === 'ACTIVE' && securityShieldEnabled;
+  const isSecurityActive = isSessionActive && !isViewMode && user?.status === 'ACTIVE';
   const setUser = useAuthStore((s) => s.setUser);
 
   useEffect(() => {
@@ -234,8 +232,8 @@ export default function StudentLayout({ children }: { children: React.ReactNode 
               {isSessionActive ? (
                 <>
                   <div className="text-xs text-gray-500">Security Shield</div>
-                  <div className={`text-sm font-semibold transition-colors duration-200 ${isSecurityActive ? 'text-emerald-400 animate-pulse' : 'text-red-400'}`}>
-                    {isSecurityActive ? 'Active' : (user?.status === 'NO_SECURITY' ? 'Off' : 'Inactive')}
+                  <div className={`text-sm font-semibold transition-colors duration-200 ${user?.status === 'ACTIVE' ? 'text-emerald-400 animate-pulse' : 'text-red-400'}`}>
+                    {user?.status === 'ACTIVE' ? 'Active' : (user?.status === 'NO_SECURITY' ? 'Off' : 'Inactive')}
                   </div>
                 </>
               ) : (

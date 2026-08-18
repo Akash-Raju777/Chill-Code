@@ -141,8 +141,34 @@ public class SubmissionController {
                     map.put("testId", sub.getStudentTest().getTest().getId());
                 }
                 
-                // For a completed test, use the existing stored exact elapsed time from StudentTest
-                map.put("timeTakenSeconds", sub.getStudentTest().getTimeTakenSeconds());
+                if (sub.getTimeTakenSeconds() != null) {
+                    map.put("timeTakenSeconds", sub.getTimeTakenSeconds());
+                } else {
+                    boolean isPracticeArena = sub.getStudentTest().getTest() != null && 
+                                              sub.getStudentTest().getTest().getName() != null && 
+                                              sub.getStudentTest().getTest().getName().toLowerCase().contains("practice arena");
+                    
+                    if (isPracticeArena) {
+                        if (sqs != null && sqs.getLastAttemptAt() != null && !sub.getCreatedAt().isBefore(sqs.getLastAttemptAt())) {
+                            long diff = java.time.Duration.between(sqs.getLastAttemptAt(), sub.getCreatedAt()).getSeconds();
+                            map.put("timeTakenSeconds", Math.max(1L, diff));
+                        } else {
+                            map.put("timeTakenSeconds", null);
+                        }
+                    } else {
+                        java.time.LocalDateTime startedAt = sub.getStudentTest().getStartedAt();
+                        java.time.LocalDateTime submittedAt = sub.getCreatedAt();
+                        if (startedAt != null && submittedAt != null) {
+                            long diff = java.time.Duration.between(startedAt, submittedAt).getSeconds();
+                            map.put("timeTakenSeconds", Math.max(1L, diff));
+                        } else if (sub.getStudentTest().getTimeTakenSeconds() != null && sub.getStudentTest().getTimeTakenSeconds() > 0) {
+                            map.put("timeTakenSeconds", sub.getStudentTest().getTimeTakenSeconds());
+                        } else {
+                            map.put("timeTakenSeconds", null);
+                        }
+                    }
+                }
+                
                 map.put("startedAt", sub.getStudentTest().getStartedAt());
                 map.put("submittedAt", sub.getStudentTest().getSubmittedAt());
             } else {
@@ -279,29 +305,41 @@ public class SubmissionController {
             if (sub.getStudentTest().getTest() != null) {
                 res.put("testId", sub.getStudentTest().getTest().getId());
             }
-            // Issue 2 Fix: Compute per-submission duration as (submission.createdAt - studentTest.startedAt)
-            java.time.LocalDateTime startedAt = sub.getStudentTest().getStartedAt();
-            java.time.LocalDateTime submittedAt = sub.getCreatedAt();
-            if (startedAt != null && submittedAt != null) {
-                long durationSec = java.time.Duration.between(startedAt, submittedAt).getSeconds();
-                if (durationSec > 0) {
-                    res.put("timeTakenSeconds", durationSec);
+            if (sub.getTimeTakenSeconds() != null) {
+                res.put("timeTakenSeconds", sub.getTimeTakenSeconds());
+                res.put("startedAt", sub.getStudentTest().getStartedAt());
+                res.put("submittedAt", sub.getCreatedAt());
+            } else {
+                // Fallback for older null records
+                java.time.LocalDateTime startedAt = sub.getStudentTest().getStartedAt();
+                java.time.LocalDateTime submittedAt = sub.getCreatedAt();
+                if (startedAt != null && submittedAt != null) {
+                    long durationSec = java.time.Duration.between(startedAt, submittedAt).getSeconds();
+                    if (durationSec > 0) {
+                        res.put("timeTakenSeconds", durationSec);
+                        res.put("startedAt", startedAt);
+                        res.put("submittedAt", submittedAt);
+                    } else {
+                        res.put("timeTakenSeconds", null);
+                        res.put("startedAt", startedAt);
+                        res.put("submittedAt", submittedAt);
+                    }
+                } else if (sub.getStudentTest().getTimeTakenSeconds() != null && sub.getStudentTest().getTimeTakenSeconds() > 0) {
+                    res.put("timeTakenSeconds", sub.getStudentTest().getTimeTakenSeconds());
                     res.put("startedAt", startedAt);
                     res.put("submittedAt", submittedAt);
                 } else {
                     res.put("timeTakenSeconds", null);
-                    res.put("startedAt", null);
+                    res.put("startedAt", startedAt);
                     res.put("submittedAt", submittedAt);
                 }
-            } else {
-                res.put("startedAt", startedAt);
-                res.put("submittedAt", submittedAt);
-                res.put("timeTakenSeconds", null);
             }
+        } else {
+            res.put("timeTakenSeconds", null);
+            res.put("startedAt", null);
+            res.put("submittedAt", sub.getCreatedAt());
         }
 
         return ResponseEntity.ok(res);
     }
-
 }
-

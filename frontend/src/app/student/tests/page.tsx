@@ -256,7 +256,7 @@ export default function TestsWorkspace() {
     setStartingTest(true);
     try {
       const latestUser = useAuthStore.getState().user;
-      const isSecActive = latestUser?.status === 'ACTIVE' && (selectedTest.test.securityShieldEnabled ?? false);
+      const isSecActive = latestUser?.status === 'ACTIVE';
 
       // Auto fullscreen request on interaction gesture if security shield enabled
       if (isSecActive) {
@@ -747,7 +747,7 @@ export default function TestsWorkspace() {
 
       {/* Confirm Start Assessment Modal */}
       {showConfirmModal && selectedTest && (() => {
-        const isSecActive = user?.status === 'ACTIVE' && (selectedTest.test.securityShieldEnabled ?? false);
+        const isSecActive = user?.status === 'ACTIVE';
         return (
           <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
             <div className="w-full max-w-md bg-[#11131c] border border-white/10 p-6 rounded-2xl text-center shadow-2xl relative">
