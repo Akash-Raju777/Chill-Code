@@ -735,8 +735,11 @@ public class TestService {
                     java.util.Map<String, String> details = entry.getValue();
                     String code = details.get("code");
                     String language = details.get("language");
+                    if (code == null || code.trim().isEmpty()) {
+                        code = "// No code submitted";
+                    }
                     
-                    if (code != null && !code.trim().isEmpty()) {
+                    if (code != null) {
                         Question question = questionRepository.findById(questionId).orElse(null);
                         if (question != null) {
                             List<Submission> existing = submissionRepository.findByStudentTestIdAndQuestionId(st.getId(), questionId);
