@@ -149,7 +149,6 @@ public class BadgeSetService {
 
         if (dto.getBadges() != null) {
             set.getBadges().clear();
-            badgeSetRepository.saveAndFlush(set);
             
             for (BadgeDefinitionDto bDto : dto.getBadges()) {
                 BadgeDefinition def = BadgeDefinition.builder()
@@ -362,8 +361,9 @@ public class BadgeSetService {
                     // Student already has an achievement for this test — check if rank changed
                     String expectedRankStr = "Badge " + currentRank;
                     if (!expectedRankStr.equals(existingSA.getRankAchieved())
-                            || !def.getBadgeName().equals(existingSA.getBadgeName())) {
-                        // Rank changed — UPDATE IN-PLACE (no delete+recreate, no duplicate notification)
+                            || !def.getBadgeName().equals(existingSA.getBadgeName())
+                            || !def.getBadgeIcon().equals(existingSA.getBadgeIcon())) {
+                        // Rank or badge details changed — UPDATE IN-PLACE (no delete+recreate, no duplicate notification)
                         existingSA.setBadgeName(def.getBadgeName());
                         existingSA.setBadgeIcon(def.getBadgeIcon());
                         existingSA.setRankAchieved(expectedRankStr);
@@ -430,8 +430,10 @@ public class BadgeSetService {
                 LanguageMasterBadge existingLMB = existingLMBByStudent.get(studentId);
 
                 if (existingLMB != null) {
-                    // Update in-place if rank changed
-                    if (existingLMB.getAwardedRank() == null || !existingLMB.getAwardedRank().equals(rank)) {
+                    // Update in-place if rank or badge details changed
+                    if (existingLMB.getAwardedRank() == null || !existingLMB.getAwardedRank().equals(rank)
+                            || !badgeName.equals(existingLMB.getBadgeName())
+                            || !badgeIcon.equals(existingLMB.getBadgeIcon())) {
                         existingLMB.setAwardedRank(rank);
                         existingLMB.setBadgeName(badgeName);
                         existingLMB.setBadgeIcon(badgeIcon);

@@ -572,16 +572,7 @@ export default function AdminBadgeSetsPage() {
 
       {activeTab === 'sets' ? (
         <>
-          {/* Create Button */}
-          <div className="flex justify-end">
-            <button
-              onClick={handleOpenCreateModal}
-              className="px-4 py-2.5 bg-gradient-to-r from-purple-600 to-indigo-600 text-white font-bold rounded-xl shadow-lg shadow-indigo-500/10 flex items-center gap-2 hover:from-purple-500 hover:to-indigo-500 transition-all text-xs"
-            >
-              <Plus className="w-4 h-4" />
-              Configure New Set
-            </button>
-          </div>
+          {/* Create Button removed per request */}
 
           {/* Badge Sets List */}
           {badgeSets.length === 0 ? (
@@ -620,26 +611,6 @@ export default function AdminBadgeSetsPage() {
                       </div>
 
                       <div className="flex items-center gap-2">
-                        <button
-                          onClick={() => handleViewWinners(set)}
-                          title="View Badge Winners"
-                          className="p-2 bg-indigo-500/10 hover:bg-indigo-500/20 border border-indigo-500/30 text-indigo-400 rounded-lg transition-all"
-                        >
-                          <Users className="w-4 h-4" />
-                        </button>
-                        <button
-                          onClick={() => handleToggleStatus(set.id, set.status)}
-                          title={isActive ? 'Disable Badge Set' : 'Enable Badge Set'}
-                          className={`p-2 rounded-lg border text-xs font-bold transition-all ${isActive ? 'bg-amber-500/10 border-amber-500/30 text-amber-400 hover:bg-amber-500/20' : 'bg-emerald-500/10 border-emerald-500/30 text-emerald-400 hover:bg-emerald-500/20'}`}
-                        >
-                          <Power className="w-4 h-4" />
-                        </button>
-                        <button
-                          onClick={() => handleOpenEditModal(set)}
-                          className="p-2 bg-white/5 hover:bg-white/10 border border-white/10 text-gray-300 rounded-lg transition-all"
-                        >
-                          <Edit3 className="w-4 h-4" />
-                        </button>
                         <button
                           onClick={() => handleDelete(set.id)}
                           className="p-2 bg-red-500/10 hover:bg-red-500/20 border border-red-500/20 text-red-400 rounded-lg transition-all"
