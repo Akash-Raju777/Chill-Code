@@ -559,7 +559,7 @@ function CodingWorkspaceInner() {
         if (autoSubmittedRef.current) return;
         autoSubmittedRef.current = true;
         // Timer stays frozen — session will be cleared after submission
-        timerFrozenRef.current = false;
+        // We will only unfreeze it if the API call fails.
         
         setSubmittingExam(true);
         try {
@@ -590,6 +590,7 @@ function CodingWorkspaceInner() {
           router.push('/student/results');
         } catch (e: any) {
           autoSubmittedRef.current = false; // Allow retry on failure
+          timerFrozenRef.current = false; // Unfreeze timer so student can continue
           toast.error(e.message || 'Failed to submit exam. Please try again.');
         } finally {
           setSubmittingExam(false);

@@ -124,6 +124,12 @@ public class SubmissionController {
             map.put("percentage", sub.getPercentage());
             map.put("overallResult", sub.getOverallResult() != null ? sub.getOverallResult() : ("ACCEPTED".equals(sub.getStatus()) ? "PASS" : "FAIL"));
             map.put("createdAt", sub.getCreatedAt());
+            map.put("timeTakenSeconds", sub.getTimeTakenSeconds());
+            
+            if (sub.getStudentTest() != null) {
+                map.put("startedAt", sub.getStudentTest().getStartedAt());
+                map.put("submittedAt", sub.getStudentTest().getSubmittedAt());
+            }
             
             map.put("questionId", sub.getQuestion().getId());
             map.put("questionName", sub.getQuestion().getTitle());
@@ -186,6 +192,12 @@ public class SubmissionController {
         res.put("totalTests", sub.getTotalTests());
         res.put("judge0Token", sub.getJudge0Token());
         res.put("createdAt", sub.getCreatedAt());
+        res.put("timeTakenSeconds", sub.getTimeTakenSeconds());
+        
+        if (sub.getStudentTest() != null) {
+            res.put("startedAt", sub.getStudentTest().getStartedAt());
+            res.put("submittedAt", sub.getStudentTest().getSubmittedAt());
+        }
         
         // Detailed evaluation metrics
         int qTotal = sub.getTotalMarks() != null && sub.getTotalMarks() > 0 ? sub.getTotalMarks() : 
