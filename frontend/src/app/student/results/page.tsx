@@ -8,8 +8,7 @@ import {
   Loader2, 
   Calendar, 
   ExternalLink,
-  Clock,
-  Database
+  Clock
 } from 'lucide-react';
 
 interface SubmissionResult {
@@ -35,6 +34,25 @@ interface SubmissionResult {
 const formatDate = (dateStr?: string) => {
   if (!dateStr) return 'N/A';
   return formatISTDateTime(dateStr);
+};
+
+const formatDuration = (seconds?: number, startedAt?: string, submittedAt?: string) => {
+  let totalSec = seconds;
+  if (totalSec === undefined || totalSec === null || totalSec < 0) return 'N/A';
+  if (totalSec === 0) return '0 sec';
+
+  
+  const hrs = Math.floor(totalSec / 3600);
+  const mins = Math.floor((totalSec % 3600) / 60);
+  const secs = totalSec % 60;
+
+  if (hrs > 0) {
+    return `${hrs} hr ${mins} min ${secs} sec`;
+  }
+  if (mins > 0) {
+    return `${mins} min ${secs} sec`;
+  }
+  return `${secs} sec`;
 };
 
 export default function StudentResults() {
@@ -164,13 +182,9 @@ export default function StudentResults() {
                       <span className="text-indigo-400 font-bold text-[10px] tracking-wider bg-indigo-500/10 border border-indigo-500/20 px-2 py-0.5 rounded">
                         Attempts: {item.attempts ?? 0}
                       </span>
-                      <span className="flex items-center gap-1">
-                        <Clock className="w-3.5 h-3.5" />
-                        {item.runTimeMs !== null ? `${item.runTimeMs} ms` : 'N/A'}
-                      </span>
-                      <span className="flex items-center gap-1">
-                        <Database className="w-3.5 h-3.5" />
-                        {item.memoryUsedKb !== null ? `${item.memoryUsedKb} KB` : 'N/A'}
+                      <span className="flex items-center gap-1 text-indigo-300 font-medium">
+                        <Clock className="w-3.5 h-3.5 text-indigo-400" />
+                        {formatDuration((item as any).timeTakenSeconds, (item as any).startedAt, (item as any).submittedAt || item.createdAt)}
                       </span>
                       <span className="flex items-center gap-1">
                         <Calendar className="w-3.5 h-3.5" />

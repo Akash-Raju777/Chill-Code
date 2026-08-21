@@ -948,9 +948,9 @@ public class CodeExecutionService {
             if (backendToolsW64.exists()) {
                 return backendToolsW64.getAbsolutePath();
             }
-            File hardcodedW64 = new File("c:/Users/Administrator/Desktop/Chill-Code3/backend/tools/w64devkit/bin/" + defaultCmd + ".exe");
-            if (hardcodedW64.exists()) {
-                return hardcodedW64.getAbsolutePath();
+            File parentToolsW64 = new File(userDir, "../tools/w64devkit/bin/" + defaultCmd + ".exe");
+            if (parentToolsW64.exists()) {
+                return parentToolsW64.getAbsolutePath();
             }
             // Try system PATH on Windows
             try {
@@ -992,8 +992,8 @@ public class CodeExecutionService {
             if (localPy.exists()) return localPy.getAbsolutePath();
             File backendPy = new File(userDir, "backend/tools/python/python.exe");
             if (backendPy.exists()) return backendPy.getAbsolutePath();
-            File hardcodedPy = new File("c:/Users/Administrator/Desktop/Chill-Code3/backend/tools/python/python.exe");
-            if (hardcodedPy.exists()) return hardcodedPy.getAbsolutePath();
+            File parentPy = new File(userDir, "../tools/python/python.exe");
+            if (parentPy.exists()) return parentPy.getAbsolutePath();
             // Try system PATH
             try {
                 Process p = new ProcessBuilder("where.exe", "python").start();
@@ -1088,6 +1088,21 @@ public class CodeExecutionService {
         int maxMarks = studentTest.getTest().getMaxMarks() != null ? studentTest.getTest().getMaxMarks() : 100;
         studentTest.setPassFailStatus(totalScore >= (maxMarks / 2) ? "PASS" : "FAIL");
 
+        studentTest.setSubmittedAt(java.time.LocalDateTime.now());
+        
+        boolean isPracticeArena = studentTest.getTest() != null && studentTest.getTest().getName() != null && studentTest.getTest().getName().toLowerCase().contains("practice arena");
+        
+        if (!isPracticeArena) {
+            if (studentTest.getStartedAt() != null) {
+                long seconds = java.time.Duration.between(studentTest.getStartedAt(), studentTest.getSubmittedAt()).getSeconds();
+                studentTest.setTimeTakenSeconds(Math.max(1L, seconds));
+            } else if (studentTest.getAutoSubmitted() != null && studentTest.getAutoSubmitted() && studentTest.getTest() != null && studentTest.getTest().getDurationMinutes() != null) {
+                studentTest.setTimeTakenSeconds((long) studentTest.getTest().getDurationMinutes() * 60);
+            } else {
+                studentTest.setTimeTakenSeconds(1L); // Prevent 0 sec
+            }
+        }
+
         studentTestRepository.save(studentTest);
 
         // Check if student earned achievement (e.g. solve 1 problem successfully)
@@ -1168,10 +1183,36 @@ public class CodeExecutionService {
             request.getLanguage()
         ));
 
+        Long timeTakenSeconds = null;
+        if (studentTest != null && studentTest.getStudent() != null && question != null) {
+            StudentQuestionStatus sqs = studentQuestionStatusRepository
+                    .findByStudentIdAndQuestionId(studentTest.getStudent().getId(), question.getId())
+                    .orElse(null);
+            
+            boolean isPracticeArena = studentTest.getTest() != null && 
+                                      studentTest.getTest().getName() != null && 
+                                      studentTest.getTest().getName().toLowerCase().contains("practice arena");
+                                      
+            if (isPracticeArena) {
+                if (sqs != null && sqs.getLastAttemptAt() != null) {
+                    long diff = java.time.Duration.between(sqs.getLastAttemptAt(), java.time.LocalDateTime.now()).getSeconds();
+                    timeTakenSeconds = Math.max(1L, diff);
+                }
+            } else {
+                if (studentTest.getStartedAt() != null) {
+                    long diff = java.time.Duration.between(studentTest.getStartedAt(), java.time.LocalDateTime.now()).getSeconds();
+                    timeTakenSeconds = Math.max(1L, diff);
+                } else if (studentTest.getTimeTakenSeconds() != null && studentTest.getTimeTakenSeconds() > 0) {
+                    timeTakenSeconds = studentTest.getTimeTakenSeconds();
+                }
+            }
+        }
+
         Submission sub = Submission.builder()
                 .studentTest(studentTest)
                 .question(question)
                 .admin(admin)
+                .timeTakenSeconds(timeTakenSeconds)
                 .code(request.getCode())
                 .language(request.getLanguage())
                 .status(result.getStatus())

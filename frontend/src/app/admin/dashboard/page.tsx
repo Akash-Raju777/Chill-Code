@@ -128,6 +128,39 @@ export default function AdminDashboard() {
     });
   };
 
+  const handleBook = (studentKey: string, displayName: string) => {
+    setConfirmDialog({
+      isOpen: true,
+      title: 'Book Student for Malpractice',
+      message: `Are you sure you want to officially book ${displayName} for malpractice? This will permanently mark their status as YES for malpractice in the registry.`,
+      onConfirm: async () => {
+        // Track locally so background polling never brings it back
+        forgivenStudentKeysRef.current.add(studentKey);
+        forgivenStudentKeysRef.current.add(displayName);
+
+        if (data) {
+          setData({
+            ...data,
+            recentActivities: data.recentActivities.filter(
+              act => (act.registerNumber || act.user) !== studentKey && act.user !== displayName
+            )
+          });
+        }
+
+        try {
+          await apiCall(`/api/admin/student/book?registerNumber=${encodeURIComponent(studentKey)}`, {
+            method: 'POST'
+          });
+          toast.success(`Successfully booked ${displayName} for malpractice.`);
+          fetchMetrics();
+        } catch (e: any) {
+          toast.error(e.message || 'Failed to book student.');
+          fetchMetrics();
+        }
+      }
+    });
+  };
+
   const handleForgiveAll = () => {
     if (!data || data.recentActivities.length === 0) return;
     setConfirmDialog({
@@ -532,12 +565,20 @@ export default function AdminDashboard() {
                             <span className="w-1.5 h-1.5 rounded-full bg-red-400 animate-ping"></span>
                             Security Violation Recorded
                           </span>
-                          <button
-                            onClick={() => handleForgive(act.registerNumber || act.user, act.user)}
-                            className="px-3 py-1 text-[10px] bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400 border border-emerald-500/20 rounded-lg font-bold transition-all uppercase tracking-wider select-none cursor-pointer"
-                          >
-                            Forgive Student
-                          </button>
+                          <div className="flex items-center gap-2">
+                            <button
+                              onClick={() => handleBook(act.registerNumber || act.user, act.user)}
+                              className="px-3 py-1 text-[10px] bg-amber-500/10 hover:bg-amber-500/20 text-amber-400 border border-amber-500/20 rounded-lg font-bold transition-all uppercase tracking-wider select-none cursor-pointer"
+                            >
+                              Book Student
+                            </button>
+                            <button
+                              onClick={() => handleForgive(act.registerNumber || act.user, act.user)}
+                              className="px-3 py-1 text-[10px] bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400 border border-emerald-500/20 rounded-lg font-bold transition-all uppercase tracking-wider select-none cursor-pointer"
+                            >
+                              Forgive Student
+                            </button>
+                          </div>
                         </div>
                       ) : (
                         <div className="mt-2.5 flex items-center justify-between border-t border-white/5 pt-2">

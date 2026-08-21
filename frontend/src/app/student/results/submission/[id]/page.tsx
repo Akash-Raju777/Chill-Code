@@ -17,6 +17,25 @@ import {
   Calendar
 } from 'lucide-react';
 
+const formatDuration = (seconds?: number, startedAt?: string, submittedAt?: string) => {
+  let totalSec = seconds;
+  if (totalSec === undefined || totalSec === null || totalSec < 0) return 'N/A';
+  if (totalSec === 0) return '0 sec';
+
+  
+  const hrs = Math.floor(totalSec / 3600);
+  const mins = Math.floor((totalSec % 3600) / 60);
+  const secs = totalSec % 60;
+
+  if (hrs > 0) {
+    return `${hrs} hr ${mins} min ${secs} sec`;
+  }
+  if (mins > 0) {
+    return `${mins} min ${secs} sec`;
+  }
+  return `${secs} sec`;
+};
+
 export default function SubmissionResultPage() {
   const params = useParams();
   const router = useRouter();
@@ -238,8 +257,18 @@ export default function SubmissionResultPage() {
       </div>
 
       {/* Performance Stats */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div className="bg-[#11131c] border border-white/5 p-4 rounded-xl flex items-center gap-3">
+          <div className="p-2.5 rounded-lg bg-indigo-500/10 text-indigo-400">
+            <Clock className="w-5 h-5" />
+          </div>
+          <div>
+            <div className="text-[10px] text-gray-500 font-bold uppercase tracking-wider">Time Taken</div>
+            <div className="text-xs font-semibold text-gray-200 font-mono">
+              {formatDuration(submission.timeTakenSeconds, submission.startedAt, submission.submittedAt || submission.createdAt)}
+            </div>
+          </div>
+        </div>
 
         <div className="bg-[#11131c] border border-white/5 p-4 rounded-xl flex items-center gap-3">
           <div className="p-2.5 rounded-lg bg-blue-500/10 text-blue-400">

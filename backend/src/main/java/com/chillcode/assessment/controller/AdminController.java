@@ -186,6 +186,67 @@ public class AdminController {
         return ResponseEntity.ok("Student suspension has been lifted.");
     }
 
+    @PostMapping("/student/book")
+    @org.springframework.transaction.annotation.Transactional
+    public ResponseEntity<?> bookStudent(@RequestParam String registerNumber) {
+        Long adminId = com.chillcode.assessment.security.SecurityUtils.getCurrentAdminId();
+        java.util.Optional<User> studentOpt = userRepository.findByRoleAndAdminId(Role.STUDENT, adminId).stream()
+                .filter(u -> registerNumber.equals(u.getRegisterNumber()) || registerNumber.equals(u.getUsername()) || registerNumber.equalsIgnoreCase(u.getName()))
+                .findFirst();
+        if (studentOpt.isEmpty()) {
+            return ResponseEntity.ok("No student security logs found for: " + registerNumber);
+        }
+
+        User student = studentOpt.get();
+
+        // Delete all warnings permanently from database for this student to clear dashboard notifications
+        entityManager.createQuery("DELETE FROM Warning w WHERE w.studentTest.student.id = :stuId")
+                .setParameter("stuId", student.getId())
+                .executeUpdate();
+
+        // Allow permission to write test again but keep warningsCount > 0 so Malpractice remains "YES"
+        java.util.List<com.chillcode.assessment.entity.StudentTest> studentTests = studentTestRepository.findByStudentId(student.getId());
+        for (com.chillcode.assessment.entity.StudentTest st : studentTests) {
+            st.setWarningsCount(Math.max(1, st.getWarningsCount() != null ? st.getWarningsCount() : 1));
+            st.setIsSuspended(false);
+            if ("SUSPENDED".equals(st.getStatus())) {
+                st.setStatus("STARTED");
+            }
+            studentTestRepository.save(st);
+        }
+
+        java.util.List<com.chillcode.assessment.entity.StudentQuestionStatus> questionStatuses = studentQuestionStatusRepository.findByStudentId(student.getId());
+        for (com.chillcode.assessment.entity.StudentQuestionStatus sqs : questionStatuses) {
+            if ("SUSPENDED".equals(sqs.getStatus())) {
+                sqs.setStatus("IN_PROGRESS");
+                studentQuestionStatusRepository.save(sqs);
+            }
+        }
+
+        return ResponseEntity.ok("Student malpractice has been officially booked, and test permissions restored.");
+    }
+
+    @PostMapping("/student/delete-warning")
+    @org.springframework.transaction.annotation.Transactional
+    public ResponseEntity<?> deleteWarning(@RequestParam String registerNumber) {
+        Long adminId = com.chillcode.assessment.security.SecurityUtils.getCurrentAdminId();
+        java.util.Optional<User> studentOpt = userRepository.findByRoleAndAdminId(Role.STUDENT, adminId).stream()
+                .filter(u -> registerNumber.equals(u.getRegisterNumber()) || registerNumber.equals(u.getUsername()) || registerNumber.equalsIgnoreCase(u.getName()))
+                .findFirst();
+        if (studentOpt.isEmpty()) {
+            return ResponseEntity.ok("No student security logs found for: " + registerNumber);
+        }
+
+        User student = studentOpt.get();
+
+        // Just delete the warning to clear the notification from the dashboard
+        entityManager.createQuery("DELETE FROM Warning w WHERE w.studentTest.student.id = :stuId")
+                .setParameter("stuId", student.getId())
+                .executeUpdate();
+
+        // Do not touch StudentTest. This just deletes the request.
+        return ResponseEntity.ok("Warning notification deleted.");
+    }
 
     @DeleteMapping("/students/{id}")
     public ResponseEntity<Void> deleteStudent(@PathVariable Long id) {

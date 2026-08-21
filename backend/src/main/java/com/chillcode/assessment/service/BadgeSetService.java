@@ -149,7 +149,6 @@ public class BadgeSetService {
 
         if (dto.getBadges() != null) {
             set.getBadges().clear();
-            badgeSetRepository.saveAndFlush(set);
             
             for (BadgeDefinitionDto bDto : dto.getBadges()) {
                 BadgeDefinition def = BadgeDefinition.builder()
@@ -201,10 +200,6 @@ public class BadgeSetService {
 
     @Transactional
     public List<BadgeSetDto> getAllBadgeSets() {
-        try {
-            questionService.cleanupOrphanedRecordsAndEmptyTests();
-        } catch (Exception ignored) {}
-
         List<BadgeSet> sets = badgeSetRepository.findAll();
         Long adminId = com.chillcode.assessment.security.SecurityUtils.getCurrentAdminId();
         
@@ -287,7 +282,7 @@ public class BadgeSetService {
 
         BadgeSet badgeSet = badgeSetOpt.get();
         List<BadgeDefinition> definitions = badgeDefinitionRepository.findByBadgeSetIdAndStatus(badgeSet.getId(), "ACTIVE");
-        definitions.sort(Comparator.comparingInt(BadgeDefinition::getRankPosition));
+        definitions.sort(Comparator.comparingInt(d -> d.getRankPosition() != null ? d.getRankPosition() : 1));
 
         // 1. Fetch all student tests for THIS test only (scoped, efficient)
         List<StudentTest> studentTests = studentTestRepository.findByTestId(testId).stream()
@@ -343,8 +338,9 @@ public class BadgeSetService {
 
         // 4. Assign ranks to the top N students
         int rank = 1;
+        int maxWinners = badgeSet.getNumberOfWinners() != null ? badgeSet.getNumberOfWinners() : 3;
         for (StudentTest st : studentTests) {
-            if (rank > badgeSet.getNumberOfWinners()) break;
+            if (rank > maxWinners) break;
 
             final int currentRank = rank;
             BadgeDefinition def = definitions.stream()
@@ -365,8 +361,9 @@ public class BadgeSetService {
                     // Student already has an achievement for this test — check if rank changed
                     String expectedRankStr = "Badge " + currentRank;
                     if (!expectedRankStr.equals(existingSA.getRankAchieved())
-                            || !def.getBadgeName().equals(existingSA.getBadgeName())) {
-                        // Rank changed — UPDATE IN-PLACE (no delete+recreate, no duplicate notification)
+                            || !def.getBadgeName().equals(existingSA.getBadgeName())
+                            || !def.getBadgeIcon().equals(existingSA.getBadgeIcon())) {
+                        // Rank or badge details changed — UPDATE IN-PLACE (no delete+recreate, no duplicate notification)
                         existingSA.setBadgeName(def.getBadgeName());
                         existingSA.setBadgeIcon(def.getBadgeIcon());
                         existingSA.setRankAchieved(expectedRankStr);
@@ -433,8 +430,10 @@ public class BadgeSetService {
                 LanguageMasterBadge existingLMB = existingLMBByStudent.get(studentId);
 
                 if (existingLMB != null) {
-                    // Update in-place if rank changed
-                    if (existingLMB.getAwardedRank() == null || !existingLMB.getAwardedRank().equals(rank)) {
+                    // Update in-place if rank or badge details changed
+                    if (existingLMB.getAwardedRank() == null || !existingLMB.getAwardedRank().equals(rank)
+                            || !badgeName.equals(existingLMB.getBadgeName())
+                            || !badgeIcon.equals(existingLMB.getBadgeIcon())) {
                         existingLMB.setAwardedRank(rank);
                         existingLMB.setBadgeName(badgeName);
                         existingLMB.setBadgeIcon(badgeIcon);
@@ -487,11 +486,12 @@ public class BadgeSetService {
     }
 
     /**
-     * Resolves the admin user for a badge assignment, with multiple fallbacks.
+     * Resolves the admin user for a badge assignment.
+     * Priority: test.admin → student.admin → current authenticated admin → first active admin.
      */
     private User resolveAdmin(Test test, User student) {
-        if (test.getAdmin() != null) return test.getAdmin();
-        if (student.getAdmin() != null) return student.getAdmin();
+        if (test != null && test.getAdmin() != null) return test.getAdmin();
+        if (student != null && student.getAdmin() != null) return student.getAdmin();
         try {
             Long currentAdminId = com.chillcode.assessment.security.SecurityUtils.getCurrentAdminId();
             if (currentAdminId != null) {
@@ -499,35 +499,30 @@ public class BadgeSetService {
                 if (admin != null) return admin;
             }
         } catch (Exception ignored) {}
-        User admin = userRepository.findByUsername("admin_demo").orElse(null);
-        if (admin != null) return admin;
-        return userRepository.findAll().stream()
-                .filter(u -> u.getRole() != null && u.getRole().toString().contains("ADMIN"))
-                .findFirst()
-                .orElse(null);
+        try {
+            return userRepository.findAll().stream()
+                    .filter(u -> u.getRole() == com.chillcode.assessment.entity.Role.ADMIN)
+                    .findFirst()
+                    .orElse(null);
+        } catch (Exception ignored) {}
+        return null;
     }
 
     // --- Student & Admin Achievements ---
 
     @Transactional
     public List<StudentAchievementDto> getStudentAchievements(Long studentId) {
-        // Dynamically trigger allocation for all tests completed by this student to ensure sync
-        try {
-            List<StudentTest> completedTests = studentTestRepository.findByStudentId(studentId).stream()
-                    .filter(st -> st.getTest() != null && st.getSubmittedAt() != null)
-                    .collect(Collectors.toList());
-            for (StudentTest st : completedTests) {
-                allocateBadgesForTest(st.getTest().getId());
-            }
-        } catch (Exception ignored) {}
-
+        List<Long> validTestIds = testRepository.findTestIdsWithQuestions();
+        
         List<StudentAchievementDto> achievements = studentAchievementRepository.findByStudentIdOrderByAwardedAtDesc(studentId).stream()
+                .filter(sa -> sa.getTest() == null || validTestIds.contains(sa.getTest().getId()))
                 .map(this::mapAchievementToDto)
                 .collect(Collectors.toCollection(ArrayList::new));
 
         // Merge manual badges
         List<StudentBadge> manualBadges = studentBadgeRepository.findByStudentId(studentId);
         for (StudentBadge sb : manualBadges) {
+            if (sb.getSourceTest() != null && !validTestIds.contains(sb.getSourceTest().getId())) continue;
             StudentAchievementDto dto = StudentAchievementDto.builder()
                     .id(sb.getId())
                     .studentId(studentId)
@@ -553,7 +548,10 @@ public class BadgeSetService {
 
     @Transactional(readOnly = true)
     public List<LanguageMasterBadgeDto> getStudentLanguageBadges(Long studentId) {
+        List<Long> validTestIds = testRepository.findTestIdsWithQuestions();
+        
         return languageMasterBadgeRepository.findByStudentIdOrderByAwardedDateDesc(studentId).stream()
+                .filter(lmb -> lmb.getTest() == null || validTestIds.contains(lmb.getTest().getId()))
                 .map(lmb -> {
                     String effectiveTestCode = null;
                     String effectiveTestName = lmb.getTest() != null ? lmb.getTest().getName() : null;
@@ -611,15 +609,19 @@ public class BadgeSetService {
         }
 
         Long adminId = com.chillcode.assessment.security.SecurityUtils.getCurrentAdminId();
+        List<Long> validTestIds = testRepository.findTestIdsWithQuestions();
 
         List<StudentAchievementDto> list = studentAchievementRepository.findAll().stream()
                 .filter(sa -> adminId == null || (sa.getTest() != null && sa.getTest().getAdmin() != null && sa.getTest().getAdmin().getId().equals(adminId)))
+                .filter(sa -> sa.getTest() == null || validTestIds.contains(sa.getTest().getId()))
                 .map(sa -> mapAchievementToDtoWithRanks(sa, overallRankMap, subjectRankMap))
                 .collect(Collectors.toCollection(ArrayList::new));
 
         // Merge manual badges
         List<StudentBadge> manualBadges = studentBadgeRepository.findAll();
         for (StudentBadge sb : manualBadges) {
+            if (sb.getSourceTest() != null && !validTestIds.contains(sb.getSourceTest().getId())) continue;
+            
             Long badgeAdminId = sb.getBadge().getAdmin() != null ? sb.getBadge().getAdmin().getId() : null;
             if (adminId != null && badgeAdminId != null && !badgeAdminId.equals(adminId)) {
                 continue;

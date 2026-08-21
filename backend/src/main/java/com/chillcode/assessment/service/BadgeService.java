@@ -106,7 +106,11 @@ public class BadgeService {
     }
 
     public List<BadgeDto> getAllBadges() {
-        return badgeRepository.findAll().stream().map(this::mapBadgeToDto).collect(Collectors.toList());
+        Long adminId = com.chillcode.assessment.security.SecurityUtils.getCurrentAdminId();
+        List<com.chillcode.assessment.entity.Badge> badges = (adminId != null)
+                ? badgeRepository.findByAdminId(adminId)
+                : badgeRepository.findAll();
+        return badges.stream().map(this::mapBadgeToDto).collect(Collectors.toList());
     }
 
     public BadgeDto getBadgeById(Long id) {
@@ -125,14 +129,23 @@ public class BadgeService {
     }
 
     public List<BadgeDto> getBadgesForStudentWithLockStatus(Long studentId) {
-        Set<Long> earnedBadgeIds = studentBadgeRepository.findByStudentId(studentId).stream()
+        // Fetch student to determine which admin they belong to
+        User student = userRepository.findById(studentId).orElse(null);
+        Long adminId = (student != null && student.getAdmin() != null) ? student.getAdmin().getId() : null;
+
+        List<StudentBadge> earned = studentBadgeRepository.findByStudentId(studentId);
+        Set<Long> earnedBadgeIds = earned.stream()
                 .map(sb -> sb.getBadge().getId())
                 .collect(Collectors.toSet());
-
-        Map<Long, LocalDateTime> earnedDateMap = studentBadgeRepository.findByStudentId(studentId).stream()
+        Map<Long, LocalDateTime> earnedDateMap = earned.stream()
                 .collect(Collectors.toMap(sb -> sb.getBadge().getId(), StudentBadge::getEarnedAt, (a, b) -> a));
 
-        return badgeRepository.findByStatus("ACTIVE").stream().map(badge -> {
+        // Show only ACTIVE badges belonging to the student's own admin
+        List<com.chillcode.assessment.entity.Badge> activeBadges = (adminId != null)
+                ? badgeRepository.findByStatusAndAdminId("ACTIVE", adminId)
+                : badgeRepository.findByStatus("ACTIVE");
+
+        return activeBadges.stream().map(badge -> {
             BadgeDto dto = mapBadgeToDto(badge);
             boolean unlocked = earnedBadgeIds.contains(badge.getId());
             dto.setIsUnlocked(unlocked);
@@ -144,7 +157,15 @@ public class BadgeService {
     }
 
     public List<StudentBadgeDto> getAllEarnedBadges() {
+        Long adminId = com.chillcode.assessment.security.SecurityUtils.getCurrentAdminId();
         return studentBadgeRepository.findAll().stream()
+                .filter(sb -> {
+                    if (adminId == null) return true;
+                    // Only return badges created by this admin
+                    return sb.getBadge() != null
+                            && sb.getBadge().getAdmin() != null
+                            && sb.getBadge().getAdmin().getId().equals(adminId);
+                })
                 .map(this::mapStudentBadgeToDto)
                 .collect(Collectors.toList());
     }
@@ -253,9 +274,18 @@ public class BadgeService {
             }
 
             if (isEligible) {
+                // Resolve admin: prefer badge's admin, then student's admin
+                User badgeAdmin = badge.getAdmin();
+                if (badgeAdmin == null) badgeAdmin = student.getAdmin();
+                if (badgeAdmin == null) {
+                    // Cannot satisfy NOT NULL on admin_id — skip this badge award
+                    System.err.println("[BadgeService] Skipping auto-award for badge=" + badge.getId() + ": no admin resolved for student=" + studentId);
+                    continue;
+                }
                 StudentBadge sb = StudentBadge.builder()
                         .student(student)
                         .badge(badge)
+                        .admin(badgeAdmin)
                         .sourceTest(test)
                         .earnedAt(LocalDateTime.now())
                         .status("ACTIVE")

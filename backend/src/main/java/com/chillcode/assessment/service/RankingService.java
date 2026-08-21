@@ -98,50 +98,58 @@ public class RankingService {
                         && (sub.getScore() != null && sub.getScore() > 0 || "ACCEPTED".equalsIgnoreCase(sub.getStatus())))
                 .collect(Collectors.toList());
 
-        Map<Long, StudentAggregatedStats> studentStatsMap = new HashMap<>();
+        // studentId -> questionId -> bestSubmission
+        Map<Long, Map<Long, com.chillcode.assessment.entity.Submission>> bestSubmissionsMap = new HashMap<>();
 
         // Aggregate stats ONLY for students who actually submitted code in the target language for this subject
+        // Group by questionId to find the best attempt (max score) for each question to avoid duplicates
         for (com.chillcode.assessment.entity.Submission sub : subjectSubmissions) {
             User student = sub.getStudentTest().getStudent();
-            if (student == null) continue;
+            if (student == null || sub.getQuestion() == null) continue;
 
-            StudentAggregatedStats stats = studentStatsMap.computeIfAbsent(student.getId(), k -> new StudentAggregatedStats(student));
-            stats.totalScore += (sub.getScore() != null ? sub.getScore() : 0);
-            if (sub.getQuestion() != null && sub.getQuestion().getTestCases() != null && !sub.getQuestion().getTestCases().isEmpty()) {
-                stats.testCasesPassed += sub.getQuestion().getTestCases().size();
-            } else {
-                stats.testCasesPassed += 1;
-            }
-            stats.totalTimeTakenSeconds += (sub.getRunTimeMs() != null ? sub.getRunTimeMs() / 1000 : 0L);
+            bestSubmissionsMap.putIfAbsent(student.getId(), new HashMap<>());
+            Map<Long, com.chillcode.assessment.entity.Submission> studentSubs = bestSubmissionsMap.get(student.getId());
 
-            if (stats.lastSubmissionTime == null || (sub.getCreatedAt() != null && sub.getCreatedAt().isAfter(stats.lastSubmissionTime))) {
-                stats.lastSubmissionTime = sub.getCreatedAt();
+            Long qId = sub.getQuestion().getId();
+            com.chillcode.assessment.entity.Submission existing = studentSubs.get(qId);
+
+            int subScore = sub.getScore() != null ? sub.getScore() : 0;
+            int existingScore = (existing != null && existing.getScore() != null) ? existing.getScore() : -1;
+
+            if (existing == null || subScore > existingScore) {
+                studentSubs.put(qId, sub);
+            } else if (subScore == existingScore) {
+                int subTests = sub.getPassedTests() != null ? sub.getPassedTests() : 0;
+                int existingTests = existing.getPassedTests() != null ? existing.getPassedTests() : 0;
+                if (subTests > existingTests) {
+                    studentSubs.put(qId, sub);
+                }
             }
         }
 
-        // Also check StudentTest records if student attempted a test for this subject and submitted in target language
-        List<StudentTest> subjectStudentTests = studentTestRepository.findAll().stream()
-                .filter(st -> st.getTest() != null 
-                        && st.getTest().getSubject() != null 
-                        && st.getTest().getSubject().getId().equals(subjectId)
-                        && st.getStudent() != null
-                        && (st.getScore() != null && st.getScore() > 0))
-                .collect(Collectors.toList());
+        Map<Long, StudentAggregatedStats> studentStatsMap = new HashMap<>();
 
-        for (StudentTest st : subjectStudentTests) {
-            User student = st.getStudent();
-            if (student == null) continue;
-            boolean hasTargetLangSub = subjectSubmissions.stream().anyMatch(sub -> sub.getStudentTest() != null && sub.getStudentTest().getStudent().getId().equals(student.getId()));
-            if (hasTargetLangSub && !studentStatsMap.containsKey(student.getId())) {
-                StudentAggregatedStats stats = studentStatsMap.computeIfAbsent(student.getId(), k -> new StudentAggregatedStats(student));
-                stats.totalScore += (st.getScore() != null ? st.getScore() : 0);
-                stats.testCasesPassed += (st.getTestCasesPassed() != null ? st.getTestCasesPassed() : 0);
-                stats.totalTimeTakenSeconds += (st.getTimeTakenSeconds() != null ? st.getTimeTakenSeconds() : 0L);
-                LocalDateTime subTime = st.getSubmittedAt() != null ? st.getSubmittedAt() : st.getCreatedAt();
-                if (stats.lastSubmissionTime == null || (subTime != null && subTime.isAfter(stats.lastSubmissionTime))) {
-                    stats.lastSubmissionTime = subTime;
+        for (Map.Entry<Long, Map<Long, com.chillcode.assessment.entity.Submission>> entry : bestSubmissionsMap.entrySet()) {
+            Long studentId = entry.getKey();
+            Map<Long, com.chillcode.assessment.entity.Submission> bestSubs = entry.getValue();
+            
+            if (bestSubs.isEmpty()) continue;
+            User student = bestSubs.values().iterator().next().getStudentTest().getStudent();
+            
+            StudentAggregatedStats stats = new StudentAggregatedStats(student);
+            
+            for (com.chillcode.assessment.entity.Submission bestSub : bestSubs.values()) {
+                stats.totalScore += (bestSub.getScore() != null ? bestSub.getScore() : 0);
+                stats.testCasesPassed += (bestSub.getPassedTests() != null ? bestSub.getPassedTests() : 0);
+                
+                // Note: runTimeMs is execution time. We can accumulate it as tie-breaker.
+                stats.totalTimeTakenSeconds += (bestSub.getRunTimeMs() != null ? bestSub.getRunTimeMs() / 1000 : 0L);
+                
+                if (stats.lastSubmissionTime == null || (bestSub.getCreatedAt() != null && bestSub.getCreatedAt().isAfter(stats.lastSubmissionTime))) {
+                    stats.lastSubmissionTime = bestSub.getCreatedAt();
                 }
             }
+            studentStatsMap.put(studentId, stats);
         }
 
         List<StudentAggregatedStats> sortedStats = new ArrayList<>(studentStatsMap.values());
@@ -223,24 +231,23 @@ public class RankingService {
     @Transactional
     public List<SubjectRankingDto> getSubjectLeaderboard(Long subjectId) {
         updateSubjectRankings(subjectId);
+        List<Long> validTestIds = testRepository.findTestIdsWithQuestions();
         List<SubjectRanking> rankings = subjectRankingRepository.findBySubjectIdOrderByRankPositionAsc(subjectId);
-        return rankings.stream().map(this::mapToDto).collect(Collectors.toList());
+        return rankings.stream().map(r -> mapToDto(r, validTestIds)).collect(Collectors.toList());
     }
 
     public List<SubjectRankingDto> getTopSubjectRankings(Long subjectId, int limit) {
         return getSubjectLeaderboard(subjectId).stream().limit(limit).collect(Collectors.toList());
     }
 
-    private SubjectRankingDto mapToDto(SubjectRanking ranking) {
+    private SubjectRankingDto mapToDto(SubjectRanking ranking, List<Long> validTestIds) {
         String icon = null;
         if (ranking.getRankPosition() == 1) icon = "🥇";
         else if (ranking.getRankPosition() == 2) icon = "🥈";
         else if (ranking.getRankPosition() == 3) icon = "🥉";
 
         String regNo = ranking.getStudent() != null ? ranking.getStudent().getRegisterNumber() : null;
-        if (regNo == null || regNo.trim().isEmpty() || "student_demo".equalsIgnoreCase(regNo)) {
-            regNo = "2024CS001";
-        }
+        if (regNo == null) regNo = "";
 
         String dept = ranking.getStudent() != null && ranking.getStudent().getDepartment() != null ? ranking.getStudent().getDepartment() : "CS";
 
@@ -251,17 +258,20 @@ public class RankingService {
 
             long achievementsCount = studentAchievementRepository.findByStudentIdOrderByAwardedAtDesc(studentId).stream()
                     .filter(sa -> "ACTIVE".equalsIgnoreCase(sa.getStatus()) && sa.getSubjectName() != null && sa.getSubjectName().equalsIgnoreCase(subjectName))
+                    .filter(sa -> sa.getTest() == null || validTestIds.contains(sa.getTest().getId()))
                     .count();
 
             long manualBadgesCount = studentBadgeRepository.findByStudentId(studentId).stream()
                     .filter(sb -> "ACTIVE".equalsIgnoreCase(sb.getStatus()) && sb.getSourceTest() != null && sb.getSourceTest().getSubject() != null && sb.getSourceTest().getSubject().getName().equalsIgnoreCase(subjectName))
+                    .filter(sb -> sb.getSourceTest() == null || validTestIds.contains(sb.getSourceTest().getId()))
                     .count();
 
             long languageBadgesCount = languageMasterBadgeRepository.findByStudentIdOrderByAwardedDateDesc(studentId).stream()
                     .filter(lmb -> lmb.getSubject() != null && lmb.getSubject().equalsIgnoreCase(subjectName))
+                    .filter(lmb -> lmb.getTest() == null || validTestIds.contains(lmb.getTest().getId()))
                     .count();
 
-            totalBadgesForSubject = (int) (achievementsCount + manualBadgesCount + languageBadgesCount);
+            totalBadgesForSubject = (int) (achievementsCount + manualBadgesCount);
         } catch (Exception ignored) {}
 
         return SubjectRankingDto.builder()

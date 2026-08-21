@@ -109,6 +109,7 @@ CREATE TABLE IF NOT EXISTS submissions (
     memory_used_kb INT DEFAULT 0,
     score INT DEFAULT 0,
     compile_error TEXT NULL,
+    time_taken_seconds BIGINT NULL,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (student_test_id) REFERENCES student_tests(id) ON DELETE CASCADE,
     FOREIGN KEY (question_id) REFERENCES questions(id) ON DELETE CASCADE

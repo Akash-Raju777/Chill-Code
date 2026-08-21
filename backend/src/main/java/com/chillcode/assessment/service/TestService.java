@@ -249,7 +249,7 @@ public class TestService {
             }
         }
 
-        // If re-attempting a failed test (PENDING), deactivate previous attempt's submissions and clear score
+        // If re-attempting a failed test (PENDING), deactivate previous attempt's submissions and clear score & startedAt
         if ("PENDING".equals(st.getStatus())) {
             List<Submission> submissions = submissionRepository.findByStudentTestId(st.getId());
             if (submissions != null && !submissions.isEmpty()) {
@@ -268,11 +268,28 @@ public class TestService {
                 submissionRepository.saveAll(submissions);
             }
             st.setScore(0);
+            st.setStartedAt(LocalDateTime.now()); // Set fresh start time for reattempt
         }
 
-        if (!"COMPLETED".equals(st.getStatus()) && !"SUBMITTED".equals(st.getStatus()) && !"EVALUATED".equals(st.getStatus())) {
+        if (!("COMPLETED".equals(st.getStatus())) && !("SUBMITTED".equals(st.getStatus())) && !("EVALUATED".equals(st.getStatus()))) {
+            String prevStatus = st.getStatus();
             st.setStatus("STARTED");
-            st.setStartedAt(LocalDateTime.now());
+            if (st.getStartedAt() == null) {
+                // No startedAt yet — set it now (fresh first entry)
+                st.setStartedAt(LocalDateTime.now());
+            } else if ("ASSIGNED".equals(prevStatus)) {
+                // Transitioning from ASSIGNED → STARTED: always set a fresh start time
+                st.setStartedAt(LocalDateTime.now());
+            } else {
+                // Already STARTED (navigating between questions in same session).
+                // If startedAt is stale (>12 hours old), it's from a previous abandoned session —
+                // reset it so the time taken is measured from the current actual session.
+                long hoursAgo = java.time.Duration.between(st.getStartedAt(), LocalDateTime.now()).toHours();
+                if (hoursAgo >= 12) {
+                    st.setStartedAt(LocalDateTime.now());
+                }
+                // Otherwise preserve startedAt to keep the running session clock accurate.
+            }
             st = studentTestRepository.save(st);
         }
 
@@ -298,11 +315,16 @@ public class TestService {
 
     @Transactional
     public StudentTest submitTest(Long testId, Long studentId) {
-        return submitTest(testId, studentId, false);
+        return submitTest(testId, studentId, false, null);
     }
 
     @Transactional
     public StudentTest submitTest(Long testId, Long studentId, boolean isAutoSubmitted) {
+        return submitTest(testId, studentId, isAutoSubmitted, null);
+    }
+
+    @Transactional
+    public StudentTest submitTest(Long testId, Long studentId, boolean isAutoSubmitted, Long frontendTimeTakenSeconds) {
         StudentTest st = studentTestRepository.findByStudentIdAndTestId(studentId, testId)
                 .orElseGet(() -> studentTestRepository.findById(testId)
                         .orElseThrow(() -> new RuntimeException("Student-Test mapping not found.")));
@@ -345,10 +367,12 @@ public class TestService {
             totalPassingMarks = maxMarks / 2;
         }
 
-        // Use the actual accumulated score if available
+        // Use the actual accumulated score if available, or 0 if null
         if (totalEarnedScore > 0 && score == 0) {
             score = totalEarnedScore;
             st.setScore(score);
+        } else if (st.getScore() == null) {
+            st.setScore(0);
         }
 
         st.setTestCasesPassed(totalTestCasesPassed);
@@ -367,9 +391,15 @@ public class TestService {
         st.setAutoSubmitted(isAutoSubmitted);
         st.setSubmittedAt(LocalDateTime.now());
 
-        if (st.getStartedAt() != null) {
+        if (frontendTimeTakenSeconds != null && frontendTimeTakenSeconds > 0) {
+            st.setTimeTakenSeconds(frontendTimeTakenSeconds);
+        } else if (st.getStartedAt() != null) {
             long seconds = java.time.Duration.between(st.getStartedAt(), st.getSubmittedAt()).getSeconds();
             st.setTimeTakenSeconds(Math.max(1L, seconds));
+        } else if (isAutoSubmitted && st.getTest() != null && st.getTest().getDurationMinutes() != null) {
+            st.setTimeTakenSeconds((long) st.getTest().getDurationMinutes() * 60);
+        } else {
+            st.setTimeTakenSeconds(1L); // Prevent 0 sec
         }
 
         StudentTest savedSt = studentTestRepository.save(st);
@@ -675,11 +705,16 @@ public class TestService {
 
     @Transactional
     public com.chillcode.assessment.dto.StudentTestDto submitTestDto(Long testId, Long studentId) {
-        return submitTestDto(testId, studentId, null);
+        return submitTestDto(testId, studentId, null, false, null);
     }
 
     @Transactional
     public com.chillcode.assessment.dto.StudentTestDto submitTestDto(Long testId, Long studentId, java.util.Map<String, java.util.Map<String, String>> questionCodes) {
+        return submitTestDto(testId, studentId, questionCodes, false, null);
+    }
+
+    @Transactional
+    public com.chillcode.assessment.dto.StudentTestDto submitTestDto(Long testId, Long studentId, java.util.Map<String, java.util.Map<String, String>> questionCodes, boolean isAutoSubmitted, Long timeTakenSeconds) {
         StudentTest st = studentTestRepository.findByStudentIdAndTestId(studentId, testId)
                 .orElseGet(() -> studentTestRepository.findById(testId)
                         .orElseThrow(() -> new RuntimeException("Student-Test mapping not found.")));
@@ -692,8 +727,11 @@ public class TestService {
                     java.util.Map<String, String> details = entry.getValue();
                     String code = details.get("code");
                     String language = details.get("language");
+                    if (code == null || code.trim().isEmpty()) {
+                        code = "// No code submitted";
+                    }
                     
-                    if (code != null && !code.trim().isEmpty()) {
+                    if (code != null) {
                         Question question = questionRepository.findById(questionId).orElse(null);
                         if (question != null) {
                             List<Submission> existing = submissionRepository.findByStudentTestIdAndQuestionId(st.getId(), questionId);
@@ -775,7 +813,7 @@ public class TestService {
         }
 
         // Now submit and finalize the test (calculates score and status)
-        st = submitTest(testId, studentId);
+        st = submitTest(testId, studentId, isAutoSubmitted, timeTakenSeconds);
 
         return convertToStudentTestDto(st);
     }
@@ -849,10 +887,10 @@ public class TestService {
         StudentTest st = studentTestRepository.findById(studentTestId)
                 .orElseThrow(() -> new RuntimeException("Student test not found"));
         
-        st.setStatus("STARTED");
+        st.setStatus("PENDING");
         st.setIsSuspended(false);
         st.setWarningsCount(0);
-        st.setStartedAt(LocalDateTime.now());
+        st.setStartedAt(null);
         st.setSubmittedAt(null);
 
         List<Warning> warnings = warningRepository.findByStudentTestId(st.getId());

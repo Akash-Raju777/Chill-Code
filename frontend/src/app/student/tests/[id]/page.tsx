@@ -42,6 +42,31 @@ import Link from 'next/link';
 import GloryCelebrationModal from '../../../../components/GloryCelebrationModal';
 import FailResultModal from '../../../../components/FailResultModal';
 
+const getParsedTime = (dateInput: any): number | null => {
+  if (!dateInput) return null;
+  try {
+    const pad = (n: number) => String(n).padStart(2, '0');
+    if (Array.isArray(dateInput)) {
+      const [y, m, d, h = 0, min = 0, s = 0] = dateInput;
+      const isoStr = `${y}-${pad(m)}-${pad(d)}T${pad(h)}:${pad(min)}:${pad(s)}+05:30`;
+      const parsed = new Date(isoStr).getTime();
+      return isNaN(parsed) ? null : parsed;
+    }
+    if (typeof dateInput === 'string') {
+      const trimmed = dateInput.trim();
+      const hasTimezone = trimmed.endsWith('Z') || /[-+]\d{2}:?\d{2}$/.test(trimmed);
+      const dateStr = hasTimezone ? trimmed : trimmed.replace(' ', 'T') + '+05:30';
+      const parsed = new Date(dateStr).getTime();
+      return isNaN(parsed) ? null : parsed;
+    }
+    const parsed = new Date(dateInput).getTime();
+    return isNaN(parsed) ? null : parsed;
+  } catch (e) {
+    console.error("Failed to parse date input:", dateInput, e);
+    return null;
+  }
+};
+
 function CodingWorkspaceInner() {
   const params = useParams();
   const searchParams = useSearchParams();
@@ -82,6 +107,8 @@ function CodingWorkspaceInner() {
 
   const lastWarningTimeRef = useRef<number>(0);
   const internalClipboardRef = useRef<string>('');
+  // Freeze timer when Submit Exam confirmation dialog is open
+  const timerFrozenRef = useRef<boolean>(false);
 
   // Page layout toggles
   const [mounted, setMounted] = useState(false);
@@ -97,7 +124,6 @@ function CodingWorkspaceInner() {
   const [customInput2, setCustomInput2] = useState('');
   const [customInput3, setCustomInput3] = useState('');
   const [consoleTab, setConsoleTab] = useState<'TESTCASE' | 'RESULT'>('TESTCASE');
-  const securityShieldEnabled = useTestStore((s) => s.securityShieldEnabled);
   const [submittingExam, setSubmittingExam] = useState(false);
   const [showExternalPasteWarning, setShowExternalPasteWarning] = useState(false);
   const [confirmDialog, setConfirmDialog] = useState<{
@@ -118,7 +144,10 @@ function CodingWorkspaceInner() {
   const [showFailModal, setShowFailModal] = useState(false);
   const [submissionResponse, setSubmissionResponse] = useState<any>(null);
 
-  const isSecurityStatusActive = user?.status === 'ACTIVE' && securityShieldEnabled;
+  const totalSecondsRef = useRef<number>(3600);
+  const frozenElapsedSecondsRef = useRef<number | null>(null);
+
+  const isSecurityStatusActive = user?.status === 'ACTIVE';
 
   const setUser = useAuthStore((s) => s.setUser);
 
@@ -236,12 +265,16 @@ function CodingWorkspaceInner() {
 
         // Calculate remaining time
         const baseMinutes = targetQuestions[0]?.timer || activeTest.test?.durationMinutes || 60;
-        const totalSeconds = baseMinutes * 60;
+        const totalSeconds = (typeof baseMinutes === 'number' && !isNaN(baseMinutes) && baseMinutes > 0) ? baseMinutes * 60 : 3600;
+        totalSecondsRef.current = totalSeconds;
         let remainingSeconds = totalSeconds;
-        if (activeTest.startedAt) {
-          const startTime = new Date(activeTest.startedAt).getTime();
-          const elapsedSeconds = Math.floor((Date.now() - startTime) / 1000);
-          remainingSeconds = Math.max(0, totalSeconds - elapsedSeconds);
+        const questionStatus = targetQuestions[0]?.status;
+        if (activeTest.startedAt && questionStatus !== 'NOT_STARTED' && questionStatus) {
+          const startTimeMs = getParsedTime(activeTest.startedAt);
+          if (startTimeMs !== null) {
+            const elapsedSeconds = Math.floor((Date.now() - startTimeMs) / 1000);
+            remainingSeconds = Math.max(0, totalSeconds - elapsedSeconds);
+          }
         }
 
         const viewFromSearch = typeof window !== 'undefined' ? new URLSearchParams(window.location.search).get('view') === 'true' : false;
@@ -259,7 +292,7 @@ function CodingWorkspaceInner() {
           activeTest.id,
           targetQuestions[0]?.title || activeTest.test?.name || 'Assessment',
           targetQuestions,
-          isDone ? 0 : Math.max(1, Math.round(remainingSeconds / 60)),
+          isDone ? 0 : Math.max(1, remainingSeconds),
           isDone,
           isEnabled,
           user?.id || updatedProfile?.id
@@ -343,7 +376,12 @@ function CodingWorkspaceInner() {
     if (user?.status === 'NO_SECURITY') return;
 
     const interval = setInterval(() => {
-      decrementTime();
+      // FREEZE: do not decrement when Submit Exam confirm dialog is open
+      if (timerFrozenRef.current) return;
+      const currentSeconds = useTestStore.getState().timeLeftSeconds;
+      if (currentSeconds > 0 && !isNaN(currentSeconds)) {
+        decrementTime();
+      }
     }, 1000);
 
     return () => clearInterval(interval);
@@ -356,23 +394,30 @@ function CodingWorkspaceInner() {
   useEffect(() => {
     if (!mounted || isViewMode) return;
     warnedTimesRef.current.clear();
+    timerStartedRef.current = false;
     const unsubscribe = useTestStore.subscribe(
       (state, prevState) => {
         const seconds = state.timeLeftSeconds;
         if (!state.isViewMode && state.isSessionActive) {
-          if (seconds === 600 && !warnedTimesRef.current.has(600)) {
-            warnedTimesRef.current.add(600);
-            toast.warning('Timer Warning: 10 minutes remaining in your test!');
-          } else if (seconds === 300 && !warnedTimesRef.current.has(300)) {
-            warnedTimesRef.current.add(300);
-            toast.warning('Timer Warning: 5 minutes remaining in your test!');
-          } else if (seconds === 60 && !warnedTimesRef.current.has(60)) {
-            warnedTimesRef.current.add(60);
-            toast.warning('Timer Warning: 1 minute remaining! Please finalize your code.');
+          if (seconds > 0 && !isNaN(seconds)) {
+            timerStartedRef.current = true;
           }
 
-          if (seconds === 0 && prevState.timeLeftSeconds > 0) {
-            handleAutoSubmit();
+          if (timerStartedRef.current) {
+            if (seconds === 600 && !warnedTimesRef.current.has(600)) {
+              warnedTimesRef.current.add(600);
+              toast.warning('Timer Warning: 10 minutes remaining in your test!');
+            } else if (seconds === 300 && !warnedTimesRef.current.has(300)) {
+              warnedTimesRef.current.add(300);
+              toast.warning('Timer Warning: 5 minutes remaining in your test!');
+            } else if (seconds === 60 && !warnedTimesRef.current.has(60)) {
+              warnedTimesRef.current.add(60);
+              toast.warning('Timer Warning: 1 minute remaining! Please finalize your code.');
+            }
+
+            if (seconds === 0 && prevState.timeLeftSeconds > 0) {
+              handleAutoSubmit();
+            }
           }
         }
       }
@@ -461,24 +506,26 @@ function CodingWorkspaceInner() {
     
     setSubmittingExam(true);
     try {
+      const currentStore = useTestStore.getState();
+      const currentCodes = currentStore.codes;
+      const currentLanguages = currentStore.languages;
+
       const questionCodes: Record<string, { code: string; language: string }> = {};
-      Object.keys(codes).forEach((qId) => {
+      Object.keys(currentCodes).forEach((qId) => {
         questionCodes[qId] = {
-          code: codes[Number(qId)],
-          language: languages[Number(qId)] || 'java',
+          code: currentCodes[Number(qId)] ?? '',
+          language: currentLanguages[Number(qId)] || 'java',
         };
       });
 
-      await apiCall(`/api/student/tests/${testId}/submit`, {
+      const timeTaken = totalSecondsRef.current || 3600;
+      await apiCall(`/api/student/tests/${testId}/submit?isAutoSubmitted=true&timeTakenSeconds=${timeTaken}`, {
         method: 'POST',
         body: JSON.stringify(questionCodes),
       });
+      
       toast.warning('Time is up! Your exam attempt has been auto-submitted.');
-    } catch (e) {
-      console.error('Auto submit failed', e);
-      toast.error('Time is up! Auto-submission encountered an error. Redirecting to results...');
-    } finally {
-      // Always clean up and redirect, even if the API call failed
+      
       if (user?.id) {
         Object.keys(codes).forEach((qId) => {
           localStorage.removeItem(`chillcode_code_backup_${user.id}_${qId}`);
@@ -489,17 +536,31 @@ function CodingWorkspaceInner() {
       }
       clearTestSession();
       resetWarnings();
-      setSubmittingExam(false);
       router.push('/student/results');
+    } catch (e: any) {
+      console.error('Auto submit failed', e);
+      autoSubmittedRef.current = false; // Allow manual retry
+      toast.error(e.message || 'Time is up! Auto-submission encountered an error. Please click Submit manually.');
+    } finally {
+      setSubmittingExam(false);
     }
   };
 
   const handleManualSubmitExam = () => {
+    // FREEZE timer immediately when Submit Exam confirm dialog opens
+    timerFrozenRef.current = true;
+    frozenElapsedSecondsRef.current = Math.max(1, totalSecondsRef.current - useTestStore.getState().timeLeftSeconds);
+
     setConfirmDialog({
       isOpen: true,
       title: 'Submit Exam',
       message: 'Are you sure you want to finish and submit your exam?',
       onConfirm: async () => {
+        if (autoSubmittedRef.current) return;
+        autoSubmittedRef.current = true;
+        // Timer stays frozen — session will be cleared after submission
+        timerFrozenRef.current = false;
+        
         setSubmittingExam(true);
         try {
           const questionCodes: Record<string, { code: string; language: string }> = {};
@@ -510,7 +571,8 @@ function CodingWorkspaceInner() {
             };
           });
 
-          await apiCall(`/api/student/tests/${testId}/submit`, {
+          const timeTaken = frozenElapsedSecondsRef.current || 1;
+          await apiCall(`/api/student/tests/${testId}/submit?timeTakenSeconds=${timeTaken}`, {
             method: 'POST',
             body: JSON.stringify(questionCodes),
           });
@@ -527,6 +589,7 @@ function CodingWorkspaceInner() {
           toast.success('Exam submitted successfully!');
           router.push('/student/results');
         } catch (e: any) {
+          autoSubmittedRef.current = false; // Allow retry on failure
           toast.error(e.message || 'Failed to submit exam. Please try again.');
         } finally {
           setSubmittingExam(false);
@@ -1160,10 +1223,10 @@ function CodingWorkspaceInner() {
           {/* Security Status Indicator */}
           <div className="flex items-center gap-2 px-3 py-1.5 bg-[#0b0c10] border border-white/5 rounded-xl">
             <span className="text-[10px] text-gray-500 uppercase font-bold tracking-wider">
-              {securityShieldEnabled ? 'Security Shield' : 'Security Status'}
+              Security Shield
             </span>
              <span className={`text-xs font-bold ${isSecurityStatusActive ? 'text-emerald-400 animate-pulse' : 'text-red-400'}`}>
-               {isSecurityStatusActive ? 'Active' : 'Off'}
+               {isSecurityStatusActive ? 'Active' : (user?.status === 'NO_SECURITY' ? 'Off' : 'Inactive')}
              </span>
           </div>
 
@@ -1674,7 +1737,11 @@ function CodingWorkspaceInner() {
             </div>
             <div className="flex justify-end gap-3 pt-2">
               <button
-                onClick={() => setConfirmDialog(prev => ({ ...prev, isOpen: false }))}
+                onClick={() => {
+                  // UNFREEZE timer when Cancel is clicked (resume from exact paused value)
+                  timerFrozenRef.current = false;
+                  setConfirmDialog(prev => ({ ...prev, isOpen: false }));
+                }}
                 className="px-4 py-2 rounded-xl text-xs font-bold text-gray-400 hover:text-white bg-white/5 hover:bg-white/10 border border-white/5 transition-all select-none"
               >
                 Cancel
