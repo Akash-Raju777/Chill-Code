@@ -740,16 +740,7 @@ public class TestService {
                     if (code != null) {
                         Question question = questionRepository.findById(questionId).orElse(null);
                         if (question != null) {
-                            List<Submission> existing = submissionRepository.findByStudentTestIdAndQuestionId(st.getId(), questionId);
-                            boolean isDuplicate = false;
-                            if (existing != null && !existing.isEmpty()) {
-                                existing.sort((a, b) -> b.getId().compareTo(a.getId()));
-                                if (code.equals(existing.get(0).getCode())) {
-                                    isDuplicate = true;
-                                }
-                            }
-                            
-                            if (!isDuplicate) {
+                            if (true) {
                                 try {
                                     com.chillcode.assessment.dto.SubmitRequest submitReq = new com.chillcode.assessment.dto.SubmitRequest();
                                     submitReq.setQuestionId(questionId);
@@ -757,6 +748,7 @@ public class TestService {
                                     submitReq.setCode(code);
                                     submitReq.setLanguage(language != null ? language : "java");
                                     submitReq.setRunOnly(false); // Evaluate and save submission!
+                                    submitReq.setTimeTakenSeconds(timeTakenSeconds);
 
                                     // Run submission evaluation synchronously
                                     codeExecutionService.submitCode(submitReq);
@@ -795,6 +787,7 @@ public class TestService {
                     emptySub.setLanguage("java");
                     emptySub.setStatus("FAILED");
                     emptySub.setOverallResult("FAIL");
+                    emptySub.setTimeTakenSeconds(timeTakenSeconds);
                     emptySub.setTotalTests(0);
                     emptySub.setScore(0);
                     emptySub.setTotalMarks(0);

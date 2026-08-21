@@ -222,7 +222,7 @@ public class QuestionController {
         // Reset the timer for the Practice Arena test so it starts fresh
         List<com.chillcode.assessment.entity.StudentTest> tests = studentTestRepository.findByStudentIdWithTestAndQuestions(student.getId());
         for (com.chillcode.assessment.entity.StudentTest st : tests) {
-            if (st.getTest() != null && st.getTest().getName() != null && st.getTest().getName().startsWith("Practice Arena: ")) {
+            if (st.getTest() != null && st.getTest().getName() != null && st.getTest().getName().toLowerCase().contains("practice arena")) {
                 if (st.getTest().getQuestions() != null && st.getTest().getQuestions().stream().anyMatch(q -> q.getId().equals(questionId))) {
                     st.setStartedAt(null);
                     st.setTimeTakenSeconds(0L);

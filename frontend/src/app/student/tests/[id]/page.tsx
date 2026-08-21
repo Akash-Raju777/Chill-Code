@@ -146,6 +146,7 @@ function CodingWorkspaceInner() {
 
   const totalSecondsRef = useRef<number>(3600);
   const frozenElapsedSecondsRef = useRef<number | null>(null);
+  const actualStartTimeMsRef = useRef<number | null>(null);
 
   const isSecurityStatusActive = user?.status === 'ACTIVE';
 
@@ -269,9 +270,13 @@ function CodingWorkspaceInner() {
         totalSecondsRef.current = totalSeconds;
         let remainingSeconds = totalSeconds;
         const questionStatus = targetQuestions[0]?.status;
-        if (activeTest.startedAt && questionStatus !== 'NOT_STARTED' && questionStatus) {
-          const startTimeMs = getParsedTime(activeTest.startedAt);
+        const isPracticeArena = activeTest.test?.name?.toLowerCase().includes('practice arena');
+        const effectiveStartedAt = isPracticeArena ? targetQuestions[0]?.lastAttemptAt : activeTest.startedAt;
+
+        if (effectiveStartedAt && questionStatus !== 'NOT_STARTED' && questionStatus) {
+          const startTimeMs = getParsedTime(effectiveStartedAt);
           if (startTimeMs !== null) {
+            actualStartTimeMsRef.current = startTimeMs;
             const elapsedSeconds = Math.floor((Date.now() - startTimeMs) / 1000);
             remainingSeconds = Math.max(0, totalSeconds - elapsedSeconds);
           }
@@ -485,6 +490,20 @@ function CodingWorkspaceInner() {
       const backup = localStorage.getItem(`chillcode_code_backup_${user.id}_${currentQuestion.id}`);
       if (backup) {
         updateCode(currentQuestion.id, backup);
+      } else if (useTestStore.getState().activeStudentTestId) {
+        // Try to fetch previous submission if reattempting
+        apiCall(`/api/student/submissions/test/${useTestStore.getState().activeStudentTestId}/question/${currentQuestion.id}`)
+          .then((subs: any[]) => {
+            if (subs && subs.length > 0) {
+              const sorted = subs.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+              const lastCode = sorted[0].code;
+              if (lastCode && lastCode !== '// No code submitted' && !useTestStore.getState().codes[currentQuestion.id]) {
+                updateCode(currentQuestion.id, lastCode);
+                localStorage.setItem(`chillcode_code_backup_${user.id}_${currentQuestion.id}`, lastCode);
+              }
+            }
+          })
+          .catch(() => {});
       }
     }
   }, [mounted, activeQuestionIndex, currentQuestion, user]);
@@ -555,23 +574,32 @@ function CodingWorkspaceInner() {
         if (autoSubmittedRef.current) return;
         autoSubmittedRef.current = true;
         
+        timerFrozenRef.current = true;
+        const exactConfirmTimeMs = Date.now();
+        
         setSubmittingExam(true);
         try {
+          const currentStore = useTestStore.getState();
           const questionCodes: Record<string, { code: string; language: string }> = {};
-          Object.keys(codes).forEach((qId) => {
+          
+          Object.keys(currentStore.codes).forEach((qId) => {
+            const numQId = Number(qId);
             questionCodes[qId] = {
-              code: codes[Number(qId)] ?? '',
-              language: languages[Number(qId)] || 'java',
+              code: currentStore.codes[numQId] || '',
+              language: currentStore.languages[numQId] || 'java',
             };
           });
 
-          const timeTaken = Math.max(1, totalSecondsRef.current - useTestStore.getState().timeLeftSeconds);
+          let timeTaken = Math.max(1, totalSecondsRef.current - currentStore.timeLeftSeconds);
+          if (actualStartTimeMsRef.current) {
+            timeTaken = Math.max(1, Math.floor((exactConfirmTimeMs - actualStartTimeMsRef.current) / 1000));
+          }
           await apiCall(`/api/student/tests/${testId}/submit?timeTakenSeconds=${timeTaken}`, {
             method: 'POST',
             body: JSON.stringify(questionCodes),
           });
           if (user?.id) {
-            Object.keys(codes).forEach((qId) => {
+            Object.keys(currentStore.codes).forEach((qId) => {
               localStorage.removeItem(`chillcode_code_backup_${user.id}_${qId}`);
             });
           }

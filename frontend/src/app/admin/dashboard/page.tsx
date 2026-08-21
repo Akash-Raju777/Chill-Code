@@ -69,8 +69,8 @@ export default function AdminDashboard() {
     }
     try {
       const [response, reattempts] = await Promise.all([
-        apiCall('/api/admin/dashboard'),
-        apiCall('/api/admin/tests/reattempt-requests')
+        apiCall('/api/admin/dashboard', { skipLocalCache: true }),
+        apiCall('/api/admin/tests/reattempt-requests', { skipLocalCache: true })
       ]);
 
       // Filter out activities of forgiven students

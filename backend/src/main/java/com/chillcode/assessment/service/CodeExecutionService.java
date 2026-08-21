@@ -1193,17 +1193,19 @@ public class CodeExecutionService {
                                       studentTest.getTest().getName() != null && 
                                       studentTest.getTest().getName().toLowerCase().contains("practice arena");
                                       
-            if (isPracticeArena) {
-                if (sqs != null && sqs.getLastAttemptAt() != null) {
-                    long diff = java.time.Duration.between(sqs.getLastAttemptAt(), java.time.LocalDateTime.now()).getSeconds();
-                    timeTakenSeconds = Math.max(1L, diff);
-                }
-            } else {
-                if (studentTest.getTimeTakenSeconds() != null && studentTest.getTimeTakenSeconds() > 0) {
-                    timeTakenSeconds = studentTest.getTimeTakenSeconds();
-                } else if (studentTest.getStartedAt() != null) {
-                    long diff = java.time.Duration.between(studentTest.getStartedAt(), java.time.LocalDateTime.now()).getSeconds();
-                    timeTakenSeconds = Math.max(1L, diff);
+            if (timeTakenSeconds == null) {
+                if (isPracticeArena) {
+                    if (sqs != null && sqs.getLastAttemptAt() != null) {
+                        long diff = java.time.Duration.between(sqs.getLastAttemptAt(), java.time.LocalDateTime.now()).getSeconds();
+                        timeTakenSeconds = Math.max(1L, diff);
+                    }
+                } else {
+                    if (studentTest.getTimeTakenSeconds() != null && studentTest.getTimeTakenSeconds() > 0) {
+                        timeTakenSeconds = studentTest.getTimeTakenSeconds();
+                    } else if (studentTest.getStartedAt() != null) {
+                        long diff = java.time.Duration.between(studentTest.getStartedAt(), java.time.LocalDateTime.now()).getSeconds();
+                        timeTakenSeconds = Math.max(1L, diff);
+                    }
                 }
             }
         }
