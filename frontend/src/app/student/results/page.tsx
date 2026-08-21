@@ -36,8 +36,42 @@ const formatDate = (dateStr?: string) => {
   return formatISTDateTime(dateStr);
 };
 
-const formatDuration = (seconds?: number, startedAt?: string, submittedAt?: string) => {
+const getParsedTime = (dateInput: any): number | null => {
+  if (!dateInput) return null;
+  try {
+    const pad = (n: number) => String(n).padStart(2, '0');
+    if (Array.isArray(dateInput)) {
+      const [y, m, d, h = 0, min = 0, s = 0] = dateInput;
+      const isoStr = `${y}-${pad(m)}-${pad(d)}T${pad(h)}:${pad(min)}:${pad(s)}+05:30`;
+      const parsed = new Date(isoStr).getTime();
+      return isNaN(parsed) ? null : parsed;
+    }
+    if (typeof dateInput === 'string') {
+      const trimmed = dateInput.trim();
+      const hasTimezone = trimmed.endsWith('Z') || /[-+]\d{2}:?\d{2}$/.test(trimmed);
+      const dateStr = hasTimezone ? trimmed : trimmed.replace(' ', 'T') + '+05:30';
+      const parsed = new Date(dateStr).getTime();
+      return isNaN(parsed) ? null : parsed;
+    }
+    const parsed = new Date(dateInput).getTime();
+    return isNaN(parsed) ? null : parsed;
+  } catch (e) {
+    return null;
+  }
+};
+
+const formatDuration = (seconds?: number, startedAt?: any, submittedAt?: any) => {
   let totalSec = seconds;
+  if (totalSec === undefined || totalSec === null || totalSec < 0) {
+    if (startedAt && submittedAt) {
+      const start = getParsedTime(startedAt);
+      const end = getParsedTime(submittedAt);
+      if (start !== null && end !== null) {
+        totalSec = Math.floor(Math.max(0, end - start) / 1000);
+      }
+    }
+  }
+  
   if (totalSec === undefined || totalSec === null || totalSec < 0) return 'N/A';
   if (totalSec === 0) return '0 sec';
 
