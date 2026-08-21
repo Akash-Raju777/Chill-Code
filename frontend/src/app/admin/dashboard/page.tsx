@@ -177,16 +177,21 @@ export default function AdminDashboard() {
           )
         );
 
-        for (const key of studentKeys) {
-          forgivenStudentKeysRef.current.add(key);
-          try {
-            await apiCall(`/api/admin/student/forgive?registerNumber=${encodeURIComponent(key)}`, {
-              method: 'POST'
-            });
-          } catch (ignored) {}
-        }
+        studentKeys.forEach(key => forgivenStudentKeysRef.current.add(key));
+        
+        // Optimistic UI update instantly
+        setData(prev => prev ? { 
+          ...prev, 
+          recentActivities: prev.recentActivities.filter(act => act.user === 'System Admin' || act.type === 'info') 
+        } : prev);
 
-        setData(prev => prev ? { ...prev, recentActivities: [] } : prev);
+        // Run all API calls in parallel in the background
+        await Promise.all(studentKeys.map(key => 
+          apiCall(`/api/admin/student/forgive?registerNumber=${encodeURIComponent(key)}`, {
+            method: 'POST'
+          }).catch(() => {})
+        ));
+
         toast.success('Forgave all active student warning logs.');
         fetchMetrics();
       }
@@ -223,13 +228,17 @@ export default function AdminDashboard() {
       title: 'Approve All Filtered Reattempts',
       message: `Are you sure you want to approve all ${filteredReattemptRequests.length} reattempt requests currently shown?`,
       onConfirm: async () => {
-        for (const req of filteredReattemptRequests) {
+        // Optimistic UI update instantly
+        const itemsToRemove = new Set(filteredReattemptRequests);
+        setReattemptRequests(prev => prev.filter(req => !itemsToRemove.has(req)));
+
+        // Run all API calls in parallel
+        await Promise.all(filteredReattemptRequests.map(req => {
           if (req.reattemptQuestionId) processedActionKeysRef.current.add(`${req.id}_${req.reattemptQuestionId}`);
-          try {
-            const url = `/api/admin/tests/reattempt-requests/${req.id}/approve` + (req.reattemptQuestionId ? `?questionId=${req.reattemptQuestionId}` : '');
-            await apiCall(url, { method: 'POST' });
-          } catch (ignored) {}
-        }
+          const url = `/api/admin/tests/reattempt-requests/${req.id}/approve` + (req.reattemptQuestionId ? `?questionId=${req.reattemptQuestionId}` : '');
+          return apiCall(url, { method: 'POST' }).catch(() => {});
+        }));
+        
         toast.success(`Approved ${filteredReattemptRequests.length} reattempt requests.`);
         fetchMetrics();
       }

@@ -1199,11 +1199,11 @@ public class CodeExecutionService {
                     timeTakenSeconds = Math.max(1L, diff);
                 }
             } else {
-                if (studentTest.getStartedAt() != null) {
+                if (studentTest.getTimeTakenSeconds() != null && studentTest.getTimeTakenSeconds() > 0) {
+                    timeTakenSeconds = studentTest.getTimeTakenSeconds();
+                } else if (studentTest.getStartedAt() != null) {
                     long diff = java.time.Duration.between(studentTest.getStartedAt(), java.time.LocalDateTime.now()).getSeconds();
                     timeTakenSeconds = Math.max(1L, diff);
-                } else if (studentTest.getTimeTakenSeconds() != null && studentTest.getTimeTakenSeconds() > 0) {
-                    timeTakenSeconds = studentTest.getTimeTakenSeconds();
                 }
             }
         }

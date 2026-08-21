@@ -719,6 +719,12 @@ public class TestService {
                 .orElseGet(() -> studentTestRepository.findById(testId)
                         .orElseThrow(() -> new RuntimeException("Student-Test mapping not found.")));
 
+        // Pre-save the exact frontend time taken so CodeExecutionService uses it for all submissions
+        if (timeTakenSeconds != null && timeTakenSeconds > 0) {
+            st.setTimeTakenSeconds(timeTakenSeconds);
+            st = studentTestRepository.save(st);
+        }
+
         // Save final draft codes as submissions and evaluate them first
         if (questionCodes != null) {
             for (java.util.Map.Entry<String, java.util.Map<String, String>> entry : questionCodes.entrySet()) {
