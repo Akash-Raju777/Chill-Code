@@ -46,6 +46,9 @@ public class TestService {
     private StudentQuestionStatusRepository studentQuestionStatusRepository;
 
     @Autowired
+    private StudentQuestionStatusService studentQuestionStatusService;
+
+    @Autowired
     private CodeExecutionService codeExecutionService;
 
     @Autowired
@@ -663,19 +666,8 @@ public class TestService {
         StudentTest st = studentTestRepository.findByStudentIdAndTestId(studentId, testId)
                 .orElseThrow(() -> new RuntimeException("Student test not found"));
         
-        if (questionId != null) {
-            studentQuestionStatusRepository.findByStudentIdAndQuestionId(studentId, questionId)
-                    .ifPresent(sqs -> {
-                        if ("IN_PROGRESS".equals(sqs.getStatus()) || "NOT_STARTED".equals(sqs.getStatus())) {
-                            sqs.setStatus("PENDING");
-                            studentQuestionStatusRepository.save(sqs);
-                        }
-                    });
-        }
-        
         if ("STARTED".equals(st.getStatus())) {
-            st.setStatus("PENDING");
-            st = studentTestRepository.save(st);
+            return submitTestDto(testId, studentId, null);
         }
         
         return convertToStudentTestDto(st);
@@ -732,6 +724,52 @@ public class TestService {
                     }
                 } catch (Exception e) {
                     System.err.println("Error saving draft submission: " + e.getMessage());
+                }
+            }
+        }
+
+        // Idempotency check: Only process empty/unsubmitted questions if the test is currently STARTED.
+        // If it's already PENDING, we don't want to double-create empty submissions on duplicate clicks.
+        if ("STARTED".equals(st.getStatus())) {
+            final StudentTest currentSt = st;
+            for (Question q : currentSt.getTest().getQuestions()) {
+                // Check if they already submitted code for this question in this session payload
+                boolean alreadySubmittedInThisSession = false;
+                if (questionCodes != null && questionCodes.containsKey(String.valueOf(q.getId()))) {
+                    String code = questionCodes.get(String.valueOf(q.getId())).get("code");
+                    if (code != null && !code.trim().isEmpty()) {
+                        alreadySubmittedInThisSession = true;
+                    }
+                }
+                
+                if (!alreadySubmittedInThisSession) {
+                    // Create the required failed submission for the empty attempt
+                    Submission emptySub = new Submission();
+                    emptySub.setStudentTest(currentSt);
+                    emptySub.setQuestion(q);
+                    emptySub.setCode("");
+                    emptySub.setLanguage("java");
+                    emptySub.setStatus("FAILED");
+                    emptySub.setOverallResult("FAIL");
+                    emptySub.setTotalTests(0);
+                    emptySub.setScore(0);
+                    emptySub.setTotalMarks(0);
+                    emptySub.setPassingMarks(0);
+                    emptySub.setPercentage(0.0);
+                    emptySub.setActive(true);
+                    emptySub.setCreatedAt(LocalDateTime.now());
+                    
+                    Long adminId = studentQuestionStatusService.resolveAdminId(currentSt, q);
+                    User admin = userRepository.findById(adminId).orElse(null);
+                    if (admin == null) {
+                        admin = currentSt.getAdmin();
+                    }
+                    emptySub.setAdmin(admin);
+
+                    emptySub = submissionRepository.save(emptySub);
+                    
+                    // Finalize through existing status flow
+                    studentQuestionStatusService.updateStatus(currentSt.getStudent(), q, emptySub, adminId);
                 }
             }
         }
@@ -829,6 +867,7 @@ public class TestService {
             if (sqs != null) {
                 sqs.setStatus("NOT_STARTED");
                 sqs.setCompletedAt(null);
+                sqs.setAttemptCount(sqs.getAttemptCount() != null ? sqs.getAttemptCount() + 1 : 1);
                 studentQuestionStatusRepository.save(sqs);
             }
 
@@ -848,6 +887,7 @@ public class TestService {
                 if ("PENDING_REATTEMPT".equals(status.getStatus())) {
                     status.setStatus("NOT_STARTED");
                     status.setCompletedAt(null);
+                    status.setAttemptCount(status.getAttemptCount() != null ? status.getAttemptCount() + 1 : 1);
                     studentQuestionStatusRepository.save(status);
                 }
             }

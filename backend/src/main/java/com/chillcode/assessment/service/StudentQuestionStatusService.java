@@ -117,7 +117,6 @@ public class StudentQuestionStatusService {
             status.setAttemptCount(0);
         }
 
-        status.setAttemptCount(status.getAttemptCount() + 1);
         status.setLastAttemptAt(LocalDateTime.now());
         
         if (submission != null) {

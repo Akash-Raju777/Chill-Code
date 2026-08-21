@@ -388,7 +388,7 @@ function CodingWorkspaceInner() {
     const handleBeforeUnload = (e: BeforeUnloadEvent) => {
       const state = useTestStore.getState();
       if (state.isSessionActive && !state.isViewMode && !isTestSuspended && !submittingExam) {
-        const token = typeof window !== 'undefined' ? localStorage.getItem('chill_token') || localStorage.getItem('token') : null;
+        const token = typeof window !== 'undefined' ? sessionStorage.getItem('chill_token') || localStorage.getItem('token') : null;
         if (token && currentQuestion) {
           fetch(`/api/student/tests/${testId}/exit?questionId=${currentQuestion.id}`, {
             method: 'POST',
@@ -543,7 +543,7 @@ function CodingWorkspaceInner() {
       onConfirm: async () => {
         setSubmittingExam(true);
         try {
-          const token = localStorage.getItem('token');
+          const token = sessionStorage.getItem('chill_token') || localStorage.getItem('token');
           if (token) {
             await fetch(`http://localhost:8080/api/student/tests/${testId}/exit?questionId=${currentQuestion?.id || ''}`, {
               method: 'POST',

@@ -39,8 +39,8 @@ export const useAuthStore = create<AuthState>((set) => {
   let initialToken: string | null = null;
 
   if (typeof window !== 'undefined') {
-    const savedUser = localStorage.getItem('chill_user');
-    const savedToken = localStorage.getItem('chill_token');
+    const savedUser = sessionStorage.getItem('chill_user');
+    const savedToken = sessionStorage.getItem('chill_token');
     if (savedUser && savedToken) {
       try {
         initialUser = JSON.parse(savedUser);
@@ -60,8 +60,8 @@ export const useAuthStore = create<AuthState>((set) => {
       useTestStore.getState().clearTestSession();
       clearAllCodeBackups();
       if (typeof window !== 'undefined') {
-        localStorage.setItem('chill_user', JSON.stringify(user));
-        localStorage.setItem('chill_token', token);
+        sessionStorage.setItem('chill_user', JSON.stringify(user));
+        sessionStorage.setItem('chill_token', token);
       }
       set({ user, token, isAuthenticated: true });
     },
@@ -70,8 +70,8 @@ export const useAuthStore = create<AuthState>((set) => {
       useTestStore.getState().clearTestSession();
       clearAllCodeBackups();
       if (typeof window !== 'undefined') {
-        localStorage.removeItem('chill_user');
-        localStorage.removeItem('chill_token');
+        sessionStorage.removeItem('chill_user');
+        sessionStorage.removeItem('chill_token');
       }
       set({ user: null, token: null, isAuthenticated: false });
     },
@@ -81,7 +81,7 @@ export const useAuthStore = create<AuthState>((set) => {
           return state;
         }
         if (typeof window !== 'undefined') {
-          localStorage.setItem('chill_user', JSON.stringify(newUser));
+          sessionStorage.setItem('chill_user', JSON.stringify(newUser));
         }
         return { user: newUser };
       });

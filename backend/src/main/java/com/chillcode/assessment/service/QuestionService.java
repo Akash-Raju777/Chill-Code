@@ -558,6 +558,23 @@ public class QuestionService {
                 ")"
         ).executeUpdate();
 
+        // 11b. Delete submission_test_cases for submissions of student_tests of non-existent or empty tests
+        entityManager.createNativeQuery(
+                "DELETE FROM submission_test_cases WHERE submission_id IN (" +
+                "SELECT id FROM submissions WHERE student_test_id IN (" +
+                "SELECT id FROM student_tests WHERE test_id NOT IN (SELECT id FROM tests) " +
+                "OR test_id IN (SELECT id FROM tests WHERE id NOT IN (SELECT DISTINCT test_id FROM test_questions))" +
+                "))"
+        ).executeUpdate();
+
+        // 11c. Delete submissions for student_tests of non-existent or empty tests
+        entityManager.createNativeQuery(
+                "DELETE FROM submissions WHERE student_test_id IN (" +
+                "SELECT id FROM student_tests WHERE test_id NOT IN (SELECT id FROM tests) " +
+                "OR test_id IN (SELECT id FROM tests WHERE id NOT IN (SELECT DISTINCT test_id FROM test_questions))" +
+                ")"
+        ).executeUpdate();
+
         // 12. Delete student_tests for non-existent or empty tests
         entityManager.createNativeQuery(
                 "DELETE FROM student_tests WHERE test_id NOT IN (SELECT id FROM tests) " +
@@ -660,11 +677,7 @@ public class QuestionService {
                 dto.setStatus(isCompleted ? "COMPLETED" : status.getStatus());
             }
             int rawAttempts = status.getAttemptCount() != null ? status.getAttemptCount() : 0;
-            if (isCompleted) {
-                dto.setAttemptCount(Math.max(0, rawAttempts - 1));
-            } else {
-                dto.setAttemptCount(rawAttempts);
-            }
+            dto.setAttemptCount(rawAttempts);
             dto.setLastAttemptAt(status.getLastAttemptAt() != null ? status.getLastAttemptAt().toString() : null);
         } else {
             dto.setStatus(hasAcceptedSubmission ? "COMPLETED" : "NOT_STARTED");
