@@ -547,10 +547,6 @@ function CodingWorkspaceInner() {
   };
 
   const handleManualSubmitExam = () => {
-    // FREEZE timer immediately when Submit Exam confirm dialog opens
-    timerFrozenRef.current = true;
-    frozenElapsedSecondsRef.current = Math.max(1, totalSecondsRef.current - useTestStore.getState().timeLeftSeconds);
-
     setConfirmDialog({
       isOpen: true,
       title: 'Submit Exam',
@@ -558,8 +554,6 @@ function CodingWorkspaceInner() {
       onConfirm: async () => {
         if (autoSubmittedRef.current) return;
         autoSubmittedRef.current = true;
-        // Timer stays frozen — session will be cleared after submission
-        // We will only unfreeze it if the API call fails.
         
         setSubmittingExam(true);
         try {
@@ -571,7 +565,7 @@ function CodingWorkspaceInner() {
             };
           });
 
-          const timeTaken = frozenElapsedSecondsRef.current || 1;
+          const timeTaken = Math.max(1, totalSecondsRef.current - useTestStore.getState().timeLeftSeconds);
           await apiCall(`/api/student/tests/${testId}/submit?timeTakenSeconds=${timeTaken}`, {
             method: 'POST',
             body: JSON.stringify(questionCodes),
@@ -590,7 +584,6 @@ function CodingWorkspaceInner() {
           router.push('/student/results');
         } catch (e: any) {
           autoSubmittedRef.current = false; // Allow retry on failure
-          timerFrozenRef.current = false; // Unfreeze timer so student can continue
           toast.error(e.message || 'Failed to submit exam. Please try again.');
         } finally {
           setSubmittingExam(false);
