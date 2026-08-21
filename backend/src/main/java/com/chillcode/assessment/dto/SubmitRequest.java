@@ -14,4 +14,5 @@ public class SubmitRequest {
     private String customInput2;
     private String customInput3;
     private Boolean runOnly;
+    private Long timeTakenSeconds;
 }

@@ -743,12 +743,15 @@ function CodingWorkspaceInner() {
     setConsoleTab('RESULT');
     setEvaluationStage('EVALUATING');
 
+    const timeTaken = Math.max(1, totalSecondsRef.current - useTestStore.getState().timeLeftSeconds);
+
     const payload = {
       code: codes[currentQuestion.id],
       language: languages[currentQuestion.id],
       questionId: currentQuestion.id,
       studentTestId: useTestStore.getState().activeStudentTestId,
       runOnly: false,
+      timeTakenSeconds: timeTaken,
     };
 
     try {

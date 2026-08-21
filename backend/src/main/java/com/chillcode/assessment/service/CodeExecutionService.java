@@ -1183,8 +1183,8 @@ public class CodeExecutionService {
             request.getLanguage()
         ));
 
-        Long timeTakenSeconds = null;
-        if (studentTest != null && studentTest.getStudent() != null && question != null) {
+        Long timeTakenSeconds = request.getTimeTakenSeconds();
+        if (timeTakenSeconds == null && studentTest != null && studentTest.getStudent() != null && question != null) {
             StudentQuestionStatus sqs = studentQuestionStatusRepository
                     .findByStudentIdAndQuestionId(studentTest.getStudent().getId(), question.getId())
                     .orElse(null);
