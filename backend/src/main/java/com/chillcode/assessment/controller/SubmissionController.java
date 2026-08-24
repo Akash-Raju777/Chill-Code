@@ -25,9 +25,6 @@ public class SubmissionController {
     private com.chillcode.assessment.repository.UserRepository userRepository;
 
     @Autowired
-    private com.chillcode.assessment.repository.StudentTestRepository studentTestRepository;
-
-    @Autowired
     private com.chillcode.assessment.repository.StudentQuestionStatusRepository studentQuestionStatusRepository;
 
     private com.chillcode.assessment.entity.User getCurrentUser() {
@@ -96,6 +93,10 @@ public class SubmissionController {
     public ResponseEntity<List<java.util.Map<String, Object>>> getMySubmissions() {
         com.chillcode.assessment.entity.User student = getCurrentUser();
         List<Submission> submissions = submissionRepository.findAllByStudentIdOrderByCreatedAtDesc(student.getId());
+        
+        List<com.chillcode.assessment.entity.StudentQuestionStatus> sqsList = studentQuestionStatusRepository.findByStudentId(student.getId());
+        java.util.Map<Long, com.chillcode.assessment.entity.StudentQuestionStatus> sqsMap = sqsList.stream()
+                .collect(java.util.stream.Collectors.toMap(com.chillcode.assessment.entity.StudentQuestionStatus::getQuestionId, s -> s, (s1, s2) -> s1));
 
         // Build per-question submission index map (0-based attempt number per submission).
         // Sort all submissions for each question by createdAt ASC, then assign index 0,1,2,...
@@ -141,12 +142,21 @@ public class SubmissionController {
             map.put("percentage", sub.getPercentage());
             map.put("overallResult", sub.getOverallResult() != null ? sub.getOverallResult() : ("ACCEPTED".equals(sub.getStatus()) ? "PASS" : "FAIL"));
             map.put("createdAt", sub.getCreatedAt());
-
+            map.put("timeTakenSeconds", sub.getTimeTakenSeconds());
+            
+            if (sub.getStudentTest() != null) {
+                map.put("startedAt", sub.getStudentTest().getStartedAt());
+                map.put("submittedAt", sub.getStudentTest().getSubmittedAt());
+            }
+            
             map.put("questionId", sub.getQuestion().getId());
             map.put("questionName", sub.getQuestion().getTitle());
             if (sub.getQuestion().getSubject() != null) {
                 map.put("subjectName", sub.getQuestion().getSubject().getName());
             }
+            com.chillcode.assessment.entity.StudentQuestionStatus sqs = sqsMap.get(sub.getQuestion().getId());
+            int rawAttempts = sqs != null && sqs.getAttemptCount() != null ? sqs.getAttemptCount() : 1;
+            map.put("attempts", rawAttempts);
 
             // Fetch StudentQuestionStatus for time calculations
             com.chillcode.assessment.entity.StudentQuestionStatus sqs = studentQuestionStatusRepository
@@ -210,7 +220,6 @@ public class SubmissionController {
         return ResponseEntity.ok(result);
     }
 
-
     @GetMapping("/submissions/solved")
     public ResponseEntity<List<String>> getSolvedQuestionIds() {
         com.chillcode.assessment.entity.User student = getCurrentUser();
@@ -219,39 +228,11 @@ public class SubmissionController {
     }
 
     @GetMapping("/submissions/test/{studentTestId}/question/{questionId}")
-    public ResponseEntity<List<java.util.Map<String, Object>>> getSubmissions(
-            @PathVariable Long studentTestId,
+    public ResponseEntity<List<Submission>> getSubmissions(
+            @PathVariable Long studentTestId, 
             @PathVariable Long questionId) {
-        
         List<Submission> history = submissionRepository.findByStudentTestIdAndQuestionId(studentTestId, questionId);
-        
-        if (history == null || history.isEmpty()) {
-            com.chillcode.assessment.entity.User student = getCurrentUser();
-            if (student != null) {
-                history = submissionRepository.findByStudentIdAndQuestionIdOrderByCreatedAtDesc(student.getId(), questionId);
-            }
-        }
-        
-        // Return safe maps to avoid LazyInitializationException on submissionTestCases
-        List<java.util.Map<String, Object>> result = new java.util.ArrayList<>();
-        if (history != null) {
-            for (Submission sub : history) {
-                java.util.Map<String, Object> map = new java.util.HashMap<>();
-                map.put("id", sub.getId());
-                map.put("code", sub.getCode());
-                map.put("language", sub.getLanguage());
-                map.put("status", sub.getStatus());
-                map.put("overallResult", sub.getOverallResult());
-                map.put("active", sub.getActive());
-                map.put("createdAt", sub.getCreatedAt());
-                map.put("score", sub.getScore());
-                map.put("passedTests", sub.getPassedTests());
-                map.put("totalTests", sub.getTotalTests());
-                result.add(map);
-                System.out.println("[getSubmissions] Returning sub id=" + sub.getId() + " with code length=" + (sub.getCode() != null ? sub.getCode().length() : 0));
-            }
-        }
-        return ResponseEntity.ok(result);
+        return ResponseEntity.ok(history);
     }
 
     @GetMapping("/submissions/question/{questionId}")
@@ -283,6 +264,12 @@ public class SubmissionController {
         res.put("totalTests", sub.getTotalTests());
         res.put("judge0Token", sub.getJudge0Token());
         res.put("createdAt", sub.getCreatedAt());
+        res.put("timeTakenSeconds", sub.getTimeTakenSeconds());
+        
+        if (sub.getStudentTest() != null) {
+            res.put("startedAt", sub.getStudentTest().getStartedAt());
+            res.put("submittedAt", sub.getStudentTest().getSubmittedAt());
+        }
         
         // Detailed evaluation metrics
         int qTotal = sub.getTotalMarks() != null && sub.getTotalMarks() > 0 ? sub.getTotalMarks() : 
@@ -372,26 +359,7 @@ public class SubmissionController {
             res.put("startedAt", null);
             res.put("submittedAt", sub.getCreatedAt());
         }
-
+        
         return ResponseEntity.ok(res);
-    }
-
-    @org.springframework.transaction.annotation.Transactional
-    @org.springframework.web.bind.annotation.GetMapping("/auth/fix-time")
-    public ResponseEntity<String> fixTime() {
-        java.util.List<Submission> subs = submissionRepository.findAll();
-        int count = 0;
-        for (Submission sub : subs) {
-            if (sub.getTimeTakenSeconds() != null && sub.getTimeTakenSeconds() >= 3540) {
-                sub.setTimeTakenSeconds(60L);
-                submissionRepository.save(sub);
-                count++;
-            }
-            if (sub.getStudentTest() != null && sub.getStudentTest().getTimeTakenSeconds() != null && sub.getStudentTest().getTimeTakenSeconds() >= 3540) {
-                sub.getStudentTest().setTimeTakenSeconds(60L);
-                studentTestRepository.save(sub.getStudentTest());
-            }
-        }
-        return ResponseEntity.ok("Fixed " + count + " submissions with 59 mins.");
     }
 }

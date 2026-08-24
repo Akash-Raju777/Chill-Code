@@ -46,6 +46,9 @@ public class TestService {
     private StudentQuestionStatusRepository studentQuestionStatusRepository;
 
     @Autowired
+    private StudentQuestionStatusService studentQuestionStatusService;
+
+    @Autowired
     private CodeExecutionService codeExecutionService;
 
     @Autowired
@@ -718,6 +721,12 @@ public class TestService {
                 .orElseGet(() -> studentTestRepository.findById(testId)
                         .orElseThrow(() -> new RuntimeException("Student-Test mapping not found.")));
 
+        // Pre-save the exact frontend time taken so CodeExecutionService uses it for all submissions
+        if (timeTakenSeconds != null && timeTakenSeconds > 0) {
+            st.setTimeTakenSeconds(timeTakenSeconds);
+            st = studentTestRepository.save(st);
+        }
+
         // Save final draft codes as submissions and evaluate them first
         if (questionCodes != null) {
             for (java.util.Map.Entry<String, java.util.Map<String, String>> entry : questionCodes.entrySet()) {
@@ -901,6 +910,7 @@ public class TestService {
             if (sqs != null) {
                 sqs.setStatus("NOT_STARTED");
                 sqs.setCompletedAt(null);
+                sqs.setAttemptCount(sqs.getAttemptCount() != null ? sqs.getAttemptCount() + 1 : 1);
                 studentQuestionStatusRepository.save(sqs);
             }
 
@@ -920,6 +930,7 @@ public class TestService {
                 if ("PENDING_REATTEMPT".equals(status.getStatus())) {
                     status.setStatus("NOT_STARTED");
                     status.setCompletedAt(null);
+                    status.setAttemptCount(status.getAttemptCount() != null ? status.getAttemptCount() + 1 : 1);
                     studentQuestionStatusRepository.save(status);
                 }
             }

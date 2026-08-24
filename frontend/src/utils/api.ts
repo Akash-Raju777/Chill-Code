@@ -12,7 +12,11 @@ const BASE_URL = RAW_API_URL.replace(/\/$/, '');
 
 const apiCache = new Map<string, { data: any; expiry: number }>();
 
-export async function apiCall(endpoint: string, options: RequestInit = {}) {
+export interface ApiCallOptions extends RequestInit {
+  skipLocalCache?: boolean;
+}
+
+export async function apiCall(endpoint: string, options: ApiCallOptions = {}) {
   const method = options.method || 'GET';
   const cleanEndpoint = endpoint.startsWith('/') ? endpoint : `/${endpoint}`;
   const fullUrl = `${BASE_URL}${cleanEndpoint}`;
@@ -22,7 +26,7 @@ export async function apiCall(endpoint: string, options: RequestInit = {}) {
   }
 
   const cacheKey = `${method}:${cleanEndpoint}`;
-  if (method === 'GET') {
+  if (method === 'GET' && !options.skipLocalCache) {
     const cached = apiCache.get(cacheKey);
     if (cached && Date.now() < cached.expiry) {
       return cached.data;
@@ -107,7 +111,7 @@ export async function apiCall(endpoint: string, options: RequestInit = {}) {
     data = await response.text();
   }
 
-  if (method === 'GET') {
+  if (method === 'GET' && !options.skipLocalCache) {
     apiCache.set(cacheKey, { data, expiry: Date.now() + 1500 });
   }
 

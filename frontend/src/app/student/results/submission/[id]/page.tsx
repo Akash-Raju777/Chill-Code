@@ -93,28 +93,7 @@ export default function SubmissionResultPage() {
     };
   }, [submissionId]);
 
-  const handleAnotherAttempt = async () => {
-    if (!submission) return;
-    setActionLoading(true);
-    try {
-      // 1. Reset question status on the backend to NOT_STARTED
-      await apiCall(`/api/student/question/${submission.questionId}/another-attempt`, {
-        method: 'POST',
-      });
-      // 2. Redirect back to the editor page of the practice test
-      if (submission.testId) {
-        router.push(`/student/tests/${submission.testId}?question=${submission.questionId}`);
-        router.refresh();
-      } else {
-        router.push('/student/tests');
-        router.refresh();
-      }
-    } catch (err: any) {
-      toast.error(err.message || 'Failed to reset question attempt.');
-    } finally {
-      setActionLoading(false);
-    }
-  };
+
 
   if (loading) {
     return (
@@ -438,28 +417,13 @@ export default function SubmissionResultPage() {
 
       {/* Action Buttons */}
       <div className="flex items-center gap-4 pt-4 border-t border-white/5">
-        {!isPass ? (
-          <button
-            onClick={handleAnotherAttempt}
-            disabled={actionLoading}
-            className="flex-1 py-3 px-6 bg-[#7c3aed] hover:bg-[#8b5cf6] disabled:opacity-50 text-white font-bold rounded-xl transition-all text-xs flex items-center justify-center gap-2 shadow-lg"
-          >
-            {actionLoading ? (
-              <Loader2 className="w-4 h-4 animate-spin" />
-            ) : (
-              <RotateCcw className="w-4 h-4" />
-            )}
-            Another Attempt
-          </button>
-        ) : (
-          <button
-            onClick={() => { router.push('/student/tests'); router.refresh(); }}
-            className="flex-1 py-3 px-6 bg-[#10b981] hover:bg-[#34d399] text-white font-bold rounded-xl transition-all text-xs flex items-center justify-center gap-2 shadow-lg"
-          >
-            <Play className="w-4 h-4" />
-            Back to Challenges
-          </button>
-        )}
+        <button
+          onClick={() => { router.push('/student/tests'); router.refresh(); }}
+          className="flex-1 py-3 px-6 bg-[#7c3aed] hover:bg-[#8b5cf6] text-white font-bold rounded-xl transition-all text-xs flex items-center justify-center gap-2 shadow-lg"
+        >
+          <Play className="w-4 h-4" />
+          Back to Challenges
+        </button>
       </div>
     </div>
   );
