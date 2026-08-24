@@ -1183,27 +1183,29 @@ public class CodeExecutionService {
             request.getLanguage()
         ));
 
-        Long timeTakenSeconds = null;
-        if (studentTest != null && studentTest.getStudent() != null && question != null) {
-            StudentQuestionStatus sqs = studentQuestionStatusRepository
-                    .findByStudentIdAndQuestionId(studentTest.getStudent().getId(), question.getId())
-                    .orElse(null);
-            
-            boolean isPracticeArena = studentTest.getTest() != null && 
-                                      studentTest.getTest().getName() != null && 
-                                      studentTest.getTest().getName().toLowerCase().contains("practice arena");
-                                      
-            if (isPracticeArena) {
-                if (sqs != null && sqs.getLastAttemptAt() != null) {
-                    long diff = java.time.Duration.between(sqs.getLastAttemptAt(), java.time.LocalDateTime.now()).getSeconds();
-                    timeTakenSeconds = Math.max(1L, diff);
-                }
-            } else {
-                if (studentTest.getStartedAt() != null) {
-                    long diff = java.time.Duration.between(studentTest.getStartedAt(), java.time.LocalDateTime.now()).getSeconds();
-                    timeTakenSeconds = Math.max(1L, diff);
-                } else if (studentTest.getTimeTakenSeconds() != null && studentTest.getTimeTakenSeconds() > 0) {
-                    timeTakenSeconds = studentTest.getTimeTakenSeconds();
+        Long timeTakenSeconds = request.getTimeTakenSeconds();
+        if (timeTakenSeconds == null) {
+            if (studentTest != null && studentTest.getStudent() != null && question != null) {
+                StudentQuestionStatus sqs = studentQuestionStatusRepository
+                        .findByStudentIdAndQuestionId(studentTest.getStudent().getId(), question.getId())
+                        .orElse(null);
+                
+                boolean isPracticeArena = studentTest.getTest() != null && 
+                                          studentTest.getTest().getName() != null && 
+                                          studentTest.getTest().getName().toLowerCase().contains("practice arena");
+                                          
+                if (isPracticeArena) {
+                    if (sqs != null && sqs.getLastAttemptAt() != null) {
+                        long diff = java.time.Duration.between(sqs.getLastAttemptAt(), java.time.LocalDateTime.now()).getSeconds();
+                        timeTakenSeconds = Math.max(1L, diff);
+                    }
+                } else {
+                    if (studentTest.getStartedAt() != null) {
+                        long diff = java.time.Duration.between(studentTest.getStartedAt(), java.time.LocalDateTime.now()).getSeconds();
+                        timeTakenSeconds = Math.max(1L, diff);
+                    } else if (studentTest.getTimeTakenSeconds() != null && studentTest.getTimeTakenSeconds() > 0) {
+                        timeTakenSeconds = studentTest.getTimeTakenSeconds();
+                    }
                 }
             }
         }

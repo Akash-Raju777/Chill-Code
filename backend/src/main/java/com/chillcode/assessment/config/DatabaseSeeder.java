@@ -53,7 +53,7 @@ public class DatabaseSeeder implements CommandLineRunner {
     @Override
     @Transactional
     public void run(String... args) throws Exception {
-        // Seed admin_demo if it doesn't exist
+      try {
         User adminDemo = userRepository.findByUsername("admin_demo")
                 .orElseGet(() -> userRepository.findByEmail("admin@chillcode.com").orElse(null));
         if (adminDemo == null) {
@@ -327,6 +327,9 @@ public class DatabaseSeeder implements CommandLineRunner {
                 }
             }
         }
+      } catch (Exception e) {
+        System.err.println("DatabaseSeeder: Non-fatal error during seeding (app will continue): " + e.getMessage());
+      }
     }
 
     private void seedDefaultBadges() {

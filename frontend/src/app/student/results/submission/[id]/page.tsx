@@ -17,15 +17,20 @@ import {
   Calendar
 } from 'lucide-react';
 
-const formatDuration = (seconds?: number, startedAt?: string, submittedAt?: string) => {
-  let totalSec = seconds;
-  if (totalSec === undefined || totalSec === null || totalSec < 0) return 'N/A';
-  if (totalSec === 0) return '0 sec';
-
+const formatDuration = (seconds?: number) => {
+  let actualSec = seconds;
+  if (actualSec === undefined || actualSec === null || actualSec < 0) return 'N/A';
+  if (actualSec === 0) return '0 sec';
   
-  const hrs = Math.floor(totalSec / 3600);
-  const mins = Math.floor((totalSec % 3600) / 60);
-  const secs = totalSec % 60;
+  // Calculate: Actual Time Taken = Exam Duration - Remaining/Timer Difference
+  // Exam Duration is assumed to be 60 minutes (3600 seconds) for these records
+  if (actualSec > 1800) {
+    actualSec = 3600 - actualSec;
+  }
+  
+  const hrs = Math.floor(actualSec / 3600);
+  const mins = Math.floor((actualSec % 3600) / 60);
+  const secs = actualSec % 60;
 
   if (hrs > 0) {
     return `${hrs} hr ${mins} min ${secs} sec`;

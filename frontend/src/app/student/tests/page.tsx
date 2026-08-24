@@ -721,7 +721,14 @@ export default function TestsWorkspace() {
             {renderQuestionsTable(notAttendedQuestions, false)}
           </div>
 
-
+          {/* Category 2: In Progress */}
+          <div className="space-y-4 pt-4">
+            <h2 className="text-sm font-bold text-amber-500 uppercase tracking-wider flex items-center gap-2 font-sans select-none">
+              <span className="w-2.5 h-2.5 rounded-full bg-amber-500"></span>
+              In Progress ({inProgressQuestions.length})
+            </h2>
+            {renderQuestionsTable(inProgressQuestions, false)}
+          </div>
 
           {/* Category 3: Pending */}
           <div className="space-y-4 pt-4">

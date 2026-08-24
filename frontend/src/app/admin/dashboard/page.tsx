@@ -69,8 +69,8 @@ export default function AdminDashboard() {
     }
     try {
       const [response, reattempts] = await Promise.all([
-        apiCall('/api/admin/dashboard'),
-        apiCall('/api/admin/tests/reattempt-requests')
+        apiCall(`/api/admin/dashboard?t=${Date.now()}`),
+        apiCall(`/api/admin/tests/reattempt-requests?t=${Date.now()}`)
       ]);
 
       // Filter out activities of forgiven students

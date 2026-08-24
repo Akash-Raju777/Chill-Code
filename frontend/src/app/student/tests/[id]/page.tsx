@@ -264,8 +264,8 @@ function CodingWorkspaceInner() {
         }
 
         // Calculate remaining time
-        const baseMinutes = targetQuestions[0]?.timer || activeTest.test?.durationMinutes || 60;
-        const totalSeconds = (typeof baseMinutes === 'number' && !isNaN(baseMinutes) && baseMinutes > 0) ? baseMinutes * 60 : 3600;
+        const baseMinutes = Number(targetQuestions[0]?.timer || activeTest.test?.durationMinutes || 60);
+        const totalSeconds = (!isNaN(baseMinutes) && baseMinutes > 0) ? baseMinutes * 60 : 3600;
         totalSecondsRef.current = totalSeconds;
         let remainingSeconds = totalSeconds;
         const questionStatus = targetQuestions[0]?.status;
@@ -547,10 +547,6 @@ function CodingWorkspaceInner() {
   };
 
   const handleManualSubmitExam = () => {
-    // FREEZE timer immediately when Submit Exam confirm dialog opens
-    timerFrozenRef.current = true;
-    frozenElapsedSecondsRef.current = Math.max(1, totalSecondsRef.current - useTestStore.getState().timeLeftSeconds);
-
     setConfirmDialog({
       isOpen: true,
       title: 'Submit Exam',
@@ -558,8 +554,10 @@ function CodingWorkspaceInner() {
       onConfirm: async () => {
         if (autoSubmittedRef.current) return;
         autoSubmittedRef.current = true;
-        // Timer stays frozen — session will be cleared after submission
-        timerFrozenRef.current = false;
+        
+        // FREEZE timer only when confirm is clicked
+        timerFrozenRef.current = true;
+        frozenElapsedSecondsRef.current = Math.max(1, totalSecondsRef.current - useTestStore.getState().timeLeftSeconds);
         
         setSubmittingExam(true);
         try {
@@ -749,11 +747,14 @@ function CodingWorkspaceInner() {
     setConsoleTab('RESULT');
     setEvaluationStage('EVALUATING');
 
+    const timeTaken = Math.max(1, totalSecondsRef.current - useTestStore.getState().timeLeftSeconds);
+
     const payload = {
       code: codes[currentQuestion.id],
       language: languages[currentQuestion.id],
       questionId: currentQuestion.id,
       studentTestId: useTestStore.getState().activeStudentTestId,
+      timeTakenSeconds: timeTaken,
       runOnly: false,
     };
 

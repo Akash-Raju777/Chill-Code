@@ -34,8 +34,8 @@ public interface StudentTestRepository extends JpaRepository<StudentTest, Long> 
     @org.springframework.transaction.annotation.Transactional(propagation = org.springframework.transaction.annotation.Propagation.REQUIRES_NEW)
     @org.springframework.data.jpa.repository.Modifying
     @org.springframework.data.jpa.repository.Query(value = 
-        "INSERT INTO student_tests (student_id, test_id, status, score, warnings_count, is_suspended) " +
-        "SELECT :studentId, t.id, 'ASSIGNED', 0, 0, false " +
+        "INSERT INTO student_tests (student_id, test_id, admin_id, status, score, warnings_count, is_suspended) " +
+        "SELECT :studentId, t.id, COALESCE(t.admin_id, (SELECT u.admin_id FROM app_users u WHERE u.id = :studentId)), 'ASSIGNED', 0, 0, false " +
         "FROM tests t " +
         "WHERE t.id IN (SELECT DISTINCT tq.test_id FROM test_questions tq) " +
         "AND t.id NOT IN (SELECT st.test_id FROM student_tests st WHERE st.student_id = :studentId)",

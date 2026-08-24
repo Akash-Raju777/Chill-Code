@@ -64,11 +64,15 @@ public class QuestionService {
     @jakarta.persistence.PersistenceContext
     private jakarta.persistence.EntityManager entityManager;
 
+    @Autowired
+    @org.springframework.context.annotation.Lazy
+    private QuestionService self;
+
     @org.springframework.context.event.EventListener(org.springframework.boot.context.event.ApplicationReadyEvent.class)
     public void onApplicationReady() {
         log.info("Application started: Running retroactive cleanup for orphaned deleted questions...");
         try {
-            cleanupOrphanedRecordsAndEmptyTests();
+            self.cleanupOrphanedRecordsAndEmptyTests();
             log.info("Retroactive cleanup completed successfully.");
         } catch (Exception e) {
             log.error("Failed to run retroactive cleanup: {}", e.getMessage(), e);
@@ -710,7 +714,7 @@ public class QuestionService {
             // attemptCount reflects only completed/submitted attempts.
             // An IN_PROGRESS attempt is not yet submitted, so rawAttempts == 0 is correct.
             // User requested to display re-attempts (so first pass/fail shows as 0, second as 1, etc.)
-            dto.setAttemptCount(Math.max(0, rawAttempts - 1));
+            dto.setAttemptCount(rawAttempts);
             dto.setLastAttemptAt(status.getLastAttemptAt() != null ? status.getLastAttemptAt().toString() : null);
         } else {
             dto.setStatus(hasAcceptedSubmission ? "COMPLETED" : "NOT_STARTED");

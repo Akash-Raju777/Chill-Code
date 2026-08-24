@@ -148,7 +148,13 @@ public class QuestionController {
             status.setQuestionId(questionId);
             status.setStatus("IN_PROGRESS");
             status.setAttemptCount(0);
-            status = studentQuestionStatusRepository.save(status);
+            try {
+                status = studentQuestionStatusRepository.save(status);
+            } catch (org.springframework.dao.DataIntegrityViolationException e) {
+                status = studentQuestionStatusRepository
+                        .findByStudentIdAndQuestionId(student.getId(), questionId)
+                        .orElse(status);
+            }
             
             log.info("[QuestionStatus] Created new status entry for studentId={}, questionId={}, adminId={}", 
                 student.getId(), questionId, adminId);

@@ -693,19 +693,10 @@ public class TestService {
         StudentTest st = studentTestRepository.findByStudentIdAndTestId(studentId, testId)
                 .orElseThrow(() -> new RuntimeException("Student test not found"));
         
-        if (questionId != null) {
-            studentQuestionStatusRepository.findByStudentIdAndQuestionId(studentId, questionId)
-                    .ifPresent(sqs -> {
-                        if ("IN_PROGRESS".equals(sqs.getStatus()) || "NOT_STARTED".equals(sqs.getStatus())) {
-                            sqs.setStatus("PENDING");
-                            studentQuestionStatusRepository.save(sqs);
-                        }
-                    });
-        }
-        
         if ("STARTED".equals(st.getStatus())) {
-            st.setStatus("PENDING");
-            st = studentTestRepository.save(st);
+            // Treat an exit as an empty auto-submit to ensure attempts are consumed 
+            // and fail results are generated correctly.
+            return submitTestDto(testId, studentId, new java.util.HashMap<>(), true, null);
         }
         
         return convertToStudentTestDto(st);
@@ -748,6 +739,11 @@ public class TestService {
                                 existing.sort((a, b) -> b.getId().compareTo(a.getId()));
                                 if (code.equals(existing.get(0).getCode())) {
                                     isDuplicate = true;
+                                    if (timeTakenSeconds != null) {
+                                        com.chillcode.assessment.entity.Submission existingSub = existing.get(0);
+                                        existingSub.setTimeTakenSeconds(timeTakenSeconds);
+                                        submissionRepository.save(existingSub);
+                                    }
                                 }
                             }
                             
@@ -759,6 +755,7 @@ public class TestService {
                                     submitReq.setCode(code);
                                     submitReq.setLanguage(language != null ? language : "java");
                                     submitReq.setRunOnly(false); // Evaluate and save submission!
+                                    submitReq.setTimeTakenSeconds(timeTakenSeconds);
 
                                     // Run submission evaluation synchronously
                                     codeExecutionService.submitCode(submitReq);
@@ -770,6 +767,43 @@ public class TestService {
                     }
                 } catch (Exception e) {
                     System.err.println("Error saving draft submission: " + e.getMessage());
+                }
+            }
+        }
+
+        if (st.getStartedAt() != null && st.getTest() != null && st.getTest().getQuestions() != null
+                && !st.getTest().getQuestions().isEmpty()) {
+            
+            Set<Long> questionsSubmittedNow = new HashSet<>();
+            if (questionCodes != null) {
+                for (String qIdStr : questionCodes.keySet()) {
+                    try {
+                        questionsSubmittedNow.add(Long.parseLong(qIdStr));
+                    } catch (NumberFormatException ignored) {}
+                }
+            }
+
+            for (Question q : st.getTest().getQuestions()) {
+                if (!questionsSubmittedNow.contains(q.getId())) {
+                    StudentQuestionStatus sqs = studentQuestionStatusRepository
+                            .findByStudentIdAndQuestionId(studentId, q.getId())
+                            .orElse(null);
+                    
+                    if (sqs != null && "IN_PROGRESS".equals(sqs.getStatus())) {
+                        // Create a placeholder submission per question so attemptCount increments.
+                        try {
+                            com.chillcode.assessment.dto.SubmitRequest blankReq = new com.chillcode.assessment.dto.SubmitRequest();
+                            blankReq.setQuestionId(q.getId());
+                            blankReq.setStudentTestId(st.getId());
+                            blankReq.setCode("// No code submitted");
+                            blankReq.setLanguage("java");
+                            blankReq.setRunOnly(false);
+                            blankReq.setTimeTakenSeconds(timeTakenSeconds);
+                            codeExecutionService.submitCode(blankReq);
+                        } catch (Exception e) {
+                            System.err.println("Failed to create blank submission for question " + q.getId() + ": " + e.getMessage());
+                        }
+                    }
                 }
             }
         }

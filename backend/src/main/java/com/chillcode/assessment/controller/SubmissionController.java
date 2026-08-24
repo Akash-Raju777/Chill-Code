@@ -100,6 +100,21 @@ public class SubmissionController {
         // Build per-question submission index map (0-based attempt number per submission).
         // Sort all submissions for each question by createdAt ASC, then assign index 0,1,2,...
         // This means: first submission for a question = attempt 0, second = attempt 1, etc.
+        java.util.Map<Long, List<Submission>> submissionsByQuestion = new java.util.HashMap<>();
+        for (Submission sub : submissions) {
+            if (sub.getQuestion() != null) {
+                submissionsByQuestion.computeIfAbsent(sub.getQuestion().getId(), k -> new java.util.ArrayList<>()).add(sub);
+            }
+        }
+        
+        java.util.Map<Long, Integer> submissionAttemptIndex = new java.util.HashMap<>();
+        for (List<Submission> subList : submissionsByQuestion.values()) {
+            subList.sort(java.util.Comparator.comparing(Submission::getCreatedAt));
+            for (int i = 0; i < subList.size(); i++) {
+                submissionAttemptIndex.put(subList.get(i).getId(), i);
+            }
+        }
+
         List<java.util.Map<String, Object>> result = new java.util.ArrayList<>();
         for (Submission sub : submissions) {
             if (sub.getQuestion() == null) {
@@ -133,12 +148,14 @@ public class SubmissionController {
                 map.put("subjectName", sub.getQuestion().getSubject().getName());
             }
 
-            // Use the actual attempt count from StudentQuestionStatus
+            // Fetch StudentQuestionStatus for time calculations
             com.chillcode.assessment.entity.StudentQuestionStatus sqs = studentQuestionStatusRepository
                 .findByStudentIdAndQuestionId(student.getId(), sub.getQuestion().getId())
                 .orElse(null);
-            int rawAttempts = sqs != null && sqs.getAttemptCount() != null ? sqs.getAttemptCount() : 0;
-            map.put("attempts", Math.max(0, rawAttempts - 1));
+
+            // Use the calculated chronological attempt index (0-based)
+            int attemptIndex = submissionAttemptIndex.getOrDefault(sub.getId(), 0);
+            map.put("attempts", attemptIndex);
 
             if (sub.getStudentTest() != null) {
                 if (sub.getStudentTest().getTest() != null) {
@@ -146,9 +163,7 @@ public class SubmissionController {
                 }
                 
                 Long timeTaken = sub.getTimeTakenSeconds();
-                if (sub.getStudentTest() != null && sub.getStudentTest().getTest() != null 
-                    && !Boolean.TRUE.equals(sub.getStudentTest().getTest().getSecurityShieldEnabled()) 
-                    && sub.getStudentTest().getTimeTakenSeconds() != null 
+                if (sub.getStudentTest() != null && sub.getStudentTest().getTimeTakenSeconds() != null 
                     && sub.getStudentTest().getTimeTakenSeconds() > 0) {
                     timeTaken = sub.getStudentTest().getTimeTakenSeconds();
                 }
@@ -168,15 +183,17 @@ public class SubmissionController {
                             map.put("timeTakenSeconds", null);
                         }
                     } else {
-                        java.time.LocalDateTime startedAt = sub.getStudentTest().getStartedAt();
-                        java.time.LocalDateTime submittedAt = sub.getCreatedAt();
-                        if (startedAt != null && submittedAt != null) {
-                            long diff = java.time.Duration.between(startedAt, submittedAt).getSeconds();
-                            map.put("timeTakenSeconds", Math.max(1L, diff));
-                        } else if (sub.getStudentTest().getTimeTakenSeconds() != null && sub.getStudentTest().getTimeTakenSeconds() > 0) {
+                        if (sub.getStudentTest().getTimeTakenSeconds() != null && sub.getStudentTest().getTimeTakenSeconds() > 0) {
                             map.put("timeTakenSeconds", sub.getStudentTest().getTimeTakenSeconds());
                         } else {
-                            map.put("timeTakenSeconds", null);
+                            java.time.LocalDateTime startedAt = sub.getStudentTest().getStartedAt();
+                            java.time.LocalDateTime submittedAt = sub.getCreatedAt();
+                            if (startedAt != null && submittedAt != null) {
+                                long diff = java.time.Duration.between(startedAt, submittedAt).getSeconds();
+                                map.put("timeTakenSeconds", Math.max(1L, diff));
+                            } else {
+                                map.put("timeTakenSeconds", null);
+                            }
                         }
                     }
                 }
@@ -317,8 +334,12 @@ public class SubmissionController {
             if (sub.getStudentTest().getTest() != null) {
                 res.put("testId", sub.getStudentTest().getTest().getId());
             }
-            if (sub.getTimeTakenSeconds() != null) {
-                res.put("timeTakenSeconds", sub.getTimeTakenSeconds());
+            Long timeTaken = sub.getTimeTakenSeconds();
+            if (sub.getStudentTest().getTimeTakenSeconds() != null && sub.getStudentTest().getTimeTakenSeconds() > 0) {
+                timeTaken = sub.getStudentTest().getTimeTakenSeconds();
+            }
+            if (timeTaken != null) {
+                res.put("timeTakenSeconds", timeTaken);
                 res.put("startedAt", sub.getStudentTest().getStartedAt());
                 res.put("submittedAt", sub.getCreatedAt());
             } else {
