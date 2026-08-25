@@ -1093,13 +1093,15 @@ public class CodeExecutionService {
         boolean isPracticeArena = studentTest.getTest() != null && studentTest.getTest().getName() != null && studentTest.getTest().getName().toLowerCase().contains("practice arena");
         
         if (!isPracticeArena) {
-            if (studentTest.getStartedAt() != null) {
-                long seconds = java.time.Duration.between(studentTest.getStartedAt(), studentTest.getSubmittedAt()).getSeconds();
-                studentTest.setTimeTakenSeconds(Math.max(1L, seconds));
-            } else if (studentTest.getAutoSubmitted() != null && studentTest.getAutoSubmitted() && studentTest.getTest() != null && studentTest.getTest().getDurationMinutes() != null) {
-                studentTest.setTimeTakenSeconds((long) studentTest.getTest().getDurationMinutes() * 60);
-            } else {
-                studentTest.setTimeTakenSeconds(1L); // Prevent 0 sec
+            if (studentTest.getTimeTakenSeconds() == null || studentTest.getTimeTakenSeconds() == 0L) {
+                if (studentTest.getStartedAt() != null) {
+                    long seconds = java.time.Duration.between(studentTest.getStartedAt(), studentTest.getSubmittedAt()).getSeconds();
+                    studentTest.setTimeTakenSeconds(Math.max(1L, seconds));
+                } else if (studentTest.getAutoSubmitted() != null && studentTest.getAutoSubmitted() && studentTest.getTest() != null && studentTest.getTest().getDurationMinutes() != null) {
+                    studentTest.setTimeTakenSeconds((long) studentTest.getTest().getDurationMinutes() * 60);
+                } else {
+                    studentTest.setTimeTakenSeconds(1L); // Prevent 0 sec
+                }
             }
         }
 
@@ -1200,7 +1202,9 @@ public class CodeExecutionService {
                         timeTakenSeconds = Math.max(1L, diff);
                     }
                 } else {
-                    if (studentTest.getStartedAt() != null) {
+                    if (request.getTimeTakenSeconds() != null && request.getTimeTakenSeconds() > 0) {
+                        timeTakenSeconds = request.getTimeTakenSeconds();
+                    } else if (studentTest.getStartedAt() != null) {
                         long diff = java.time.Duration.between(studentTest.getStartedAt(), java.time.LocalDateTime.now()).getSeconds();
                         timeTakenSeconds = Math.max(1L, diff);
                     } else if (studentTest.getTimeTakenSeconds() != null && studentTest.getTimeTakenSeconds() > 0) {

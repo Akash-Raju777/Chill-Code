@@ -33,18 +33,13 @@ interface SubmissionResult {
 
 const formatDate = (dateStr?: string) => {
   if (!dateStr) return 'N/A';
+  return formatISTDateTime(dateStr);
 };
 
 const formatDuration = (seconds?: number, startedAt?: string, submittedAt?: string) => {
   let actualSec = seconds;
   if (actualSec === undefined || actualSec === null || actualSec < 0) return 'N/A';
   if (actualSec === 0) return '0 sec';
-  
-  // Calculate: Actual Time Taken = Exam Duration - Remaining/Timer Difference
-  // Exam Duration is assumed to be 60 minutes (3600 seconds) for these records
-  if (actualSec > 1800) {
-    actualSec = 3600 - actualSec;
-  }
   
   const hrs = Math.floor(actualSec / 3600);
   const mins = Math.floor((actualSec % 3600) / 60);

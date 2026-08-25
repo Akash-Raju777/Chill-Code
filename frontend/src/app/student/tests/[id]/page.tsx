@@ -143,8 +143,7 @@ function CodingWorkspaceInner() {
   const [showGloryModal, setShowGloryModal] = useState(false);
   const [showFailModal, setShowFailModal] = useState(false);
   const [submissionResponse, setSubmissionResponse] = useState<any>(null);
-
-  const totalSecondsRef = useRef<number>(3600);
+  const autoSubmittedRef = useRef<boolean>(false);
   const frozenElapsedSecondsRef = useRef<number | null>(null);
   const actualStartTimeMsRef = useRef<number | null>(null);
 
@@ -235,19 +234,34 @@ function CodingWorkspaceInner() {
         let targetQuestions = allQuestions;
         if (questionIdParam) {
           const qId = Number(questionIdParam);
-          let matchedQ = allQuestions.find((q: any) => q.id === qId);
-          if (!matchedQ) {
-            try {
-              matchedQ = await apiCall(`/api/student/questions/${qId}`);
-              if (matchedQ && matchedQ.id) {
-                allQuestions.push(matchedQ);
-              }
-            } catch (err) {
-              console.warn('[ExamInit] Question lookup by ID failed:', err);
+          try {
+            // Always fetch detailed question to get test cases (getAllQuestions omits them for performance)
+            const matchedQ = await apiCall(`/api/student/questions/${qId}`);
+            if (matchedQ && matchedQ.id) {
+              targetQuestions = [matchedQ];
+            }
+          } catch (err) {
+            console.warn('[ExamInit] Question lookup by ID failed:', err);
+            const fallbackQ = allQuestions.find((q: any) => q.id === qId);
+            if (fallbackQ) {
+              targetQuestions = [fallbackQ];
             }
           }
-          if (matchedQ) {
-            targetQuestions = [matchedQ];
+        } else {
+          try {
+            const detailedQuestions = await Promise.all(
+              targetQuestions.map(async (q: any) => {
+                try {
+                  const detailedQ = await apiCall(`/api/student/questions/${q.id}`);
+                  return detailedQ && detailedQ.id ? detailedQ : q;
+                } catch (e) {
+                  return q;
+                }
+              })
+            );
+            targetQuestions = detailedQuestions;
+          } catch (err) {
+            console.warn('[ExamInit] Failed to fetch detailed questions:', err);
           }
         }
 
@@ -267,7 +281,6 @@ function CodingWorkspaceInner() {
         // Calculate remaining time
         const baseMinutes = Number(targetQuestions[0]?.timer || activeTest.test?.durationMinutes || 60);
         const totalSeconds = (!isNaN(baseMinutes) && baseMinutes > 0) ? baseMinutes * 60 : 3600;
-        totalSecondsRef.current = totalSeconds;
         let remainingSeconds = totalSeconds;
         const questionStatus = targetQuestions[0]?.status;
         const isPracticeArena = activeTest.test?.name?.toLowerCase().includes('practice arena');
@@ -298,6 +311,7 @@ function CodingWorkspaceInner() {
           targetQuestions[0]?.title || activeTest.test?.name || 'Assessment',
           targetQuestions,
           isDone ? 0 : Math.max(1, remainingSeconds),
+          totalSeconds, // Pass actual configured test duration
           isDone,
           isEnabled,
           user?.id || updatedProfile?.id
@@ -517,8 +531,6 @@ function CodingWorkspaceInner() {
     return `${h.toString().padStart(2, '0')}:${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`;
   };
 
-  const autoSubmittedRef = useRef<boolean>(false);
-
   const handleAutoSubmit = async () => {
     if (autoSubmittedRef.current) return;
     autoSubmittedRef.current = true;
@@ -537,7 +549,7 @@ function CodingWorkspaceInner() {
         };
       });
 
-      const timeTaken = totalSecondsRef.current || 3600;
+      const timeTaken = useTestStore.getState().totalSeconds || 3600;
       await apiCall(`/api/student/tests/${testId}/submit?isAutoSubmitted=true&timeTakenSeconds=${timeTaken}`, {
         method: 'POST',
         body: JSON.stringify(questionCodes),
@@ -576,7 +588,7 @@ function CodingWorkspaceInner() {
         
         // FREEZE timer only when confirm is clicked
         timerFrozenRef.current = true;
-        frozenElapsedSecondsRef.current = Math.max(1, totalSecondsRef.current - useTestStore.getState().timeLeftSeconds);
+        frozenElapsedSecondsRef.current = Math.max(1, useTestStore.getState().totalSeconds - useTestStore.getState().timeLeftSeconds);
         
         setSubmittingExam(true);
         try {
@@ -591,10 +603,7 @@ function CodingWorkspaceInner() {
             };
           });
 
-          let timeTaken = Math.max(1, totalSecondsRef.current - currentStore.timeLeftSeconds);
-          if (actualStartTimeMsRef.current) {
-            timeTaken = Math.max(1, Math.floor((exactConfirmTimeMs - actualStartTimeMsRef.current) / 1000));
-          }
+          let timeTaken = frozenElapsedSecondsRef.current;
           await apiCall(`/api/student/tests/${testId}/submit?timeTakenSeconds=${timeTaken}`, {
             method: 'POST',
             body: JSON.stringify(questionCodes),
@@ -631,7 +640,8 @@ function CodingWorkspaceInner() {
         try {
           const token = sessionStorage.getItem('chill_token') || localStorage.getItem('token');
           if (token) {
-            await fetch(`http://localhost:8080/api/student/tests/${testId}/exit?questionId=${currentQuestion?.id || ''}`, {
+            const timeTaken = Math.max(1, useTestStore.getState().totalSeconds - useTestStore.getState().timeLeftSeconds);
+            await fetch(`http://localhost:8080/api/student/tests/${testId}/exit?questionId=${currentQuestion?.id || ''}&timeTakenSeconds=${timeTaken}`, {
               method: 'POST',
               headers: { 'Authorization': `Bearer ${token}` }
             });
@@ -772,7 +782,7 @@ function CodingWorkspaceInner() {
     setConsoleTab('RESULT');
     setEvaluationStage('EVALUATING');
 
-    const timeTaken = Math.max(1, totalSecondsRef.current - useTestStore.getState().timeLeftSeconds);
+    const timeTaken = Math.max(1, useTestStore.getState().totalSeconds - useTestStore.getState().timeLeftSeconds);
 
     const payload = {
       code: codes[currentQuestion.id],
@@ -781,7 +791,6 @@ function CodingWorkspaceInner() {
       studentTestId: useTestStore.getState().activeStudentTestId,
       timeTakenSeconds: timeTaken,
       runOnly: false,
-      timeTakenSeconds: timeTaken,
     };
 
     try {
@@ -1148,11 +1157,11 @@ function CodingWorkspaceInner() {
                       </div>
                     </div>
 
-                    {!isHidden && tc.inputData && (
+                    {!isHidden && (tc.inputData || tc.input_data) && (
                       <div className="space-y-1">
                         <div className="text-[10px] text-gray-500 font-bold uppercase font-sans">Input (stdin)</div>
                         <pre className="p-2 bg-[#08090f]/80 border border-white/5 text-gray-300 rounded-lg whitespace-pre-wrap font-mono text-[11px] max-h-[80px] overflow-y-auto">
-                          {tc.inputData}
+                          {tc.inputData || tc.input_data}
                         </pre>
                       </div>
                     )}
@@ -1162,14 +1171,14 @@ function CodingWorkspaceInner() {
                       <div className="space-y-1">
                         <div className="text-[10px] text-emerald-400 font-bold uppercase font-sans">Expected Output</div>
                         <pre className="p-2.5 bg-[#08090f]/80 border border-white/5 text-emerald-300 rounded-lg whitespace-pre-wrap font-mono text-[11px] leading-normal max-h-[120px] overflow-y-auto">
-                          {isHidden ? "🔒 Hidden" : tc.expectedOutput || "N/A"}
+                          {isHidden ? "🔒 Hidden" : (tc.expectedOutput || tc.expected_output || "N/A")}
                         </pre>
                       </div>
                       {/* Actual Output */}
                       <div className="space-y-1">
                         <div className={`text-[10px] font-bold uppercase font-sans ${isPassed ? 'text-emerald-400' : 'text-red-400'}`}>Your Output</div>
                         <pre className={`p-2.5 bg-[#08090f]/80 border border-white/5 rounded-lg whitespace-pre-wrap font-mono text-[11px] leading-normal max-h-[120px] overflow-y-auto ${isPassed ? 'text-emerald-300' : 'text-red-300'}`}>
-                          {isHidden ? "🔒 Hidden" : tc.actualOutput || "No output"}
+                          {isHidden ? "🔒 Hidden" : (tc.actualOutput || tc.actual_output || "No output")}
                         </pre>
                       </div>
                     </div>
@@ -1322,9 +1331,12 @@ function CodingWorkspaceInner() {
 
             {/* Problem Statement details */}
             <div className="space-y-6 text-sm leading-relaxed text-gray-300 font-sans border-t border-white/5 pt-5">
-              <div>
-                <p className="whitespace-pre-line leading-relaxed">{currentQuestion.problemStatement}</p>
-              </div>
+              {currentQuestion.problemStatement && (
+                <div className="space-y-2">
+                  <h3 className="text-xs font-bold text-white uppercase tracking-wider">Problem Statement</h3>
+                  <p className="whitespace-pre-line leading-relaxed">{currentQuestion.problemStatement}</p>
+                </div>
+              )}
 
               {/* Constraints Section */}
               {currentQuestion.constraints && (
@@ -1620,14 +1632,6 @@ function CodingWorkspaceInner() {
                     <>
                       {(() => {
                         const sampleTestcases = currentQuestion.testCases?.filter((tc: any) => !tc.isHidden) || [];
-                        const hasInput = currentQuestion.inputFormat || sampleTestcases.length > 0;
-                        if (!hasInput) {
-                          return (
-                            <div className="text-gray-500 flex items-center justify-center py-8 font-sans">
-                              This question does not require standard input.
-                            </div>
-                          );
-                        }
                         
                         const count = Math.max(1, Math.min(3, sampleTestcases.length));
                         const inputs = [

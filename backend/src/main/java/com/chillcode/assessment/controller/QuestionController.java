@@ -206,6 +206,13 @@ public class QuestionController {
         response.setTotalTests(result.getTotalTests());
         response.setExpectedOutput(result.getExpectedOutput());
         response.setActualOutput(result.getActualOutput());
+        
+        // Add missing evaluation metrics
+        response.setScore(result.getScore());
+        response.setTotalMarks(result.getTotalMarks());
+        response.setPassingMarks(result.getPassingMarks());
+        response.setPercentage(result.getPercentage());
+        response.setOverallResult(result.getOverallResult());
         response.setFailedTestCaseNumber(result.getFailedTestCaseNumber());
         response.setJudge0Status(result.getJudge0Status());
         response.setTestCaseResults(result.getTestCaseResults());

@@ -692,14 +692,14 @@ public class TestService {
     }
 
     @Transactional
-    public com.chillcode.assessment.dto.StudentTestDto exitTestDto(Long testId, Long studentId, Long questionId) {
+    public com.chillcode.assessment.dto.StudentTestDto exitTestDto(Long testId, Long studentId, Long questionId, Long timeTakenSeconds) {
         StudentTest st = studentTestRepository.findByStudentIdAndTestId(studentId, testId)
                 .orElseThrow(() -> new RuntimeException("Student test not found"));
         
         if ("STARTED".equals(st.getStatus())) {
             // Treat an exit as an empty auto-submit to ensure attempts are consumed 
             // and fail results are generated correctly.
-            return submitTestDto(testId, studentId, new java.util.HashMap<>(), true, null);
+            return submitTestDto(testId, studentId, new java.util.HashMap<>(), true, timeTakenSeconds);
         }
         
         return convertToStudentTestDto(st);

@@ -22,12 +22,6 @@ const formatDuration = (seconds?: number) => {
   if (actualSec === undefined || actualSec === null || actualSec < 0) return 'N/A';
   if (actualSec === 0) return '0 sec';
   
-  // Calculate: Actual Time Taken = Exam Duration - Remaining/Timer Difference
-  // Exam Duration is assumed to be 60 minutes (3600 seconds) for these records
-  if (actualSec > 1800) {
-    actualSec = 3600 - actualSec;
-  }
-  
   const hrs = Math.floor(actualSec / 3600);
   const mins = Math.floor((actualSec % 3600) / 60);
   const secs = actualSec % 60;
@@ -249,7 +243,7 @@ export default function SubmissionResultPage() {
           <div>
             <div className="text-[10px] text-gray-500 font-bold uppercase tracking-wider">Time Taken</div>
             <div className="text-xs font-semibold text-gray-200 font-mono">
-              {formatDuration(submission.timeTakenSeconds, submission.startedAt, submission.submittedAt || submission.createdAt)}
+              {formatDuration(submission.timeTakenSeconds)}
             </div>
           </div>
         </div>

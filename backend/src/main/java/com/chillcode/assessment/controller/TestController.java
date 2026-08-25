@@ -85,9 +85,10 @@ public class TestController {
     @PostMapping("/student/tests/{id}/exit")
     public ResponseEntity<com.chillcode.assessment.dto.StudentTestDto> exitTest(
             @PathVariable("id") Long id,
+            @RequestParam(value = "timeTakenSeconds", required = false) Long timeTakenSeconds,
             @RequestParam(value = "questionId", required = false) Long questionId) {
         User student = getCurrentUser();
-        return ResponseEntity.ok(testService.exitTestDto(id, student.getId(), questionId));
+        return ResponseEntity.ok(testService.exitTestDto(id, student.getId(), questionId, timeTakenSeconds));
     }
 
     @PostMapping("/student/tests/{id}/warning")

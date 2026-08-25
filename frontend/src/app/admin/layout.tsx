@@ -105,26 +105,28 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
         </nav>
 
         {/* Sidebar Footer / User Profile & Logout */}
-        <div className="p-4 border-t border-white/5 space-y-3">
-          <div className="flex items-center gap-3 px-4 py-2">
-            <div className="p-2 bg-indigo-500/10 rounded-lg text-indigo-400">
-              <UserIcon className="w-5 h-5" />
+        <div className="mt-auto p-4 pb-8 border-t border-white/5">
+          <div className="flex items-center justify-between gap-2 p-2 bg-white/[0.02] border border-white/5 rounded-xl hover:bg-white/[0.04] transition-colors">
+            <div className="flex items-center gap-3 overflow-hidden">
+              <div className="p-2 bg-indigo-500/20 rounded-lg text-indigo-400 border border-indigo-500/20 flex-shrink-0">
+                <UserIcon className="w-4 h-4" />
+              </div>
+              <div className="min-w-0 flex-1">
+                <h4 className="text-xs font-semibold text-white truncate">{user.name}</h4>
+                <p className="text-[10px] text-gray-400 capitalize truncate">{user.role.toLowerCase()}</p>
+              </div>
             </div>
-            <div className="overflow-hidden">
-              <h4 className="text-sm font-semibold text-white truncate">{user.name}</h4>
-              <p className="text-xs text-gray-500 capitalize">{user.role.toLowerCase()}</p>
-            </div>
+            <button
+              onClick={() => {
+                logout();
+                router.push('/');
+              }}
+              className="p-2 text-gray-400 hover:text-red-400 hover:bg-red-400/10 rounded-lg transition-all flex-shrink-0"
+              title="Logout"
+            >
+              <LogOut className="w-4 h-4" />
+            </button>
           </div>
-          <button
-            onClick={() => {
-              logout();
-              router.push('/');
-            }}
-            className="w-full flex items-center gap-3 px-4 py-3 rounded-xl font-medium text-red-400 hover:bg-red-500/5 hover:text-red-300 transition-all text-left"
-          >
-            <LogOut className="w-5 h-5" />
-            Logout
-          </button>
         </div>
       </aside>
 

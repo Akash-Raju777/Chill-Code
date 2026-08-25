@@ -107,7 +107,7 @@ export default function StudentLayout({ children }: { children: React.ReactNode 
   return (
     <div className={`min-h-screen bg-[#0b0c10] flex font-sans ${isSecurityActive ? 'select-none' : ''}`}>
       {/* Sidebar navigation */}
-      <aside className={`fixed inset-y-0 left-0 z-40 w-64 bg-[#11131c] border-r border-white/5 flex flex-col justify-between p-6 transition-transform duration-300 md:translate-x-0 ${
+      <aside className={`fixed inset-y-0 left-0 z-40 w-64 bg-[#11131c] border-r border-white/5 flex flex-col justify-between p-6 pb-8 transition-transform duration-300 md:translate-x-0 ${
         sidebarOpen ? 'translate-x-0' : '-translate-x-full'
       }`}>
         <div className="space-y-8">
@@ -195,23 +195,23 @@ export default function StudentLayout({ children }: { children: React.ReactNode 
         </div>
 
         {/* Profile Card / Action info */}
-        <div className="border-t border-white/5 pt-4 space-y-4">
-          <div className="flex items-center gap-3">
-            <div className="w-8 h-8 rounded-full bg-indigo-500/10 text-indigo-400 flex items-center justify-center font-bold text-sm uppercase">
-              {user.name ? user.name[0] : 'S'}
+        <div className="mt-auto border-t border-white/5 pt-4">
+          <div className="flex items-center justify-between gap-2 p-2 bg-white/[0.02] border border-white/5 rounded-xl hover:bg-white/[0.04] transition-colors">
+            <div className="flex items-center gap-3 overflow-hidden">
+              <div className="w-9 h-9 rounded-full bg-indigo-500/20 text-indigo-400 flex items-center justify-center font-bold text-sm uppercase flex-shrink-0 border border-indigo-500/20">
+                {user.name ? user.name[0] : 'S'}
+              </div>
+              <div className="min-w-0 flex-1">
+                <div className="text-xs font-bold text-white truncate">{user.name}</div>
+                <div className="text-[10px] text-gray-400 truncate">{user.email}</div>
+              </div>
             </div>
-            <div className="min-w-0">
-              <div className="text-xs font-bold text-white truncate">{user.name}</div>
-              <div className="text-[10px] text-gray-500 truncate">{user.email}</div>
-            </div>
-          </div>
-          <div className="flex gap-2">
             <button
               onClick={logout}
-              className="flex items-center justify-center gap-2 px-4 py-2.5 border border-white/5 hover:border-white/10 hover:bg-white/5 rounded-xl text-xs font-bold text-gray-400 hover:text-white transition-all w-full"
+              className="p-2 text-gray-400 hover:text-red-400 hover:bg-red-400/10 rounded-lg transition-all flex-shrink-0"
+              title="Logout"
             >
-              <LogOut className="w-4 h-4 text-red-400" />
-              Logout
+              <LogOut className="w-4 h-4" />
             </button>
           </div>
         </div>

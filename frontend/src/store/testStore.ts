@@ -32,6 +32,7 @@ interface TestState {
   codes: Record<number, string>; // questionId -> code
   languages: Record<number, string>; // questionId -> selected language
   timeLeftSeconds: number;
+  totalSeconds: number;
   isSessionActive: boolean;
   isViewMode: boolean;
   securityShieldEnabled: boolean;
@@ -42,7 +43,8 @@ interface TestState {
     studentTestId: number,
     testName: string,
     questions: Question[],
-    durationSeconds: number,
+    durationSeconds: number, // remaining time
+    totalDurationSeconds: number, // full test duration
     isViewMode?: boolean,
     securityShieldEnabled?: boolean,
     userId?: number
@@ -63,12 +65,13 @@ export const useTestStore = create<TestState>((set) => ({
   codes: {},
   languages: {},
   timeLeftSeconds: 0,
+  totalSeconds: 0,
   isSessionActive: false,
   isViewMode: false,
   securityShieldEnabled: false,
   lastUserId: null,
 
-  startTestSession: (testId, studentTestId, testName, questions, durationSeconds, isViewMode = false, securityShieldEnabled = false, userId) => {
+  startTestSession: (testId, studentTestId, testName, questions, durationSeconds, totalDurationSeconds, isViewMode = false, securityShieldEnabled = false, userId) => {
     // Initial codes and languages mapping
     const codes: Record<number, string> = {};
     const languages: Record<number, string> = {};
@@ -91,6 +94,7 @@ export const useTestStore = create<TestState>((set) => ({
       codes,
       languages,
       timeLeftSeconds: Math.max(0, durationSeconds),
+      totalSeconds: Math.max(0, totalDurationSeconds),
       isSessionActive: true,
       isViewMode,
       securityShieldEnabled,

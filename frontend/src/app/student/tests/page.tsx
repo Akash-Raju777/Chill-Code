@@ -296,13 +296,25 @@ export default function TestsWorkspace() {
         }
       }
 
-      // 1. INSTANT TEST SESSION START - Zero latency UI transition
+      // 1. Fetch detailed question first to ensure test cases & full details are available
+      let sessionQuestions = [selectedQuestion];
+      try {
+        const detailedQ = await apiCall(`/api/student/questions/${selectedQuestion.id}`);
+        if (detailedQ && detailedQ.id) {
+          sessionQuestions = [detailedQ];
+        }
+      } catch (err) {
+        console.warn("Failed to fetch detailed question during start, using shallow copy:", err);
+      }
+
+      // 2. INSTANT TEST SESSION START - Zero latency UI transition
       startTestSession(
         selectedTest.test.id,
         selectedTest.id,
         selectedQuestion.title,
-        [selectedQuestion],
+        sessionQuestions,
         remainingSeconds,
+        totalSeconds, // Add total configured test duration
         false, // isViewMode = false
         selectedTest.test.securityShieldEnabled ?? false,
         latestUser?.id
