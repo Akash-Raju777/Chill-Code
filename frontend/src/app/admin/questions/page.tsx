@@ -3,7 +3,7 @@
 import React, { useEffect, useState } from 'react';
 import ConfirmModal from '../../../components/ConfirmModal';
 import { apiCall, fetchBadgeSets, createBadgeSet, updateBadgeSet } from '../../../utils/api';
-import { Plus, Trash2, Edit2, Code2, Loader2, ArrowLeft, Check, AlertCircle, Award, Trophy, Layers } from 'lucide-react';
+import { Plus, Trash2, Edit2, Code2, Loader2, ArrowLeft, Check, AlertCircle, Award, Trophy, Layers, Sparkles } from 'lucide-react';
 
 interface Subject {
   id: number;
@@ -68,6 +68,7 @@ export default function QuestionManagement() {
 
   // Enable Badge Management states
   const [enableBadgeManagement, setEnableBadgeManagement] = useState(false);
+  const [enableAshHint, setEnableAshHint] = useState(true);
   const [targetTestId, setTargetTestId] = useState<number | null>(null);
   const [targetTestCode, setTargetTestCode] = useState<string>('');
   const [targetTestName, setTargetTestName] = useState<string>('');
@@ -150,6 +151,7 @@ export default function QuestionManagement() {
     setQuestionCode('');
     setTimer('');
     setEnableBadgeManagement(false);
+    setEnableAshHint(true);
     setExistingBadgeSetId(null);
     setTargetTestId(null);
     setTargetTestCode('');
@@ -258,6 +260,7 @@ export default function QuestionManagement() {
     });
 
     setEnableBadgeManagement(false);
+    setEnableAshHint(true);
     setExistingBadgeSetId(null);
     setTargetTestId(null);
     setFormSubjectId(fullQ.subjectId);
@@ -273,6 +276,11 @@ export default function QuestionManagement() {
       : (fullQ.badgeSet ? fullQ.badgeSet.status === 'ACTIVE' : false);
 
     setEnableBadgeManagement(isBadgesEnabled);
+
+    const isHintEnabled = fullQ.enableAshHint !== undefined
+      ? Boolean(fullQ.enableAshHint)
+      : true;
+    setEnableAshHint(isHintEnabled);
     setExistingBadgeSetId(fullQ.badgeSetId || fullQ.badgeSet?.id || null);
     setBadgeSetName(fullQ.badgeSetName || fullQ.badgeSet?.name || `${fullQ.title} Badge Set`);
     setBadgeWinnersCount(fullQ.badgeWinnersCount || fullQ.badgeSet?.numberOfWinners || 3);
@@ -421,6 +429,7 @@ export default function QuestionManagement() {
         ...payload,
         testId: targetTestId,
         enableBadgeManagement,
+        enableAshHint,
         badgeSetName: badgeSetName.trim() || `${title.trim()} Badge Set`,
         badgeWinnersCount,
         enableLanguageBadge,
@@ -953,6 +962,32 @@ export default function QuestionManagement() {
                   className="sr-only peer"
                 />
                 <div className="w-11 h-6 bg-gray-700 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-amber-500"></div>
+              </label>
+            </div>
+          </div>
+
+          {/* Enable Ash Hint Toggle */}
+          <div className="border-t border-white/5 pt-6">
+            <div className="p-4 bg-indigo-500/5 border border-indigo-500/20 rounded-2xl flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <div className="p-2 bg-indigo-500/20 rounded-xl text-indigo-400">
+                  <Sparkles className="w-5 h-5" />
+                </div>
+                <div>
+                  <h4 className="text-sm font-bold text-white">Enable Ash's Hint</h4>
+                  <p className="text-[11px] text-gray-400">
+                    If enabled, students will receive an AI-generated hint when they submit an incorrect solution.
+                  </p>
+                </div>
+              </div>
+              <label className="relative inline-flex items-center cursor-pointer select-none">
+                <input
+                  type="checkbox"
+                  checked={enableAshHint}
+                  onChange={(e) => setEnableAshHint(e.target.checked)}
+                  className="sr-only peer"
+                />
+                <div className="w-11 h-6 bg-gray-700 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-indigo-500"></div>
               </label>
             </div>
           </div>

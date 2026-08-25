@@ -1304,6 +1304,9 @@ public class CodeExecutionService {
     }
 
     private String getGrokExplanation(String status, String code, String compileError, String stderr, String language, String customInput, String expectedOutput, String actualOutput, StudentTest studentTest, Question question) {
+        if (question != null && Boolean.FALSE.equals(question.getEnableAshHint())) {
+            return null;
+        }
         try {
             String errorContext = "";
             if ("COMPILATION_ERROR".equals(status)) {

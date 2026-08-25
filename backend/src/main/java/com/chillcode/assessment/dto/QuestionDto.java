@@ -27,6 +27,7 @@ public class QuestionDto {
     private Integer passingMarks;
     private Double negativeMarks;
     private Boolean partialMarksEnabled;
+    private Boolean enableAshHint;
     private List<TestCaseDto> testCases;
     
     // Status tracking fields

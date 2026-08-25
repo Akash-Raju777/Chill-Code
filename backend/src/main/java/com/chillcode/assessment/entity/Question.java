@@ -77,6 +77,10 @@ public class Question {
     @Builder.Default
     private Boolean partialMarksEnabled = true;
 
+    @Column(name = "enable_ash_hint")
+    @Builder.Default
+    private Boolean enableAshHint = true;
+
     @OneToMany(mappedBy = "question", cascade = CascadeType.ALL, orphanRemoval = true)
     @com.fasterxml.jackson.annotation.JsonIgnore
     private List<TestCase> testCases;

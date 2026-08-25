@@ -258,6 +258,7 @@ public class QuestionService {
                 .passingMarks(passingMarks)
                 .negativeMarks(questionDto.getNegativeMarks() != null ? questionDto.getNegativeMarks() : 0.0)
                 .partialMarksEnabled(questionDto.getPartialMarksEnabled() != null ? questionDto.getPartialMarksEnabled() : true)
+                .enableAshHint(questionDto.getEnableAshHint() != null ? questionDto.getEnableAshHint() : true)
                 .admin(com.chillcode.assessment.security.SecurityUtils.getCurrentUser())
                 .build();
 
@@ -330,6 +331,9 @@ public class QuestionService {
         question.setTags(questionDto.getTags());
         question.setTotalMarks(computedTotalMarks);
         question.setPassingMarks(passingMarks);
+        question.setNegativeMarks(questionDto.getNegativeMarks() != null ? questionDto.getNegativeMarks() : 0.0);
+        question.setPartialMarksEnabled(questionDto.getPartialMarksEnabled() != null ? questionDto.getPartialMarksEnabled() : true);
+        question.setEnableAshHint(questionDto.getEnableAshHint() != null ? questionDto.getEnableAshHint() : true);
 
         Question savedQuestion = questionRepository.save(question);
         log.info("Question Updated: Question ID: {}, Title: '{}' successfully updated in database", savedQuestion.getId(), savedQuestion.getTitle());
@@ -667,6 +671,7 @@ public class QuestionService {
                 .passingMarks(question.getPassingMarks() != null ? question.getPassingMarks() : 10)
                 .negativeMarks(question.getNegativeMarks() != null ? question.getNegativeMarks() : 0.0)
                 .partialMarksEnabled(question.getPartialMarksEnabled() != null ? question.getPartialMarksEnabled() : true)
+                .enableAshHint(question.getEnableAshHint() != null ? question.getEnableAshHint() : true)
                 .testCases(tcDtos)
                 .build();
 
