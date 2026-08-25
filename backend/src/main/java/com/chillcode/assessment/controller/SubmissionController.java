@@ -159,7 +159,7 @@ public class SubmissionController {
             map.put("attempts", rawAttempts);
 
             // Fetch StudentQuestionStatus for time calculations
-            com.chillcode.assessment.entity.StudentQuestionStatus sqs = studentQuestionStatusRepository
+            sqs = studentQuestionStatusRepository
                 .findByStudentIdAndQuestionId(student.getId(), sub.getQuestion().getId())
                 .orElse(null);
 
