@@ -415,7 +415,8 @@ public class QuestionService {
                 .executeUpdate();
 
         // 9. Cascade delete linked empty tests and their badge sets / achievements
-        if (testIdsRaw != null) {
+        if (testIdsRaw != null && !testIdsRaw.isEmpty()) {
+            java.util.List<Long> emptyTestIds = new java.util.ArrayList<>();
             for (Number tNum : testIdsRaw) {
                 Long tId = tNum.longValue();
                 Number remainingQuestionsCount = (Number) entityManager.createNativeQuery(
@@ -424,49 +425,49 @@ public class QuestionService {
                         .getSingleResult();
 
                 if (remainingQuestionsCount == null || remainingQuestionsCount.longValue() == 0) {
-                    log.info("Cascade purging empty test ID: {} and associated badges/achievements", tId);
-
-                    entityManager.createNativeQuery("DELETE FROM student_achievements WHERE test_id = :tId")
-                            .setParameter("tId", tId)
-                            .executeUpdate();
-
-                    entityManager.createNativeQuery("DELETE FROM language_master_badges WHERE test_id = :tId")
-                            .setParameter("tId", tId)
-                            .executeUpdate();
-
-                    entityManager.createNativeQuery("DELETE FROM student_badges WHERE source_test_id = :tId")
-                            .setParameter("tId", tId)
-                            .executeUpdate();
-
-                    entityManager.createNativeQuery("DELETE FROM badge_definitions WHERE badge_set_id IN (SELECT id FROM badge_sets WHERE test_id = :tId)")
-                            .setParameter("tId", tId)
-                            .executeUpdate();
-
-                    entityManager.createNativeQuery("DELETE FROM badge_sets WHERE test_id = :tId")
-                            .setParameter("tId", tId)
-                            .executeUpdate();
-
-                    entityManager.createNativeQuery("DELETE FROM warnings WHERE student_test_id IN (SELECT id FROM student_tests WHERE test_id = :tId)")
-                            .setParameter("tId", tId)
-                            .executeUpdate();
-
-                    entityManager.createNativeQuery("DELETE FROM student_tests WHERE test_id = :tId")
-                            .setParameter("tId", tId)
-                            .executeUpdate();
-
-                    entityManager.createNativeQuery("DELETE FROM tests WHERE id = :tId")
-                            .setParameter("tId", tId)
-                            .executeUpdate();
+                    emptyTestIds.add(tId);
                 }
+            }
+
+            if (!emptyTestIds.isEmpty()) {
+                log.info("Batch cascade purging {} empty tests and associated badges/achievements", emptyTestIds.size());
+
+                entityManager.createNativeQuery("DELETE FROM student_achievements WHERE test_id IN (:testIds)")
+                        .setParameter("testIds", emptyTestIds)
+                        .executeUpdate();
+
+                entityManager.createNativeQuery("DELETE FROM language_master_badges WHERE test_id IN (:testIds)")
+                        .setParameter("testIds", emptyTestIds)
+                        .executeUpdate();
+
+                entityManager.createNativeQuery("DELETE FROM student_badges WHERE source_test_id IN (:testIds)")
+                        .setParameter("testIds", emptyTestIds)
+                        .executeUpdate();
+
+                entityManager.createNativeQuery("DELETE FROM badge_definitions WHERE badge_set_id IN (SELECT id FROM badge_sets WHERE test_id IN (:testIds))")
+                        .setParameter("testIds", emptyTestIds)
+                        .executeUpdate();
+
+                entityManager.createNativeQuery("DELETE FROM badge_sets WHERE test_id IN (:testIds)")
+                        .setParameter("testIds", emptyTestIds)
+                        .executeUpdate();
+
+                entityManager.createNativeQuery("DELETE FROM warnings WHERE student_test_id IN (SELECT id FROM student_tests WHERE test_id IN (:testIds))")
+                        .setParameter("testIds", emptyTestIds)
+                        .executeUpdate();
+
+                entityManager.createNativeQuery("DELETE FROM student_tests WHERE test_id IN (:testIds)")
+                        .setParameter("testIds", emptyTestIds)
+                        .executeUpdate();
+
+                entityManager.createNativeQuery("DELETE FROM tests WHERE id IN (:testIds)")
+                        .setParameter("testIds", emptyTestIds)
+                        .executeUpdate();
             }
         }
 
-        // 10. Comprehensive cleanup of any remaining orphaned records system-wide (isolated in new transaction)
-        try {
-            cleanupOrphanedRecordsAndEmptyTests();
-        } catch (Exception e) {
-            log.warn("Background cleanup deferred due to concurrent lock: {}", e.getMessage());
-        }
+        // Comprehensive cleanup is handled at application startup. 
+        // Calling it here causes PostgreSQL deadlocks due to outer transaction exclusive locks.
 
         // 11. Flush and clear Persistence Context to invalidate cached state
         try {

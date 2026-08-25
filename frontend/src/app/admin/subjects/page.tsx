@@ -408,6 +408,7 @@ export default function SubjectManagement() {
                           <th className="p-3">Roll No</th>
                           <th className="p-3">Student Name</th>
                           <th className="p-3 text-center">Attempts</th>
+                          <th className="p-3 text-center">Marks</th>
                           <th className="p-3">Badges</th>
                           <th className="p-3 text-center">Malpractice</th>
                           <th className="p-3">Result</th>
@@ -436,6 +437,11 @@ export default function SubjectManagement() {
                             <td className="p-3 font-mono">{sm.registerNumber}</td>
                             <td className="p-3">{sm.name}</td>
                             <td className="p-3 text-center font-bold text-gray-300">{sm.attempts}</td>
+                            <td className="p-3 text-center">
+                              <span className="font-mono text-amber-400 font-bold text-[11px]">
+                                {sm.status === 'N/A' ? '-' : (sm.score ?? 0)}
+                              </span>
+                            </td>
                             <td className="p-3">
                               {sm.badges && sm.badges.length > 0 ? (
                                 <div className="flex flex-col gap-1">
