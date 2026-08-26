@@ -391,8 +391,7 @@ function CodingWorkspaceInner() {
   useEffect(() => {
     if (!mounted || !isSessionActive || isViewMode) return;
     
-    // Turn off the timer only for security status off (NO_SECURITY)
-    if (user?.status === 'NO_SECURITY') return;
+    // Timer runs regardless of security status
 
     const interval = setInterval(() => {
       // FREEZE: do not decrement when Submit Exam confirm dialog is open
@@ -1818,7 +1817,7 @@ const TimerDisplay = React.memo(function TimerDisplay({ isViewMode, userStatus }
 
   return (
     <span className={`font-mono text-sm font-bold ${!isViewMode && timeLeftSeconds < 300 ? 'text-red-400 animate-pulse' : 'text-white'}`}>
-      {isViewMode ? 'COMPLETED' : (userStatus === 'NO_SECURITY' ? 'NO TIME LIMIT' : formatTime(timeLeftSeconds))}
+      {isViewMode ? 'COMPLETED' : formatTime(timeLeftSeconds)}
     </span>
   );
 });

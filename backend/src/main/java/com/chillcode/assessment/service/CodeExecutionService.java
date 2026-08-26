@@ -56,6 +56,10 @@ public class CodeExecutionService {
     @Autowired
     private StudentQuestionStatusService studentQuestionStatusService;
 
+    @Autowired
+    @org.springframework.context.annotation.Lazy
+    private BadgeSetService badgeSetService;
+
     @Value("${judge0.api.url:http://localhost:2358}")
     private String judge0ApiUrl;
 
@@ -1149,6 +1153,13 @@ public class CodeExecutionService {
                     .build();
             achievementRepository.save(badge);
         }
+
+        // Dynamically recalculate badges for this test, which handles standalone question badges
+        try {
+            if (studentTest.getTest() != null) {
+                badgeSetService.allocateBadgesForTest(studentTest.getTest().getId());
+            }
+        } catch (Exception ignored) {}
     }
 
     private Submission saveSubmissionRecord(StudentTest studentTest, Question question, SubmitRequest request, SubmissionResultDto result) {

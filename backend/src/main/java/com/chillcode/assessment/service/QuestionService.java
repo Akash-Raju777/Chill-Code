@@ -456,6 +456,14 @@ public class QuestionService {
                         .setParameter("testIds", emptyTestIds)
                         .executeUpdate();
 
+                entityManager.createNativeQuery("DELETE FROM submission_test_cases WHERE submission_id IN (SELECT id FROM submissions WHERE student_test_id IN (SELECT id FROM student_tests WHERE test_id IN (:testIds)))")
+                        .setParameter("testIds", emptyTestIds)
+                        .executeUpdate();
+
+                entityManager.createNativeQuery("DELETE FROM submissions WHERE student_test_id IN (SELECT id FROM student_tests WHERE test_id IN (:testIds))")
+                        .setParameter("testIds", emptyTestIds)
+                        .executeUpdate();
+
                 entityManager.createNativeQuery("DELETE FROM student_tests WHERE test_id IN (:testIds)")
                         .setParameter("testIds", emptyTestIds)
                         .executeUpdate();

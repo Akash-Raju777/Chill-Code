@@ -290,7 +290,8 @@ public class BadgeSetService {
                         && ("SUBMITTED".equalsIgnoreCase(st.getStatus())
                             || "EVALUATED".equalsIgnoreCase(st.getStatus())
                             || "COMPLETED".equalsIgnoreCase(st.getStatus())
-                            || "PENDING".equalsIgnoreCase(st.getStatus())))
+                            || "PENDING".equalsIgnoreCase(st.getStatus())
+                            || "STARTED".equalsIgnoreCase(st.getStatus())))
                 .collect(Collectors.toList());
 
         // 2. Sort by: score DESC → testCasesPassed DESC → timeTakenSeconds ASC → submittedAt ASC
@@ -310,6 +311,16 @@ public class BadgeSetService {
             LocalDateTime subB = b.getSubmittedAt() != null ? b.getSubmittedAt() : (b.getCreatedAt() != null ? b.getCreatedAt() : LocalDateTime.MAX);
             return subA.compareTo(subB);
         });
+
+        // 2.5 Dedup: keep only the best attempt per student to ensure ranks are assigned per student, not per attempt
+        Set<Long> seenStudentIdsForRank = new HashSet<>();
+        List<StudentTest> uniqueStudentTests = new ArrayList<>();
+        for (StudentTest st : studentTests) {
+            if (st.getStudent() != null && seenStudentIdsForRank.add(st.getStudent().getId())) {
+                uniqueStudentTests.add(st);
+            }
+        }
+        studentTests = uniqueStudentTests;
 
         // 3. Load all existing achievements and language badges for this test
         List<StudentAchievement> existingSAs = studentAchievementRepository.findByTestIdOrderByAwardedAtDesc(testId);
