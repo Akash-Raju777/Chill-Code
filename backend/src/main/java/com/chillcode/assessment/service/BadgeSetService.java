@@ -272,27 +272,62 @@ public class BadgeSetService {
      *   - Uses findByTestId() for scoped, efficient queries (not findAll()).
      */
     private List<StudentAchievement> doAllocateBadgesForTest(Long testId) {
-        Optional<BadgeSet> badgeSetOpt = badgeSetRepository.findByTestIdAndStatus(testId, "ACTIVE");
-        if (badgeSetOpt.isEmpty()) {
-            // No active badge set → clean up any stale achievements for this test
+        Test currentTest = testRepository.findById(testId).orElse(null);
+        if (currentTest == null) return Collections.emptyList();
+        
+        String testCode = currentTest.getTestCode();
+        if (testCode == null && currentTest.getQuestions() != null && !currentTest.getQuestions().isEmpty()) {
+            testCode = currentTest.getQuestions().iterator().next().getQuestionCode();
+        }
+        
+        BadgeSet badgeSet = null;
+        if (testCode != null) {
+            List<BadgeSet> sets = badgeSetRepository.findByTestCode(testCode);
+            if (sets != null && !sets.isEmpty()) {
+                badgeSet = sets.stream().filter(s -> "ACTIVE".equals(s.getStatus())).findFirst().orElse(null);
+            }
+        }
+        
+        if (badgeSet == null) {
+            Optional<BadgeSet> badgeSetOpt = badgeSetRepository.findByTestIdAndStatus(testId, "ACTIVE");
+            badgeSet = badgeSetOpt.orElse(null);
+        }
+
+        if (badgeSet == null) {
+            // No active badge set → clean up any stale achievements
+            if (testCode != null) {
+                // If there's a testCode, wait, we might not want to delete everything if the admin only deleted the badge set.
+                // Let's just delete by testId to be safe and avoid wiping badges unnecessarily.
+            }
             studentAchievementRepository.deleteByTestId(testId);
             languageMasterBadgeRepository.deleteByTestId(testId);
             return Collections.emptyList();
         }
 
-        BadgeSet badgeSet = badgeSetOpt.get();
         List<BadgeDefinition> definitions = badgeDefinitionRepository.findByBadgeSetIdAndStatus(badgeSet.getId(), "ACTIVE");
         definitions.sort(Comparator.comparingInt(d -> d.getRankPosition() != null ? d.getRankPosition() : 1));
 
-        // 1. Fetch all student tests for THIS test only (scoped, efficient)
-        List<StudentTest> studentTests = studentTestRepository.findByTestId(testId).stream()
-                .filter(st -> st.getStudent() != null && st.getScore() != null
-                        && ("SUBMITTED".equalsIgnoreCase(st.getStatus())
-                            || "EVALUATED".equalsIgnoreCase(st.getStatus())
-                            || "COMPLETED".equalsIgnoreCase(st.getStatus())
-                            || "PENDING".equalsIgnoreCase(st.getStatus())
-                            || "STARTED".equalsIgnoreCase(st.getStatus())))
-                .collect(Collectors.toList());
+        // 1. Fetch all student tests for THIS testCode (so students in different assignments for the same question compete together)
+        List<StudentTest> studentTests;
+        if (testCode != null) {
+            studentTests = studentTestRepository.findByTestCode(testCode).stream()
+                    .filter(st -> st.getStudent() != null && st.getScore() != null
+                            && ("SUBMITTED".equalsIgnoreCase(st.getStatus())
+                                || "EVALUATED".equalsIgnoreCase(st.getStatus())
+                                || "COMPLETED".equalsIgnoreCase(st.getStatus())
+                                || "PENDING".equalsIgnoreCase(st.getStatus())
+                                || "STARTED".equalsIgnoreCase(st.getStatus())))
+                    .collect(Collectors.toList());
+        } else {
+            studentTests = studentTestRepository.findByTestId(testId).stream()
+                    .filter(st -> st.getStudent() != null && st.getScore() != null
+                            && ("SUBMITTED".equalsIgnoreCase(st.getStatus())
+                                || "EVALUATED".equalsIgnoreCase(st.getStatus())
+                                || "COMPLETED".equalsIgnoreCase(st.getStatus())
+                                || "PENDING".equalsIgnoreCase(st.getStatus())
+                                || "STARTED".equalsIgnoreCase(st.getStatus())))
+                    .collect(Collectors.toList());
+        }
 
         // 2. Sort by: score DESC → testCasesPassed DESC → timeTakenSeconds ASC → submittedAt ASC
         studentTests.sort((a, b) -> {
@@ -306,6 +341,11 @@ public class BadgeSetService {
             long timeB = b.getTimeTakenSeconds() != null ? b.getTimeTakenSeconds() : Long.MAX_VALUE;
             int timeCompare = Long.compare(timeA, timeB);
             if (timeCompare != 0) return timeCompare;
+
+            LocalDateTime dateA = a.getSubmittedAt() != null ? a.getSubmittedAt() : (a.getStartedAt() != null ? a.getStartedAt() : LocalDateTime.MAX);
+            LocalDateTime dateB = b.getSubmittedAt() != null ? b.getSubmittedAt() : (b.getStartedAt() != null ? b.getStartedAt() : LocalDateTime.MAX);
+            int dateCompare = dateA.compareTo(dateB);
+            if (dateCompare != 0) return dateCompare;
 
             LocalDateTime subA = a.getSubmittedAt() != null ? a.getSubmittedAt() : (a.getCreatedAt() != null ? a.getCreatedAt() : LocalDateTime.MAX);
             LocalDateTime subB = b.getSubmittedAt() != null ? b.getSubmittedAt() : (b.getCreatedAt() != null ? b.getCreatedAt() : LocalDateTime.MAX);
@@ -322,9 +362,16 @@ public class BadgeSetService {
         }
         studentTests = uniqueStudentTests;
 
-        // 3. Load all existing achievements and language badges for this test
-        List<StudentAchievement> existingSAs = studentAchievementRepository.findByTestIdOrderByAwardedAtDesc(testId);
-        List<LanguageMasterBadge> existingLMBs = languageMasterBadgeRepository.findByTestId(testId);
+        // 3. Load all existing achievements and language badges for this test Code
+        List<StudentAchievement> existingSAs;
+        List<LanguageMasterBadge> existingLMBs;
+        if (testCode != null) {
+            existingSAs = studentAchievementRepository.findByTestCodeOrderByAwardedAtDesc(testCode);
+            existingLMBs = languageMasterBadgeRepository.findByTestCode(testCode);
+        } else {
+            existingSAs = studentAchievementRepository.findByTestIdOrderByAwardedAtDesc(testId);
+            existingLMBs = languageMasterBadgeRepository.findByTestId(testId);
+        }
 
         // Build a map of studentId → existing StudentAchievement for fast lookup
         Map<Long, StudentAchievement> existingSAByStudent = new HashMap<>();

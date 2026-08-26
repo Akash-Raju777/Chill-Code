@@ -11,6 +11,10 @@ import java.util.Optional;
 public interface StudentTestRepository extends JpaRepository<StudentTest, Long> {
     List<StudentTest> findByStudentId(Long studentId);
     List<StudentTest> findByTestId(Long testId);
+    
+    @Query("SELECT st FROM StudentTest st WHERE st.test.testCode = :testCode")
+    List<StudentTest> findByTestCode(@org.springframework.data.repository.query.Param("testCode") String testCode);
+    
     Optional<StudentTest> findByStudentIdAndTestId(Long studentId, Long testId);
     boolean existsByStudentIdAndTestId(Long studentId, Long testId);
     long countByStatus(String status);
