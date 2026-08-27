@@ -233,7 +233,42 @@ public class RankingService {
         updateSubjectRankings(subjectId);
         List<Long> validTestIds = testRepository.findTestIdsWithQuestions();
         List<SubjectRanking> rankings = subjectRankingRepository.findBySubjectIdOrderByRankPositionAsc(subjectId);
-        return rankings.stream().map(r -> mapToDto(r, validTestIds)).collect(Collectors.toList());
+        
+        List<SubjectRankingDto> dtos = rankings.stream().map(r -> mapToDto(r, validTestIds)).collect(Collectors.toList());
+        
+        dtos.sort((a, b) -> {
+            int badgeComp = Integer.compare(b.getTotalBadges(), a.getTotalBadges());
+            if (badgeComp != 0) return badgeComp;
+            
+            int scoreComp = Integer.compare(b.getTotalScore(), a.getTotalScore());
+            if (scoreComp != 0) return scoreComp;
+            
+            int tcComp = Integer.compare(b.getTestCasesPassed(), a.getTestCasesPassed());
+            if (tcComp != 0) return tcComp;
+            
+            int timeComp = Long.compare(a.getTotalTimeTakenSeconds(), b.getTotalTimeTakenSeconds());
+            if (timeComp != 0) return timeComp;
+            
+            if (a.getLastSubmissionTime() != null && b.getLastSubmissionTime() != null) {
+                return a.getLastSubmissionTime().compareTo(b.getLastSubmissionTime());
+            } else if (a.getLastSubmissionTime() != null) {
+                return -1;
+            } else if (b.getLastSubmissionTime() != null) {
+                return 1;
+            }
+            return 0;
+        });
+
+        int rank = 1;
+        for (SubjectRankingDto dto : dtos) {
+            dto.setRankPosition(rank++);
+            if (dto.getRankPosition() == 1) dto.setBadgeIcon("🥇");
+            else if (dto.getRankPosition() == 2) dto.setBadgeIcon("🥈");
+            else if (dto.getRankPosition() == 3) dto.setBadgeIcon("🥉");
+            else dto.setBadgeIcon(null);
+        }
+        
+        return dtos;
     }
 
     public List<SubjectRankingDto> getTopSubjectRankings(Long subjectId, int limit) {

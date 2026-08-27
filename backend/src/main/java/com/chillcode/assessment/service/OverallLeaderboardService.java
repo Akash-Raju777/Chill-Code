@@ -153,8 +153,11 @@ public class OverallLeaderboardService {
                 ));
             }
 
-            // Sort priority: 1. Highest Total Score, 2. Highest Tests Passed, 3. Lowest Avg Completion Time (internal), 4. Earliest Completion Time (internal)
+            // Sort priority: 1. Highest Total Badges, 2. Highest Total Score, 3. Highest Tests Passed, 4. Lowest Avg Completion Time (internal), 5. Earliest Completion Time (internal)
             entries.sort((a, b) -> {
+                int badgeComp = Integer.compare(b.totalBadges, a.totalBadges);
+                if (badgeComp != 0) return badgeComp;
+
                 int scoreComp = Integer.compare(b.totalMarks, a.totalMarks);
                 if (scoreComp != 0) return scoreComp;
 
