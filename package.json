@@ -2,6 +2,7 @@
   "name": "chill-code",
   "version": "1.0.0",
   "private": true,
+  "license": "MIT",
   "scripts": {
     "dev": "node run-dev.js",
     "build": "npm --prefix frontend install && npm --prefix frontend run build",

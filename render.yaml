@@ -1,0 +1,19 @@
+services:
+  # 1. Spring Boot Backend (Docker)
+  - type: web
+    name: chillcode-backend
+    runtime: docker
+    plan: free
+    dockerfilePath: Dockerfile
+    envVars:
+      - key: PORT
+        value: 8080
+
+  # 2. Next.js Frontend (Node)
+  - type: web
+    name: chillcode-frontend
+    runtime: node
+    plan: free
+    rootDir: frontend
+    buildCommand: npm install && npm run build
+    startCommand: npm start
