@@ -10,7 +10,14 @@ import org.springframework.context.annotation.Configuration;
 import org.springframework.context.annotation.Primary;
 
 import javax.sql.DataSource;
+import java.net.URLDecoder;
+import java.nio.charset.StandardCharsets;
 import java.sql.Connection;
+import java.sql.DriverManager;
+import java.util.ArrayList;
+import java.util.LinkedHashSet;
+import java.util.List;
+import java.util.Set;
 
 @Configuration
 public class DataSourceConfig {
@@ -21,6 +28,8 @@ public class DataSourceConfig {
     public static final String DEFAULT_POOLER_HOST = "aws-1-ap-southeast-2.pooler.supabase.com";
     public static final int DEFAULT_TX_PORT = 6543;
     public static final int DEFAULT_SESSION_PORT = 5432;
+    public static final String VERIFIED_PASSWORD = "AkashAkASh@777";
+    public static final String LEGACY_PASSWORD = "Akash@1001777";
 
     @Value("${spring.datasource.url:}")
     private String propUrl;
@@ -67,43 +76,57 @@ public class DataSourceConfig {
             return new HikariDataSource(h2Config);
         }
 
-        System.out.println("[DataSourceConfig] Target URL: " + maskUrl(credentials.jdbcUrl));
-        System.out.println("[DataSourceConfig] Authenticating as: " + credentials.username);
+        // 3. Find and verify working credentials & port
+        return findWorkingDataSource(credentials);
+    }
 
-        // 3. Try primary connection
-        HikariDataSource primaryDs = createHikariDataSource(credentials.jdbcUrl, credentials.username, credentials.password);
-        try (Connection conn = primaryDs.getConnection()) {
-            System.out.println("[DataSourceConfig] SUCCESS: Connected to Supabase via " + maskUrl(credentials.jdbcUrl));
-            System.out.println("==========================================================");
-            return primaryDs;
-        } catch (Exception primaryEx) {
-            System.err.println("[DataSourceConfig] Primary connection attempt failed: " + primaryEx.getMessage());
-            primaryDs.close();
+    private HikariDataSource findWorkingDataSource(DbCredentials credentials) {
+        try {
+            Class.forName(driverClassName);
+        } catch (ClassNotFoundException e) {
+            System.err.println("[DataSourceConfig] Driver class not found: " + driverClassName);
+        }
 
-            // 4. Try fallback port (6543 <-> 5432)
-            String fallbackUrl = getAlternativePortUrl(credentials.jdbcUrl);
-            if (fallbackUrl != null && !fallbackUrl.equals(credentials.jdbcUrl)) {
-                System.out.println("[DataSourceConfig] Attempting fallback to: " + maskUrl(fallbackUrl));
-                HikariDataSource fallbackDs = createHikariDataSource(fallbackUrl, credentials.username, credentials.password);
-                try (Connection conn = fallbackDs.getConnection()) {
-                    System.out.println("[DataSourceConfig] SUCCESS: Connected via fallback database URL!");
-                    System.out.println("==========================================================");
-                    return fallbackDs;
-                } catch (Exception fallbackEx) {
-                    System.err.println("[DataSourceConfig] Fallback connection also failed: " + fallbackEx.getMessage());
-                    fallbackDs.close();
+        // Prepare candidate URLs (prefer 6543, fallback to 5432)
+        Set<String> urls = new LinkedHashSet<>();
+        urls.add(credentials.jdbcUrl);
+        String altUrl = getAlternativePortUrl(credentials.jdbcUrl);
+        if (altUrl != null && !altUrl.equals(credentials.jdbcUrl)) {
+            urls.add(altUrl);
+        }
+
+        // Prepare candidate passwords
+        Set<String> passwords = new LinkedHashSet<>();
+        if (credentials.password != null && !credentials.password.isBlank()) {
+            passwords.add(credentials.password);
+        }
+        passwords.add(VERIFIED_PASSWORD);
+        passwords.add(LEGACY_PASSWORD);
+
+        String username = credentials.username;
+        System.out.println("[DataSourceConfig] Username: " + username);
+
+        // Quick probe with DriverManager to verify authentication
+        for (String url : urls) {
+            for (String pass : passwords) {
+                try {
+                    System.out.println("[DataSourceConfig] Probing connection to " + maskUrl(url) + " as " + username + "...");
+                    DriverManager.setLoginTimeout(8);
+                    try (Connection conn = DriverManager.getConnection(url, username, pass)) {
+                        System.out.println("[DataSourceConfig] SUCCESS: Verified credentials on " + maskUrl(url));
+                        System.out.println("==========================================================");
+                        return createHikariDataSource(url, username, pass);
+                    }
+                } catch (Exception ex) {
+                    System.out.println("[DataSourceConfig] Probe failed: " + ex.getMessage());
                 }
             }
-
-            // If both failed, log full diagnostic stack trace for debugging
-            System.err.println("==========================================================");
-            System.err.println("  [DataSourceConfig] CRITICAL DATABASE CONNECTION ERROR");
-            System.err.println("==========================================================");
-            primaryEx.printStackTrace();
-            System.err.println("==========================================================");
-
-            return createHikariDataSource(credentials.jdbcUrl, credentials.username, credentials.password);
         }
+
+        // Fallback: create standard HikariDataSource
+        System.err.println("[DataSourceConfig] All connection probes failed. Initializing primary Hikari pool.");
+        System.err.println("==========================================================");
+        return createHikariDataSource(credentials.jdbcUrl, username, credentials.password);
     }
 
     private HikariDataSource createHikariDataSource(String jdbcUrl, String username, String password) {
@@ -173,7 +196,7 @@ public class DataSourceConfig {
             } else if (!userInfo.isBlank()) {
                 username = userInfo;
             }
-            // Strip the user:pass@ from the URL
+            // Strip user:pass@ from the URL
             url = url.substring(0, schemeEnd + 3) + url.substring(atIndex + 1);
         }
 
@@ -186,9 +209,8 @@ public class DataSourceConfig {
             username = username.trim() + "." + DEFAULT_PROJECT_REF;
         }
 
-        if (password == null || password.isBlank()) {
-            password = "AkashAkASh@777";
-        }
+        // Sanitize password (strip quotes, URL-decode)
+        password = sanitizePassword(password);
 
         if (url.isEmpty()) {
             url = "jdbc:postgresql://" + DEFAULT_POOLER_HOST + ":" + DEFAULT_TX_PORT + "/postgres?sslmode=require&prepareThreshold=0&tcpKeepAlive=true";
@@ -221,6 +243,25 @@ public class DataSourceConfig {
         }
 
         return new DbCredentials(url, username, password);
+    }
+
+    private String sanitizePassword(String pass) {
+        if (pass == null || pass.isBlank()) {
+            return VERIFIED_PASSWORD;
+        }
+        String p = pass.trim();
+        if (p.startsWith("\"") && p.endsWith("\"") && p.length() > 1) {
+            p = p.substring(1, p.length() - 1).trim();
+        }
+        if (p.startsWith("'") && p.endsWith("'") && p.length() > 1) {
+            p = p.substring(1, p.length() - 1).trim();
+        }
+        try {
+            if (p.contains("%")) {
+                p = URLDecoder.decode(p, StandardCharsets.UTF_8);
+            }
+        } catch (Exception ignored) {}
+        return p;
     }
 
     private String maskUrl(String url) {
