@@ -1,6 +1,11 @@
 {
+  "name": "chill-code",
+  "version": "1.0.0",
+  "private": true,
   "scripts": {
-    "dev": "node run-dev.js"
+    "dev": "node run-dev.js",
+    "build": "npm --prefix frontend install && npm --prefix frontend run build",
+    "start": "npm --prefix frontend start"
   },
   "dependencies": {
     "pg": "^8.23.0"

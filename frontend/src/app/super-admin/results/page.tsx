@@ -477,7 +477,7 @@ export default function DepartmentLeaderboardPage() {
                     </span>
                   </div>
                   <h3 className="font-bold text-white text-base text-center group-hover:text-slate-200 transition-colors">
-                    {activePodium.r2.studentName || (activePodium.r2 as any).name}
+                    {(activePodium.r2 as any).studentName || (activePodium.r2 as any).name}
                   </h3>
                   <p className="text-xs text-gray-400 font-mono mt-0.5">
                     {activePodium.r2.registerNumber}
@@ -529,7 +529,7 @@ export default function DepartmentLeaderboardPage() {
                     </span>
                   </div>
                   <h3 className="font-extrabold text-white text-lg text-center group-hover:text-amber-300 transition-colors">
-                    {activePodium.r1.studentName || (activePodium.r1 as any).name}
+                    {(activePodium.r1 as any).studentName || (activePodium.r1 as any).name}
                   </h3>
                   <p className="text-xs text-amber-400/80 font-mono font-medium mt-0.5">
                     {activePodium.r1.registerNumber} &bull; {activePodium.r1.department}
@@ -582,7 +582,7 @@ export default function DepartmentLeaderboardPage() {
                     </span>
                   </div>
                   <h3 className="font-bold text-white text-base text-center group-hover:text-amber-500 transition-colors">
-                    {activePodium.r3.studentName || (activePodium.r3 as any).name}
+                    {(activePodium.r3 as any).studentName || (activePodium.r3 as any).name}
                   </h3>
                   <p className="text-xs text-gray-400 font-mono mt-0.5">
                     {activePodium.r3.registerNumber}
