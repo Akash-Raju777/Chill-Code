@@ -106,7 +106,7 @@ function FloatingChip({ children, className = '', delay = '0s' }: { children: Re
 /* ───────────────────────── Main Login Page ───────────────────────── */
 export default function LoginPage() {
   const router = useRouter();
-  const { login, isAuthenticated, user } = useAuthStore();
+  const { login, logout, isAuthenticated, user } = useAuthStore();
 
   const [role, setRole] = useState<'STUDENT' | 'ADMIN' | 'SUPER_ADMIN'>('STUDENT');
   const [isRegister, setIsRegister] = useState(false);
@@ -172,14 +172,16 @@ export default function LoginPage() {
   useEffect(() => {
     if (isAuthenticated && user) {
       if (user.role === 'SUPER_ADMIN') {
-        router.push('/super-admin/dashboard');
+        router.replace('/super-admin/dashboard');
       } else if (user.role === 'ADMIN') {
-        router.push('/admin/dashboard');
+        router.replace('/admin/dashboard');
+      } else if (user.role === 'STUDENT') {
+        router.replace('/student/dashboard');
       } else {
-        router.push('/student/dashboard');
+        logout();
       }
     }
-  }, [isAuthenticated, user, router]);
+  }, [isAuthenticated, user, router, logout]);
 
   const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();

@@ -42,7 +42,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
     const verifyAdmin = async () => {
       const state = useAuthStore.getState();
       if (!state.isAuthenticated || !state.token || !state.user) {
-        router.replace('/');
+        router.replace('/login');
         return;
       }
 
@@ -61,7 +61,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
         setAuthorized(true);
       } catch (err) {
         useAuthStore.getState().logout();
-        router.replace('/');
+        router.replace('/login');
       }
     };
 

@@ -34,6 +34,19 @@ function clearAllCodeBackups() {
   keysToRemove.forEach((key) => localStorage.removeItem(key));
 }
 
+function setAuthCookies(token: string, role: string) {
+  if (typeof window === 'undefined') return;
+  const maxAge = 86400; // 24 hours
+  document.cookie = `chill_token=${encodeURIComponent(token)}; path=/; max-age=${maxAge}; SameSite=Lax`;
+  document.cookie = `chill_role=${encodeURIComponent(role)}; path=/; max-age=${maxAge}; SameSite=Lax`;
+}
+
+function clearAuthCookies() {
+  if (typeof window === 'undefined') return;
+  document.cookie = 'chill_token=; path=/; max-age=0; expires=Thu, 01 Jan 1970 00:00:00 GMT; SameSite=Lax';
+  document.cookie = 'chill_role=; path=/; max-age=0; expires=Thu, 01 Jan 1970 00:00:00 GMT; SameSite=Lax';
+}
+
 /**
  * Returns the primary route dashboard for a given role.
  */
@@ -46,7 +59,7 @@ export function getAuthorizedDashboard(role?: string): string {
     case 'STUDENT':
       return '/student/dashboard';
     default:
-      return '/';
+      return '/login';
   }
 }
 
@@ -54,10 +67,21 @@ export function getAuthorizedDashboard(role?: string): string {
  * Resolves the authenticated session with strict per-tab isolation.
  * Priority:
  * 1. sessionStorage (isolated strictly to the current browser tab)
- * 2. localStorage fallback (only for newly opened blank tabs inheriting the initial session)
+ * 2. localStorage fallback (only if valid auth cookie is also present)
  */
 function getStoredAuth(): { user: User | null; token: string | null } {
   if (typeof window === 'undefined') {
+    return { user: null, token: null };
+  }
+
+  // Check if session cookie exists
+  const hasAuthCookie = document.cookie.includes('chill_token=');
+  if (!hasAuthCookie) {
+    // If cookie is absent/expired, clear storage to prevent zombie sessions
+    sessionStorage.removeItem('chill_user');
+    sessionStorage.removeItem('chill_token');
+    localStorage.removeItem('chill_user');
+    localStorage.removeItem('chill_token');
     return { user: null, token: null };
   }
 
@@ -75,14 +99,13 @@ function getStoredAuth(): { user: User | null; token: string | null } {
     }
   }
 
-  // 2. Fallback to localStorage ONLY if this tab does not have a session yet (e.g. freshly opened blank tab)
+  // 2. Fallback to localStorage ONLY if cookie is valid
   const localUser = localStorage.getItem('chill_user');
   const localToken = localStorage.getItem('chill_token');
 
   if (localUser && localToken) {
     try {
       const parsedUser = JSON.parse(localUser);
-      // Clone into this tab's sessionStorage so future tab actions remain isolated
       sessionStorage.setItem('chill_user', localUser);
       sessionStorage.setItem('chill_token', localToken);
       return { user: parsedUser, token: localToken };
@@ -117,26 +140,28 @@ export const useAuthStore = create<AuthState>((set) => {
         // Fallback: Default session for new tabs opened in the future
         localStorage.setItem('chill_user', userJson);
         localStorage.setItem('chill_token', token);
+
+        // Cookies for Next.js server middleware route guard
+        setAuthCookies(token, user.role);
       }
       set({ user, token, isAuthenticated: true });
     },
 
     logout: () => {
-      const currentToken = useAuthStore.getState().token;
       useTestStore.getState().clearTestSession();
       clearAllCodeBackups();
 
       if (typeof window !== 'undefined') {
+        // Clear cookies for server middleware
+        clearAuthCookies();
+
         // Clear this tab's isolated session
         sessionStorage.removeItem('chill_user');
         sessionStorage.removeItem('chill_token');
 
-        // Only clear localStorage if it belongs to this same session
-        const storedLocalToken = localStorage.getItem('chill_token');
-        if (!storedLocalToken || storedLocalToken === currentToken) {
-          localStorage.removeItem('chill_user');
-          localStorage.removeItem('chill_token');
-        }
+        // Always clear localStorage on explicit logout
+        localStorage.removeItem('chill_user');
+        localStorage.removeItem('chill_token');
       }
       set({ user: null, token: null, isAuthenticated: false });
     },
@@ -168,6 +193,10 @@ export const useAuthStore = create<AuthState>((set) => {
       if (typeof window !== 'undefined') {
         sessionStorage.setItem('chill_token', newToken);
         localStorage.setItem('chill_token', newToken);
+        const currentUser = useAuthStore.getState().user;
+        if (currentUser) {
+          setAuthCookies(newToken, currentUser.role);
+        }
       }
       set({ token: newToken, isAuthenticated: true });
     },

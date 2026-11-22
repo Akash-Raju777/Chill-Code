@@ -44,7 +44,7 @@ export default function SuperAdminLayout({ children }: { children: React.ReactNo
     const verifySuperAdmin = async () => {
       const state = useAuthStore.getState();
       if (!state.isAuthenticated || !state.token || !state.user) {
-        router.replace('/');
+        router.replace('/login');
         return;
       }
 
@@ -63,7 +63,7 @@ export default function SuperAdminLayout({ children }: { children: React.ReactNo
         setAuthorized(true);
       } catch (err) {
         useAuthStore.getState().logout();
-        router.replace('/');
+        router.replace('/login');
       }
     };
 

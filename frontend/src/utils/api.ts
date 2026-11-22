@@ -147,7 +147,7 @@ export async function apiCall(endpoint: string, options: ApiCallOptions = {}): P
       if (!cleanEndpoint.includes('/api/auth/login')) {
         useAuthStore.getState().logout();
         if (typeof window !== 'undefined') {
-          window.location.href = '/';
+          window.location.href = '/login';
         }
       }
     }
@@ -166,7 +166,7 @@ export async function apiCall(endpoint: string, options: ApiCallOptions = {}): P
       if (isAccountSuspendedOrInactive && !cleanEndpoint.includes('/api/auth/login')) {
         useAuthStore.getState().logout();
         if (typeof window !== 'undefined') {
-          window.location.href = '/';
+          window.location.href = '/login';
         }
         throw new Error(errorText || 'Your account is inactive or suspended.');
       }
