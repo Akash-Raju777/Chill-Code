@@ -8,6 +8,14 @@ services:
     envVars:
       - key: PORT
         value: 8080
+      - key: JAVA_TOOL_OPTIONS
+        value: -Djava.net.preferIPv4Stack=true
+      - key: DB_URL
+        value: jdbc:postgresql://aws-1-ap-southeast-2.pooler.supabase.com:5432/postgres?sslmode=require&tcpKeepAlive=true
+      - key: DB_USERNAME
+        value: postgres.kuvllswyxrtjjbougrgy
+      - key: DB_PASSWORD
+        value: AkashAkASh@777
 
   # 2. Next.js Frontend (Node)
   - type: web
