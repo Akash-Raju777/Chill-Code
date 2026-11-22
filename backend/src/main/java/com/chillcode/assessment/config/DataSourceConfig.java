@@ -11,17 +11,16 @@ import org.springframework.context.annotation.Primary;
 
 import javax.sql.DataSource;
 import java.sql.Connection;
-import java.util.regex.Matcher;
-import java.util.regex.Pattern;
 
 @Configuration
 public class DataSourceConfig {
 
     private static final Logger log = LoggerFactory.getLogger(DataSourceConfig.class);
 
-    private static final String DEFAULT_POOLER_HOST = "aws-1-ap-southeast-2.pooler.supabase.com";
-    private static final int DEFAULT_TX_PORT = 6543;
-    private static final int DEFAULT_SESSION_PORT = 5432;
+    public static final String DEFAULT_PROJECT_REF = "kuvllswyxrtjjbougrgy";
+    public static final String DEFAULT_POOLER_HOST = "aws-1-ap-southeast-2.pooler.supabase.com";
+    public static final int DEFAULT_TX_PORT = 6543;
+    public static final int DEFAULT_SESSION_PORT = 5432;
 
     @Value("${spring.datasource.url:}")
     private String propUrl;
@@ -54,7 +53,7 @@ public class DataSourceConfig {
             rawUrl = propUrl;
         }
 
-        // 2. Parse and normalize
+        // 2. Parse and normalize URL and credentials
         DbCredentials credentials = parseCredentialsAndUrl(rawUrl, propUsername, propPassword);
 
         // For H2 in tests
@@ -68,13 +67,13 @@ public class DataSourceConfig {
             return new HikariDataSource(h2Config);
         }
 
-        System.out.println("[DataSourceConfig] Primary Target: " + maskUrl(credentials.jdbcUrl));
-        System.out.println("[DataSourceConfig] Username: " + credentials.username);
+        System.out.println("[DataSourceConfig] Target URL: " + maskUrl(credentials.jdbcUrl));
+        System.out.println("[DataSourceConfig] Authenticating as: " + credentials.username);
 
         // 3. Try primary connection
         HikariDataSource primaryDs = createHikariDataSource(credentials.jdbcUrl, credentials.username, credentials.password);
         try (Connection conn = primaryDs.getConnection()) {
-            System.out.println("[DataSourceConfig] SUCCESS: Connected to primary database URL!");
+            System.out.println("[DataSourceConfig] SUCCESS: Connected to Supabase via " + maskUrl(credentials.jdbcUrl));
             System.out.println("==========================================================");
             return primaryDs;
         } catch (Exception primaryEx) {
@@ -103,7 +102,6 @@ public class DataSourceConfig {
             primaryEx.printStackTrace();
             System.err.println("==========================================================");
 
-            // Recreate primary so Spring Boot can report the standard error if required
             return createHikariDataSource(credentials.jdbcUrl, credentials.username, credentials.password);
         }
     }
@@ -140,10 +138,10 @@ public class DataSourceConfig {
     private DbCredentials parseCredentialsAndUrl(String rawUrl, String defaultUser, String defaultPass) {
         String url = (rawUrl != null) ? rawUrl.trim() : "";
         if (url.startsWith("\"") && url.endsWith("\"") && url.length() > 1) {
-            url = url.substring(1, url.length() - 1);
+            url = url.substring(1, url.length() - 1).trim();
         }
         if (url.startsWith("'") && url.endsWith("'") && url.length() > 1) {
-            url = url.substring(1, url.length() - 1);
+            url = url.substring(1, url.length() - 1).trim();
         }
 
         String username = System.getenv("DB_USERNAME");
@@ -156,28 +154,45 @@ public class DataSourceConfig {
             password = defaultPass;
         }
 
+        // If URL contains credentials (e.g. postgresql://user:pass@host:port/db)
+        // Find the last '@' before the hostname to safely handle passwords that contain '@'
+        int atIndex = url.lastIndexOf('@');
+        int schemeEnd = url.indexOf("://");
+        if (atIndex > 0 && schemeEnd > 0 && schemeEnd + 3 < atIndex) {
+            String userInfo = url.substring(schemeEnd + 3, atIndex);
+            int colonIndex = userInfo.indexOf(':');
+            if (colonIndex > 0) {
+                String extractedUser = userInfo.substring(0, colonIndex);
+                String extractedPass = userInfo.substring(colonIndex + 1);
+                if (!extractedUser.isBlank()) {
+                    username = extractedUser;
+                }
+                if (!extractedPass.isBlank()) {
+                    password = extractedPass;
+                }
+            } else if (!userInfo.isBlank()) {
+                username = userInfo;
+            }
+            // Strip the user:pass@ from the URL
+            url = url.substring(0, schemeEnd + 3) + url.substring(atIndex + 1);
+        }
+
+        // CRITICAL FIX FOR (ENOIDENTIFIER):
+        // Supabase pooler requires the tenant identifier (e.g. postgres.kuvllswyxrtjjbougrgy).
+        // If username is just "postgres" or lacks a '.', Supavisor rejects with ENOIDENTIFIER.
+        if (username == null || username.isBlank() || "postgres".equalsIgnoreCase(username.trim())) {
+            username = "postgres." + DEFAULT_PROJECT_REF;
+        } else if (!username.contains(".")) {
+            username = username.trim() + "." + DEFAULT_PROJECT_REF;
+        }
+
+        if (password == null || password.isBlank()) {
+            password = "AkashAkASh@777";
+        }
+
         if (url.isEmpty()) {
             url = "jdbc:postgresql://" + DEFAULT_POOLER_HOST + ":" + DEFAULT_TX_PORT + "/postgres?sslmode=require&prepareThreshold=0&tcpKeepAlive=true";
             return new DbCredentials(url, username, password);
-        }
-
-        // Check if raw URL contains credentials: postgresql://user:pass@host:port/dbname
-        // Pattern: (postgres(?:ql)?:\/\/)([^:@]+)(?::([^@]+))?@(.+)
-        Pattern uriPattern = Pattern.compile("^(?:jdbc:)?postgres(?:ql)?://([^:@]+)(?::([^@]+))?@(.+)$");
-        Matcher matcher = uriPattern.matcher(url);
-        if (matcher.matches()) {
-            String extractedUser = matcher.group(1);
-            String extractedPass = matcher.group(2);
-            String hostAndRest = matcher.group(3);
-
-            if (extractedUser != null && !extractedUser.isBlank()) {
-                username = extractedUser;
-            }
-            if (extractedPass != null && !extractedPass.isBlank()) {
-                password = extractedPass;
-            }
-
-            url = "jdbc:postgresql://" + hostAndRest;
         }
 
         // Ensure jdbc: prefix
