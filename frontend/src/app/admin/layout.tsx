@@ -23,31 +23,31 @@ import {
 import Link from 'next/link';
 import BackendStatusBanner from '../../components/BackendStatusBanner';
 import ToastContainer from '../../components/ToastContainer';
+import BrandedLoader from '../../components/BrandedLoader';
 
 export default function AdminLayout({ children }: { children: React.ReactNode }) {
   const router = useRouter();
   const pathname = usePathname();
   const { user, logout, isAuthenticated } = useAuthStore();
   const [mounted, setMounted] = useState(false);
-  const [sidebarOpen, setSidebarOpen] = useState(true);
+  const [sidebarOpen, setSidebarOpen] = useState(false);
 
   useEffect(() => {
     setMounted(true);
   }, []);
 
   useEffect(() => {
-    // If not authenticated or not ADMIN, redirect to home/login
-    if (mounted && (!isAuthenticated || !user || user.role !== 'ADMIN')) {
-      router.push('/');
+    if (!mounted) return;
+    if (!isAuthenticated || !user || user.role !== 'ADMIN') {
+      const timer = setTimeout(() => {
+        router.push('/');
+      }, 50);
+      return () => clearTimeout(timer);
     }
   }, [mounted, isAuthenticated, user, router]);
 
   if (!mounted || !isAuthenticated || !user || user.role !== 'ADMIN') {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-[#0b0c10]">
-        <div className="text-gray-400">Loading Session...</div>
-      </div>
-    );
+    return <BrandedLoader message="Loading Admin Session..." fullScreen />;
   }
 
   const navItems = [
@@ -64,6 +64,15 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
 
   return (
     <div className="min-h-screen bg-[#0b0c10] text-[#c5c6c7] flex">
+      {/* Mobile Backdrop */}
+      {sidebarOpen && (
+        <div
+          className="fixed inset-0 bg-black/60 backdrop-blur-sm z-20 md:hidden animate-in fade-in duration-200"
+          onClick={() => setSidebarOpen(false)}
+          aria-hidden="true"
+        />
+      )}
+
       {/* Sidebar */}
       <aside className={`glass-panel border-y-0 border-l-0 fixed md:static inset-y-0 left-0 z-30 w-64 transform ${
         sidebarOpen ? 'translate-x-0' : '-translate-x-full'
@@ -91,6 +100,15 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
               <Link
                 key={item.name}
                 href={item.path}
+                prefetch={true}
+                onMouseEnter={() => router.prefetch(item.path)}
+                onClick={(e) => {
+                  if (isActive) {
+                    e.preventDefault();
+                    return;
+                  }
+                  setSidebarOpen(false);
+                }}
                 className={`flex items-center gap-3 px-4 py-3 rounded-xl font-medium transition-all ${
                   isActive 
                     ? 'bg-gradient-to-r from-indigo-600 to-purple-600 text-white shadow-md shadow-indigo-500/10' 

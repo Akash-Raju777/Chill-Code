@@ -2,7 +2,8 @@
 
 import React, { useEffect, useState } from 'react';
 import { apiCall, formatISTDateTime } from '../../../utils/api';
-import { Plus, Timer, Calendar, CheckSquare, Loader2, Award, Clipboard } from 'lucide-react';
+import { toast } from '../../../store/toastStore';
+import { Plus, Timer, Calendar, CheckSquare, Loader2, Award, Clipboard, UserCheck, Edit3 } from 'lucide-react';
 
 interface Subject {
   id: number;
@@ -15,6 +16,14 @@ interface Question {
   difficulty: string;
 }
 
+interface StaffMember {
+  id: number;
+  name: string;
+  staffId: string;
+  department: string;
+  email: string;
+}
+
 interface Test {
   id: number;
   testCode?: string;
@@ -24,17 +33,26 @@ interface Test {
   endTime: string;
   maxMarks: number;
   instructions: string;
+  assignedStaffId?: number;
+  assignedStaffName?: string;
 }
 
 export default function TestManagement() {
   const [tests, setTests] = useState<Test[]>([]);
   const [subjects, setSubjects] = useState<Subject[]>([]);
   const [questions, setQuestions] = useState<Question[]>([]);
+  const [staffList, setStaffList] = useState<StaffMember[]>([]);
   const [selectedSubjectId, setSelectedSubjectId] = useState<number | null>(null);
+  const [selectedStaffId, setSelectedStaffId] = useState<number | null>(null);
   
   const [loading, setLoading] = useState(true);
   const [showAddForm, setShowAddForm] = useState(false);
   const [error, setError] = useState('');
+
+  // Reassign staff modal state
+  const [editingTestStaff, setEditingTestStaff] = useState<Test | null>(null);
+  const [newStaffId, setNewStaffId] = useState<number | null>(null);
+  const [updatingStaff, setUpdatingStaff] = useState(false);
 
   // Form Fields
   const [name, setName] = useState('');
@@ -59,8 +77,17 @@ export default function TestManagement() {
 
       const subs = await apiCall('/api/admin/subjects');
       setSubjects(subs);
-      if (subs.length > 0) {
+      if (subs.length > 0 && !selectedSubjectId) {
         setSelectedSubjectId(subs[0].id);
+      }
+
+      // Fetch staff members
+      const staffData = await apiCall('/api/admin/staff').catch(() => []);
+      if (staffData && Array.isArray(staffData)) {
+        setStaffList(staffData);
+        if (staffData.length > 0 && !selectedStaffId) {
+          setSelectedStaffId(staffData[0].id);
+        }
       }
     } catch (err: any) {
       setError('Failed to fetch scheduled tests');
@@ -115,6 +142,7 @@ export default function TestManagement() {
 
     const payload = {
       subjectId: selectedSubjectId,
+      assignedStaffId: selectedStaffId || undefined,
       name,
       testCode: testCode.trim().toUpperCase() || undefined,
       durationMinutes,
@@ -138,9 +166,29 @@ export default function TestManagement() {
       setTestCode('');
       setInstructions('');
       setShowAddForm(false);
+      toast.success('Test scheduled and assigned successfully');
       fetchInitialData();
     } catch (err: any) {
       setError(err.message || 'Failed to schedule test');
+    }
+  };
+
+  const handleUpdateStaff = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingTestStaff || !newStaffId) return;
+    setUpdatingStaff(true);
+    try {
+      await apiCall(`/api/admin/tests/${editingTestStaff.id}/staff`, {
+        method: 'PUT',
+        body: JSON.stringify({ staffId: newStaffId }),
+      });
+      toast.success('Assigned staff updated successfully');
+      setEditingTestStaff(null);
+      fetchInitialData();
+    } catch (err: any) {
+      toast.error(err.message || 'Failed to update assigned staff');
+    } finally {
+      setUpdatingStaff(false);
     }
   };
 
@@ -149,7 +197,7 @@ export default function TestManagement() {
       <div className="flex justify-between items-center">
         <div>
           <h1 className="text-2xl font-bold text-white tracking-tight">Test Scheduler</h1>
-          <p className="text-sm text-gray-500">Plan and assign online examination blocks</p>
+          <p className="text-sm text-gray-500">Plan, assign responsible educators, and schedule examination instances</p>
         </div>
         <button
           onClick={() => setShowAddForm(true)}
@@ -198,6 +246,29 @@ export default function TestManagement() {
                     ))}
                   </select>
                 </div>
+              </div>
+
+              {/* Staff Member Selection */}
+              <div>
+                <label className="block text-xs font-semibold text-gray-400 uppercase mb-1">
+                  Responsible Staff Member <span className="text-red-400">*</span>
+                </label>
+                <select
+                  required
+                  className="w-full glass-input p-3 rounded-xl text-sm"
+                  value={selectedStaffId || ''}
+                  onChange={(e) => setSelectedStaffId(Number(e.target.value))}
+                >
+                  <option value="">Select Staff Member Responsible</option>
+                  {staffList.map((s) => (
+                    <option key={s.id} value={s.id}>
+                      {s.name} ({s.staffId}) - {s.department}
+                    </option>
+                  ))}
+                </select>
+                <p className="text-[10px] text-gray-500 mt-1">
+                  This test will be attributed to the selected staff member in performance tracking.
+                </p>
               </div>
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -335,6 +406,55 @@ export default function TestManagement() {
         </div>
       )}
 
+      {/* Edit Assigned Staff Modal */}
+      {editingTestStaff && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="w-full max-w-md glass-panel p-6 rounded-2xl relative">
+            <h2 className="text-lg font-bold text-white mb-2">Reassign Test Staff</h2>
+            <p className="text-xs text-gray-400 mb-4">
+              Select the responsible staff member for &ldquo;{editingTestStaff.name}&rdquo;.
+            </p>
+
+            <form onSubmit={handleUpdateStaff} className="space-y-4">
+              <div>
+                <label className="block text-xs font-semibold text-gray-400 uppercase mb-1">Staff Member</label>
+                <select
+                  required
+                  className="w-full glass-input p-3 rounded-xl text-sm"
+                  value={newStaffId || ''}
+                  onChange={(e) => setNewStaffId(Number(e.target.value))}
+                >
+                  <option value="">Select Staff Member</option>
+                  {staffList.map((s) => (
+                    <option key={s.id} value={s.id}>
+                      {s.name} ({s.staffId}) - {s.department}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="flex justify-end gap-3 mt-6">
+                <button
+                  type="button"
+                  onClick={() => setEditingTestStaff(null)}
+                  className="px-4 py-2 border border-white/10 rounded-xl text-xs font-semibold hover:bg-white/5 text-gray-300"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={updatingStaff || !newStaffId}
+                  className="px-4 py-2 rounded-xl gradient-btn text-xs font-semibold flex items-center gap-1.5"
+                >
+                  {updatingStaff && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
+                  Save Assignment
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
       {loading ? (
         <div className="flex justify-center py-12">
           <Loader2 className="w-8 h-8 animate-spin text-indigo-500" />
@@ -359,11 +479,30 @@ export default function TestManagement() {
                 </div>
                 <div className="flex items-center gap-2">
                   <span className="text-[10px] font-mono font-bold text-emerald-400 bg-emerald-500/10 px-2.5 py-0.5 rounded border border-emerald-500/20">
-                    {t.testCode || `JAVA-${String(t.id).padStart(3, '0')}`}
+                    {t.testCode || `TEST-${String(t.id).padStart(3, '0')}`}
                   </span>
                   <h3 className="font-bold text-white text-lg">{t.name}</h3>
                 </div>
                 <p className="text-xs text-gray-400 leading-relaxed font-sans">{t.instructions || 'No instructions provided.'}</p>
+                
+                {/* Staff Assignment Display */}
+                <div className="pt-2 flex items-center justify-between bg-white/[0.02] border border-white/5 rounded-xl px-3 py-2">
+                  <div className="flex items-center gap-2 text-xs">
+                    <UserCheck className="w-4 h-4 text-indigo-400 shrink-0" />
+                    <span className="text-gray-400">Assigned Staff:</span>
+                    <strong className="text-white font-medium">{t.assignedStaffName || 'Unassigned'}</strong>
+                  </div>
+                  <button
+                    onClick={() => {
+                      setEditingTestStaff(t);
+                      setNewStaffId(t.assignedStaffId || null);
+                    }}
+                    className="flex items-center gap-1 text-[11px] text-indigo-400 hover:text-indigo-300 font-semibold transition-colors"
+                  >
+                    <Edit3 className="w-3 h-3" />
+                    Edit
+                  </button>
+                </div>
               </div>
 
               <div className="border-t border-white/5 mt-6 pt-4 space-y-2">

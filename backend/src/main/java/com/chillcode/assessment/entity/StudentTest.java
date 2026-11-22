@@ -41,6 +41,10 @@ public class StudentTest {
 
     private Integer score = 0;
 
+    public Integer getScore() {
+        return score != null ? score : 0;
+    }
+
     @Column(length = 30)
     private String status = "ASSIGNED"; // 'ASSIGNED', 'STARTED', 'SUBMITTED', 'SUSPENDED', 'EVALUATED'
 
@@ -52,6 +56,10 @@ public class StudentTest {
 
     @Column(name = "warnings_count")
     private Integer warningsCount = 0;
+
+    public Integer getWarningsCount() {
+        return warningsCount != null ? warningsCount : 0;
+    }
 
     @Column(name = "is_suspended")
     private Boolean isSuspended = false;

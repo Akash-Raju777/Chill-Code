@@ -9,6 +9,9 @@ import java.util.List;
 public interface TestRepository extends JpaRepository<Test, Long> {
     List<Test> findBySubjectId(Long subjectId);
 
+    @org.springframework.data.jpa.repository.Query("SELECT DISTINCT t FROM Test t LEFT JOIN FETCH t.questions WHERE t.subject.id = :subjectId")
+    List<Test> findBySubjectIdWithQuestions(@org.springframework.data.repository.query.Param("subjectId") Long subjectId);
+
     boolean existsByTestCode(String testCode);
 
     java.util.Optional<Test> findByTestCode(String testCode);

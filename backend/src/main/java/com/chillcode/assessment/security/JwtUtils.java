@@ -31,6 +31,16 @@ public class JwtUtils {
         return extractClaim(token, Claims::getSubject);
     }
 
+    public String extractUsernameEvenIfExpired(String token) {
+        try {
+            return extractClaim(token, Claims::getSubject);
+        } catch (io.jsonwebtoken.ExpiredJwtException eje) {
+            return eje.getClaims() != null ? eje.getClaims().getSubject() : null;
+        } catch (Exception e) {
+            return null;
+        }
+    }
+
     public Date extractExpiration(String token) {
         return extractClaim(token, Claims::getExpiration);
     }

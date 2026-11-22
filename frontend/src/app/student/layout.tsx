@@ -25,13 +25,14 @@ import { useBackendStore } from '../../store/backendStore';
 import BackendStatusBanner from '../../components/BackendStatusBanner';
 import ToastContainer from '../../components/ToastContainer';
 import { toast } from '../../store/toastStore';
+import BrandedLoader from '../../components/BrandedLoader';
 
 export default function StudentLayout({ children }: { children: React.ReactNode }) {
   const router = useRouter();
   const pathname = usePathname();
   const { user, logout, isAuthenticated } = useAuthStore();
   const [mounted, setMounted] = useState(false);
-  const [sidebarOpen, setSidebarOpen] = useState(true);
+  const [sidebarOpen, setSidebarOpen] = useState(false);
 
   const isSessionActive = useTestStore((s) => s.isSessionActive);
   const isViewMode = useTestStore((s) => s.isViewMode);
@@ -81,7 +82,7 @@ export default function StudentLayout({ children }: { children: React.ReactNode 
     syncNotifications();
 
     const intervalProfile = setInterval(syncProfile, 5000);
-    const intervalNotifications = setInterval(syncNotifications, 5000);
+    const intervalNotifications = setInterval(syncNotifications, 30000);
 
     return () => {
       clearInterval(intervalProfile);
@@ -90,29 +91,41 @@ export default function StudentLayout({ children }: { children: React.ReactNode 
   }, [setUser]);
 
   useEffect(() => {
-    // If not authenticated or not STUDENT, redirect to home
-    if (mounted && (!isAuthenticated || !user || user.role !== 'STUDENT')) {
-      router.push('/');
+    if (!mounted) return;
+    if (!isAuthenticated || !user || user.role !== 'STUDENT') {
+      const timer = setTimeout(() => {
+        router.push('/');
+      }, 50);
+      return () => clearTimeout(timer);
     }
   }, [mounted, isAuthenticated, user, router]);
 
   if (!mounted || !isAuthenticated || !user || user.role !== 'STUDENT') {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-[#0b0c10]">
-        <div className="text-gray-400">Loading Session...</div>
-      </div>
-    );
+    return <BrandedLoader message="Loading Student Session..." fullScreen />;
   }
 
   return (
     <div className={`min-h-screen bg-[#0b0c10] flex font-sans ${isSecurityActive ? 'select-none' : ''}`}>
+      {/* Mobile Sidebar Backdrop */}
+      {sidebarOpen && (
+        <div 
+          className="fixed inset-0 bg-black/60 backdrop-blur-sm z-30 md:hidden animate-in fade-in duration-200"
+          onClick={() => setSidebarOpen(false)}
+          aria-hidden="true"
+        />
+      )}
+
       {/* Sidebar navigation */}
       <aside className={`fixed inset-y-0 left-0 z-40 w-64 bg-[#11131c] border-r border-white/5 flex flex-col justify-between p-6 pb-8 transition-transform duration-300 md:translate-x-0 ${
         sidebarOpen ? 'translate-x-0' : '-translate-x-full'
       }`}>
         <div className="space-y-8">
           <div className="flex justify-between items-center">
-            <Link href="/student/dashboard" className="flex items-center gap-2.5 text-indigo-400 font-bold text-xl tracking-wider">
+            <Link 
+              href="/student/dashboard" 
+              onClick={() => setSidebarOpen(false)}
+              className="flex items-center gap-2.5 text-indigo-400 font-bold text-xl tracking-wider"
+            >
               {/* eslint-disable-next-line @next/next/no-img-element */}
               <div className="w-9 h-9 rounded-full overflow-hidden flex-shrink-0">
                 <img src="/Logobg.png" alt="Chill Code Logo" className="w-full h-full object-cover scale-100 object-center" />
@@ -127,6 +140,15 @@ export default function StudentLayout({ children }: { children: React.ReactNode 
           <nav className="space-y-1">
             <Link
               href="/student/dashboard"
+              prefetch={true}
+              onMouseEnter={() => router.prefetch('/student/dashboard')}
+              onClick={(e) => {
+                if (pathname === '/student/dashboard') {
+                  e.preventDefault();
+                  return;
+                }
+                setSidebarOpen(false);
+              }}
               className={`flex items-center gap-3 px-4 py-3 rounded-xl text-xs font-semibold tracking-wider transition-all ${
                 pathname === '/student/dashboard'
                   ? 'bg-indigo-500/10 text-indigo-400 border-l-2 border-indigo-500'
@@ -138,6 +160,15 @@ export default function StudentLayout({ children }: { children: React.ReactNode 
             </Link>
             <Link
               href="/student/tests"
+              prefetch={true}
+              onMouseEnter={() => router.prefetch('/student/tests')}
+              onClick={(e) => {
+                if (pathname.startsWith('/student/tests')) {
+                  e.preventDefault();
+                  return;
+                }
+                setSidebarOpen(false);
+              }}
               className={`flex items-center gap-3 px-4 py-3 rounded-xl text-xs font-semibold tracking-wider transition-all ${
                 pathname.startsWith('/student/tests')
                   ? 'bg-indigo-500/10 text-indigo-400 border-l-2 border-indigo-500'
@@ -149,6 +180,15 @@ export default function StudentLayout({ children }: { children: React.ReactNode 
             </Link>
             <Link
               href="/student/results"
+              prefetch={true}
+              onMouseEnter={() => router.prefetch('/student/results')}
+              onClick={(e) => {
+                if (pathname === '/student/results') {
+                  e.preventDefault();
+                  return;
+                }
+                setSidebarOpen(false);
+              }}
               className={`flex items-center gap-3 px-4 py-3 rounded-xl text-xs font-semibold tracking-wider transition-all ${
                 pathname === '/student/results'
                   ? 'bg-indigo-500/10 text-indigo-400 border-l-2 border-indigo-500'
@@ -160,6 +200,15 @@ export default function StudentLayout({ children }: { children: React.ReactNode 
             </Link>
             <Link
               href="/student/achievements"
+              prefetch={true}
+              onMouseEnter={() => router.prefetch('/student/achievements')}
+              onClick={(e) => {
+                if (pathname === '/student/achievements') {
+                  e.preventDefault();
+                  return;
+                }
+                setSidebarOpen(false);
+              }}
               className={`flex items-center gap-3 px-4 py-3 rounded-xl text-xs font-semibold tracking-wider transition-all ${
                 pathname === '/student/achievements'
                   ? 'bg-indigo-500/10 text-indigo-400 border-l-2 border-indigo-500'
@@ -171,6 +220,15 @@ export default function StudentLayout({ children }: { children: React.ReactNode 
             </Link>
             <Link
               href="/student/leaderboard"
+              prefetch={true}
+              onMouseEnter={() => router.prefetch('/student/leaderboard')}
+              onClick={(e) => {
+                if (pathname === '/student/leaderboard') {
+                  e.preventDefault();
+                  return;
+                }
+                setSidebarOpen(false);
+              }}
               className={`flex items-center gap-3 px-4 py-3 rounded-xl text-xs font-semibold tracking-wider transition-all ${
                 pathname === '/student/leaderboard'
                   ? 'bg-indigo-500/10 text-indigo-400 border-l-2 border-indigo-500'
@@ -182,6 +240,15 @@ export default function StudentLayout({ children }: { children: React.ReactNode 
             </Link>
             <Link
               href="/student/notifications"
+              prefetch={true}
+              onMouseEnter={() => router.prefetch('/student/notifications')}
+              onClick={(e) => {
+                if (pathname === '/student/notifications') {
+                  e.preventDefault();
+                  return;
+                }
+                setSidebarOpen(false);
+              }}
               className={`flex items-center gap-3 px-4 py-3 rounded-xl text-xs font-semibold tracking-wider transition-all ${
                 pathname === '/student/notifications'
                   ? 'bg-indigo-500/10 text-indigo-400 border-l-2 border-indigo-500'

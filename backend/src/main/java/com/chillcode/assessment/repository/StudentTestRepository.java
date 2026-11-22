@@ -46,7 +46,13 @@ public interface StudentTestRepository extends JpaRepository<StudentTest, Long> 
         nativeQuery = true)
     void assignMissingTestsForStudent(@org.springframework.data.repository.query.Param("studentId") Long studentId);
 
+    @Query("SELECT st FROM StudentTest st JOIN FETCH st.test t LEFT JOIN FETCH t.subject WHERE st.student.id = :studentId")
+    List<StudentTest> findByStudentIdWithTestAndSubject(@org.springframework.data.repository.query.Param("studentId") Long studentId);
+
     @Query("SELECT DISTINCT st FROM StudentTest st JOIN FETCH st.test t LEFT JOIN FETCH t.questions q WHERE st.student.id = :studentId")
     List<StudentTest> findByStudentIdWithTestAndQuestions(@org.springframework.data.repository.query.Param("studentId") Long studentId);
+
+    @Query("SELECT st FROM StudentTest st JOIN FETCH st.student JOIN FETCH st.test WHERE st.test.id IN :testIds")
+    List<StudentTest> findByTestIdInWithStudentAndTest(@org.springframework.data.repository.query.Param("testIds") java.util.Collection<Long> testIds);
 }
 

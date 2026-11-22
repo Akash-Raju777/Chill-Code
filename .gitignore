@@ -14,6 +14,7 @@ bin/
 *.class
 
 # IDE & OS configurations
+.kilo/
 .idea/
 .vscode/
 .DS_Store

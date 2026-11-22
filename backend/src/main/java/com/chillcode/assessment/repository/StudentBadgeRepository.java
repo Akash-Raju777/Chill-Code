@@ -12,4 +12,10 @@ public interface StudentBadgeRepository extends JpaRepository<StudentBadge, Long
     Optional<StudentBadge> findByStudentIdAndBadgeId(Long studentId, Long badgeId);
     List<StudentBadge> findByBadgeId(Long badgeId);
     void deleteByStudentIdAndBadgeId(Long studentId, Long badgeId);
+
+    @org.springframework.data.jpa.repository.Query("SELECT sb FROM StudentBadge sb JOIN FETCH sb.badge WHERE sb.student.id = :studentId")
+    List<StudentBadge> findByStudentIdWithBadge(@org.springframework.data.repository.query.Param("studentId") Long studentId);
+
+    @org.springframework.data.jpa.repository.Query("SELECT sb FROM StudentBadge sb JOIN FETCH sb.badge JOIN FETCH sb.student WHERE sb.sourceTest.id IN :testIds")
+    List<StudentBadge> findBySourceTestIdInWithBadge(@org.springframework.data.repository.query.Param("testIds") java.util.Collection<Long> testIds);
 }

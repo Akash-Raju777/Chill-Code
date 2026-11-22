@@ -108,7 +108,7 @@ export default function LoginPage() {
   const router = useRouter();
   const { login, isAuthenticated, user } = useAuthStore();
 
-  const [role, setRole] = useState<'STUDENT' | 'ADMIN'>('STUDENT');
+  const [role, setRole] = useState<'STUDENT' | 'ADMIN' | 'SUPER_ADMIN'>('STUDENT');
   const [isRegister, setIsRegister] = useState(false);
   const [identifier, setIdentifier] = useState('');
   const [password, setPassword] = useState('');
@@ -122,12 +122,14 @@ export default function LoginPage() {
   const [username, setUsername] = useState('');
 
   const [loading, setLoading] = useState(false);
+  const [loadingText, setLoadingText] = useState('Processing...');
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
   const [rememberMe, setRememberMe] = useState(false);
 
-  const handleRoleChange = (newRole: 'STUDENT' | 'ADMIN') => {
+  const handleRoleChange = (newRole: 'STUDENT' | 'ADMIN' | 'SUPER_ADMIN') => {
     setRole(newRole);
+    setIsRegister(false);
     setError('');
     setSuccess('');
     setIdentifier('');
@@ -145,8 +147,33 @@ export default function LoginPage() {
   };
 
   useEffect(() => {
+    const timer = setTimeout(() => {
+      try {
+        router.prefetch('/student/dashboard');
+        router.prefetch('/admin/dashboard');
+        router.prefetch('/super-admin/dashboard');
+      } catch (_) {}
+    }, 250);
+    return () => clearTimeout(timer);
+  }, [router]);
+
+  useEffect(() => {
+    let timer: NodeJS.Timeout;
+    if (loading) {
+      timer = setTimeout(() => {
+        setLoadingText('Waking up server... (this may take a moment)');
+      }, 3500);
+    } else {
+      setLoadingText('Processing...');
+    }
+    return () => clearTimeout(timer);
+  }, [loading]);
+
+  useEffect(() => {
     if (isAuthenticated && user) {
-      if (user.role === 'ADMIN') {
+      if (user.role === 'SUPER_ADMIN') {
+        router.push('/super-admin/dashboard');
+      } else if (user.role === 'ADMIN') {
         router.push('/admin/dashboard');
       } else {
         router.push('/student/dashboard');
@@ -157,9 +184,11 @@ export default function LoginPage() {
   const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     setLoading(true);
+    setLoadingText('Processing...');
     setError('');
     setSuccess('');
 
+    let isSuccess = false;
     try {
       const formData = new FormData(e.currentTarget);
       const activeRole = role;
@@ -168,10 +197,18 @@ export default function LoginPage() {
       const formEmail = (formData.get('email') as string) || '';
       const formPhone = (formData.get('phone') as string) || '';
 
-      const formIdentifier = (formData.get(activeRole === 'STUDENT' ? 'student_register_number' : 'admin_username') as string) || '';
-      const formPassword = (formData.get(activeRole === 'STUDENT' ? 'student_password' : 'admin_password') as string) || '';
+      const formIdentifier = (formData.get(
+        activeRole === 'STUDENT' ? 'student_register_number' : (activeRole === 'SUPER_ADMIN' ? 'super_admin_username' : 'admin_username')
+      ) as string) || '';
+      const formPassword = (formData.get(
+        activeRole === 'STUDENT' ? 'student_password' : (activeRole === 'SUPER_ADMIN' ? 'super_admin_password' : 'admin_password')
+      ) as string) || '';
 
       if (isRegister) {
+        if (activeRole === 'SUPER_ADMIN') {
+          setError('Public registration is not available for Super Admin.');
+          return;
+        }
         // Register flow
         const registerPayload = {
           name: formName,
@@ -194,7 +231,6 @@ export default function LoginPage() {
         // Login flow
         if (!formIdentifier || !formPassword) {
           setError('Please enter both your identifier and password.');
-          setLoading(false);
           return;
         }
 
@@ -203,27 +239,26 @@ export default function LoginPage() {
           body: JSON.stringify({ identifier: formIdentifier, password: formPassword }),
         });
         if (loginResponse.role !== activeRole) {
-          setError(`Invalid credentials for ${activeRole.toLowerCase()} portal.`);
-          setLoading(false);
+          setError(`Invalid credentials for ${activeRole.toLowerCase().replace('_', ' ')} portal.`);
           return;
         }
         login(loginResponse, loginResponse.token);
-        if (loginResponse.role === 'ADMIN') {
-          router.push('/admin/dashboard');
-        } else {
-          router.push('/student/dashboard');
-        }
+        isSuccess = true;
       }
     } catch (err: any) {
       setError(err.message || 'Authentication failed. Please try again.');
     } finally {
-      setLoading(false);
+      if (!isSuccess) {
+        setLoading(false);
+      }
     }
   };
 
   const handleDemoLogin = async (demoRole: 'STUDENT' | 'ADMIN') => {
     setLoading(true);
+    setLoadingText('Processing...');
     setError('');
+    let isSuccess = false;
     try {
       const demoId = demoRole === 'ADMIN' ? 'admin_demo' : 'student_demo';
       const loginResponse = await apiCall('/api/auth/login', {
@@ -231,15 +266,13 @@ export default function LoginPage() {
         method: 'POST',
       });
       login(loginResponse, loginResponse.token);
-      if (loginResponse.role === 'ADMIN') {
-        router.push('/admin/dashboard');
-      } else {
-        router.push('/student/dashboard');
-      }
+      isSuccess = true;
     } catch (err: any) {
       setError(err.message || 'Demo login failed');
     } finally {
-      setLoading(false);
+      if (!isSuccess) {
+        setLoading(false);
+      }
     }
   };
 
@@ -306,7 +339,7 @@ export default function LoginPage() {
           <div className="flex items-center gap-2 mb-5">
             <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-cyan-500/10 border border-cyan-500/20 text-cyan-400 text-[11px] font-bold uppercase tracking-widest">
               <Sparkles className="w-3 h-3" />
-              {role === 'STUDENT' ? 'Student Portal' : 'Admin Portal'}
+              {role === 'STUDENT' ? 'Student Portal' : role === 'SUPER_ADMIN' ? 'Super Admin Portal' : 'Admin Portal'}
             </span>
           </div>
 
@@ -320,28 +353,39 @@ export default function LoginPage() {
           </p>
 
           {/* Role Selector Tabs */}
-          <div className="flex mb-6 bg-white/[0.03] rounded-xl p-1 border border-white/5">
+          <div className="flex mb-6 bg-white/[0.03] rounded-xl p-1 border border-white/5 gap-1">
             <button
               type="button"
-              className={`flex-1 py-2.5 text-center text-sm font-medium rounded-lg transition-all duration-300 ${
+              className={`flex-1 py-2 text-center text-xs sm:text-sm font-medium rounded-lg transition-all duration-300 ${
                 role === 'STUDENT'
                   ? 'bg-gradient-to-r from-cyan-500/20 to-teal-500/20 text-cyan-400 shadow-lg shadow-cyan-500/10 border border-cyan-500/20'
                   : 'text-gray-500 hover:text-gray-300'
               }`}
               onClick={() => handleRoleChange('STUDENT')}
             >
-              Student Panel
+              Student
             </button>
             <button
               type="button"
-              className={`flex-1 py-2.5 text-center text-sm font-medium rounded-lg transition-all duration-300 ${
+              className={`flex-1 py-2 text-center text-xs sm:text-sm font-medium rounded-lg transition-all duration-300 ${
                 role === 'ADMIN'
                   ? 'bg-gradient-to-r from-cyan-500/20 to-teal-500/20 text-cyan-400 shadow-lg shadow-cyan-500/10 border border-cyan-500/20'
                   : 'text-gray-500 hover:text-gray-300'
               }`}
               onClick={() => handleRoleChange('ADMIN')}
             >
-              Admin Panel
+              Admin
+            </button>
+            <button
+              type="button"
+              className={`flex-1 py-2 text-center text-xs sm:text-sm font-medium rounded-lg transition-all duration-300 ${
+                role === 'SUPER_ADMIN'
+                  ? 'bg-gradient-to-r from-purple-500/20 to-indigo-500/20 text-purple-400 shadow-lg shadow-purple-500/10 border border-purple-500/20'
+                  : 'text-gray-500 hover:text-gray-300'
+              }`}
+              onClick={() => handleRoleChange('SUPER_ADMIN')}
+            >
+              Super Admin
             </button>
           </div>
 
@@ -412,16 +456,16 @@ export default function LoginPage() {
             {/* Identifier — Roll Number / Username */}
             <div>
               <label className="login-label">
-                {role === 'STUDENT' ? 'Roll Number' : 'Username'}
+                {role === 'STUDENT' ? 'Roll Number' : role === 'SUPER_ADMIN' ? 'Super Admin Username' : 'Username'}
               </label>
               <div className="relative">
                 <UserIcon className="login-input-icon" />
                 <input
                   type="text" required
-                  name={role === 'STUDENT' ? 'student_register_number' : 'admin_username'}
-                  id={role === 'STUDENT' ? 'student_register_number' : 'admin_username'}
+                  name={role === 'STUDENT' ? 'student_register_number' : (role === 'SUPER_ADMIN' ? 'super_admin_username' : 'admin_username')}
+                  id={role === 'STUDENT' ? 'student_register_number' : (role === 'SUPER_ADMIN' ? 'super_admin_username' : 'admin_username')}
                   autoComplete="off"
-                  placeholder={role === 'STUDENT' ? 'e.g. 21CS1012' : 'Enter username'}
+                  placeholder={role === 'STUDENT' ? 'e.g. 21CS1012' : (role === 'SUPER_ADMIN' ? 'e.g. superadmin' : 'Enter username')}
                   className="login-input"
                   value={isRegister ? (role === 'STUDENT' ? registerNumber : username) : identifier}
                   onChange={(e) => {
@@ -445,8 +489,8 @@ export default function LoginPage() {
                 <input
                   type={showPassword ? 'text' : 'password'}
                   required
-                  name={role === 'STUDENT' ? 'student_password' : 'admin_password'}
-                  id={role === 'STUDENT' ? 'student_password' : 'admin_password'}
+                  name={role === 'STUDENT' ? 'student_password' : (role === 'SUPER_ADMIN' ? 'super_admin_password' : 'admin_password')}
+                  id={role === 'STUDENT' ? 'student_password' : (role === 'SUPER_ADMIN' ? 'super_admin_password' : 'admin_password')}
                   autoComplete="new-password"
                   placeholder="Enter your password"
                   className="login-input pr-11"
@@ -475,8 +519,8 @@ export default function LoginPage() {
             >
               {loading ? (
                 <span className="flex items-center gap-2 justify-center">
-                  <svg className="animate-spin w-4 h-4" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" /><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" /></svg>
-                  Processing...
+                  <svg className="animate-spin w-4 h-4 shrink-0" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" /><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" /></svg>
+                  {loadingText}
                 </span>
               ) : (
                 <span className="flex items-center gap-2 justify-center">

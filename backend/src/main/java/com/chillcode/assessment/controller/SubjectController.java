@@ -42,13 +42,13 @@ public class SubjectController {
     }
 
     @GetMapping("/admin/subjects/{id}/stats")
-    @PreAuthorize("hasRole('ADMIN')")
+    @PreAuthorize("hasAnyRole('ADMIN', 'SUPER_ADMIN')")
     public ResponseEntity<com.chillcode.assessment.dto.SubjectStatsDto> getSubjectStats(@PathVariable("id") Long id) {
         return ResponseEntity.ok(subjectService.getSubjectStats(id));
     }
 
     @GetMapping("/admin/subjects/{id}/export")
-    @PreAuthorize("hasRole('ADMIN')")
+    @PreAuthorize("hasAnyRole('ADMIN', 'SUPER_ADMIN')")
     public ResponseEntity<byte[]> exportSubjectReport(@PathVariable("id") Long id) {
         byte[] excelBytes = subjectService.generateSubjectExcelReport(id);
         org.springframework.http.HttpHeaders headers = new org.springframework.http.HttpHeaders();

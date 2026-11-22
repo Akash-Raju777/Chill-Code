@@ -158,11 +158,6 @@ public class SubmissionController {
             int rawAttempts = sqs != null && sqs.getAttemptCount() != null ? sqs.getAttemptCount() : 1;
             map.put("attempts", rawAttempts);
 
-            // Fetch StudentQuestionStatus for time calculations
-            sqs = studentQuestionStatusRepository
-                .findByStudentIdAndQuestionId(student.getId(), sub.getQuestion().getId())
-                .orElse(null);
-
             // Use the calculated chronological attempt index (0-based)
             int attemptIndex = submissionAttemptIndex.getOrDefault(sub.getId(), 0);
             map.put("attempts", attemptIndex);

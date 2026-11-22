@@ -57,6 +57,33 @@ public class TestController {
                 .orElse(ResponseEntity.notFound().build());
     }
 
+    @PutMapping("/admin/tests/{id}/staff")
+    @PreAuthorize("hasAnyRole('ADMIN', 'SUPER_ADMIN')")
+    public ResponseEntity<Test> updateTestStaff(
+            @PathVariable Long id,
+            @RequestBody java.util.Map<String, Long> payload) {
+        Long staffId = payload.get("staffId");
+        return ResponseEntity.ok(testService.updateAssignedStaff(id, staffId));
+    }
+
+    @GetMapping("/admin/staff")
+    @PreAuthorize("hasAnyRole('ADMIN', 'SUPER_ADMIN')")
+    public ResponseEntity<List<java.util.Map<String, Object>>> getAvailableStaff() {
+        List<User> staffList = userRepository.findByRole(Role.ADMIN);
+        List<java.util.Map<String, Object>> result = new java.util.ArrayList<>();
+        for (User u : staffList) {
+            java.util.Map<String, Object> m = new java.util.HashMap<>();
+            m.put("id", u.getId());
+            m.put("name", u.getName());
+            m.put("staffId", u.getUsername() != null ? u.getUsername() : u.getRegisterNumber());
+            m.put("department", u.getDepartment() != null ? u.getDepartment() : "General");
+            m.put("email", u.getEmail());
+            m.put("status", u.getStatus() != null ? u.getStatus().name() : "ACTIVE");
+            result.add(m);
+        }
+        return ResponseEntity.ok(result);
+    }
+
     // Student endpoints
     @GetMapping("/student/tests")
     public ResponseEntity<List<com.chillcode.assessment.dto.StudentTestDto>> getMyTests() {

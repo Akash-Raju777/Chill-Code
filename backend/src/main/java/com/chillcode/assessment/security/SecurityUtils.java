@@ -19,6 +19,8 @@ public class SecurityUtils {
         if (user != null) {
             if (user.getRole() == com.chillcode.assessment.entity.Role.ADMIN) {
                 return user.getId();
+            } else if (user.getRole() == com.chillcode.assessment.entity.Role.SUPER_ADMIN) {
+                return user.getId();
             } else if (user.getRole() == com.chillcode.assessment.entity.Role.STUDENT && user.getAdmin() != null) {
                 return user.getAdmin().getId();
             }

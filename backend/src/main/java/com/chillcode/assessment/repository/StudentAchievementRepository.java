@@ -17,4 +17,7 @@ public interface StudentAchievementRepository extends JpaRepository<StudentAchie
 
     @org.springframework.data.jpa.repository.Query("SELECT COUNT(sa) FROM StudentAchievement sa WHERE sa.test.admin.id = :adminId")
     long countByAdminId(@org.springframework.data.repository.query.Param("adminId") Long adminId);
+
+    @org.springframework.data.jpa.repository.Query("SELECT sa FROM StudentAchievement sa JOIN FETCH sa.test JOIN FETCH sa.student WHERE sa.test.id IN :testIds ORDER BY sa.awardedAt DESC")
+    List<StudentAchievement> findByTestIdInWithTestOrderByAwardedAtDesc(@org.springframework.data.repository.query.Param("testIds") java.util.Collection<Long> testIds);
 }

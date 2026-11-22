@@ -101,6 +101,20 @@ public class TestService {
     }
 
     @Transactional
+    public Test updateAssignedStaff(Long testId, Long staffId) {
+        Test test = testRepository.findById(testId)
+                .orElseThrow(() -> new RuntimeException("Test not found with id: " + testId));
+        if (staffId != null) {
+            User staff = userRepository.findById(staffId)
+                    .orElseThrow(() -> new RuntimeException("Staff member not found with id: " + staffId));
+            test.setAssignedStaff(staff);
+        } else {
+            test.setAssignedStaff(null);
+        }
+        return testRepository.save(test);
+    }
+
+    @Transactional
     public Test createTest(TestDto dto) {
         Subject subject = subjectRepository.findById(dto.getSubjectId())
                 .orElseThrow(() -> new RuntimeException("Subject not found with id: " + dto.getSubjectId()));
@@ -118,8 +132,21 @@ public class TestService {
             }
         }
 
+        User currentUser = com.chillcode.assessment.security.SecurityUtils.getCurrentUser();
+        User staff = null;
+        if (dto.getAssignedStaffId() != null) {
+            staff = userRepository.findById(dto.getAssignedStaffId()).orElse(null);
+        }
+        if (staff == null && subject.getEffectiveStaff() != null) {
+            staff = subject.getEffectiveStaff();
+        }
+        if (staff == null) {
+            staff = currentUser;
+        }
+
         Test test = Test.builder()
-                .admin(com.chillcode.assessment.security.SecurityUtils.getCurrentUser())
+                .admin(currentUser)
+                .assignedStaff(staff)
                 .subject(subject)
                 .name(dto.getName())
                 .durationMinutes(dto.getDurationMinutes())

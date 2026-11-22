@@ -110,7 +110,7 @@ export default function SubmissionResultPage() {
             {error || 'The requested submission record was not found or has expired.'}
           </p>
           <button 
-            onClick={() => { router.push('/student/results'); router.refresh(); }}
+            onClick={() => router.push('/student/results')}
             className="px-6 py-2 bg-white/5 hover:bg-white/10 rounded-xl text-xs font-semibold text-white border border-white/10 transition-all w-full flex items-center justify-center gap-2"
           >
             <ArrowLeft className="w-4 h-4" />
@@ -155,7 +155,7 @@ export default function SubmissionResultPage() {
       {/* Header and Back Button */}
       <div className="flex items-center justify-between">
         <button
-          onClick={() => { router.push('/student/results'); router.refresh(); }}
+          onClick={() => router.push('/student/results')}
           className="flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-bold bg-white/5 hover:bg-white/10 border border-white/5 text-gray-300 transition-all select-none"
         >
           <ArrowLeft className="w-3.5 h-3.5" />
@@ -412,7 +412,7 @@ export default function SubmissionResultPage() {
       {/* Action Buttons */}
       <div className="flex items-center gap-4 pt-4 border-t border-white/5">
         <button
-          onClick={() => { router.push('/student/tests'); router.refresh(); }}
+          onClick={() => router.push('/student/tests')}
           className="flex-1 py-3 px-6 bg-[#7c3aed] hover:bg-[#8b5cf6] text-white font-bold rounded-xl transition-all text-xs flex items-center justify-center gap-2 shadow-lg"
         >
           <Play className="w-4 h-4" />

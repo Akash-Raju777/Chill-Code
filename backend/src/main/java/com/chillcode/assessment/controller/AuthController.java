@@ -87,14 +87,7 @@ public class AuthController {
         UserDetails userDetails = userDetailsService.loadUserByUsername(loginRequest.getIdentifier());
         
         // Load User from DB to send details
-        User user = null;
-        if (userRepository.existsByRegisterNumber(userDetails.getUsername())) {
-            user = userRepository.findByRegisterNumber(userDetails.getUsername()).orElse(null);
-        } else if (userRepository.existsByUsername(userDetails.getUsername())) {
-            user = userRepository.findByUsername(userDetails.getUsername()).orElse(null);
-        } else {
-            user = userRepository.findByEmail(userDetails.getUsername()).orElse(null);
-        }
+        User user = userRepository.findByIdentifier(userDetails.getUsername()).orElse(null);
 
         if (user == null) {
             return ResponseEntity.status(404).body("User record not found");
@@ -122,5 +115,65 @@ public class AuthController {
                 .build();
 
         return ResponseEntity.ok(authResponse);
+    }
+
+    @PostMapping("/refresh")
+    public ResponseEntity<?> refreshToken(
+            @RequestHeader(value = "Authorization", required = false) String authHeader,
+            @RequestBody(required = false) java.util.Map<String, String> body) {
+        String token = null;
+        if (authHeader != null && authHeader.startsWith("Bearer ")) {
+            token = authHeader.substring(7);
+        } else if (body != null && body.containsKey("token")) {
+            token = body.get("token");
+        }
+
+        if (token == null || token.trim().isEmpty()) {
+            return ResponseEntity.status(401).body("Missing token for refresh");
+        }
+
+        String username = jwtUtils.extractUsernameEvenIfExpired(token);
+        if (username == null) {
+            return ResponseEntity.status(401).body("Invalid or untrusted token signature");
+        }
+
+        User user = userRepository.findByIdentifier(username).orElse(null);
+        if (user == null) {
+            return ResponseEntity.status(404).body("User record not found");
+        }
+
+        if (user.getStatus() == UserStatus.SUSPENDED) {
+            return ResponseEntity.status(403).body("Your account is suspended.");
+        }
+        if (user.getStatus() == UserStatus.INACTIVE) {
+            return ResponseEntity.status(403).body("Your account is inactive.");
+        }
+
+        UserDetails userDetails = userDetailsService.loadUserByUsername(username);
+        String newToken = jwtUtils.generateToken(userDetails, user.getRole().name());
+
+        AuthResponse authResponse = AuthResponse.builder()
+                .token(newToken)
+                .id(user.getId())
+                .name(user.getName())
+                .email(user.getEmail())
+                .role(user.getRole().name())
+                .registerNumber(user.getRegisterNumber())
+                .username(user.getUsername())
+                .status(user.getStatus().name())
+                .department(user.getDepartment())
+                .build();
+
+        return ResponseEntity.ok(authResponse);
+    }
+
+    @GetMapping("/health")
+    public ResponseEntity<?> healthCheck() {
+        return ResponseEntity.ok(java.util.Map.of("status", "UP", "timestamp", System.currentTimeMillis()));
+    }
+
+    @GetMapping("/ping")
+    public ResponseEntity<?> ping() {
+        return ResponseEntity.ok("PONG");
     }
 }

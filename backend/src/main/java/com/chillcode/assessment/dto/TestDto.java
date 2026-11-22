@@ -27,4 +27,6 @@ public class TestDto {
     private List<Long> questionIds;
     private List<Long> studentIds; // Assign to specific students
     private String targetBatch;    // Or assign to batch/department
+    private Long assignedStaffId;
+    private String assignedStaffName;
 }

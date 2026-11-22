@@ -34,6 +34,9 @@ public interface SubmissionRepository extends JpaRepository<Submission, Long> {
     @org.springframework.data.jpa.repository.Query("SELECT DISTINCT s.question.id FROM Submission s WHERE s.studentTest.student.id = :studentId AND (s.status = 'ACCEPTED' OR s.overallResult = 'PASS') AND (s.active IS NULL OR s.active = true)")
     List<Long> findSolvedQuestionIdsByStudentId(@org.springframework.data.repository.query.Param("studentId") Long studentId);
 
+    @org.springframework.data.jpa.repository.Query("SELECT s FROM Submission s LEFT JOIN FETCH s.question q LEFT JOIN FETCH s.studentTest st LEFT JOIN FETCH st.student suser LEFT JOIN FETCH st.test t WHERE q.id IN :questionIds ORDER BY s.createdAt DESC")
+    List<Submission> findByQuestionIdInWithQuestionAndTest(@org.springframework.data.repository.query.Param("questionIds") java.util.Collection<Long> questionIds);
+
     @org.springframework.data.jpa.repository.Query("SELECT COUNT(s) FROM Submission s WHERE LOWER(s.language) = LOWER(:lang)")
     long countSubmissionsByLanguage(@org.springframework.data.repository.query.Param("lang") String lang);
 

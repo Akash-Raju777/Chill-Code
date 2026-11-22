@@ -17,8 +17,9 @@ export default function BackendStatusBanner() {
     setConnecting(true);
     setRetryMessage('');
     try {
-      // Test ping to backend
-      await apiCall('/api/admin/subjects');
+      // Test public ping to backend
+      await apiCall('/api/auth/health', { skipLocalCache: true });
+      useBackendStore.getState().setOffline(false);
       setRetryMessage('Connected successfully!');
     } catch (err: any) {
       setRetryMessage(isLocal ? 'Backend server still offline on ' + offlineUrl : 'Cloud backend still warming up...');

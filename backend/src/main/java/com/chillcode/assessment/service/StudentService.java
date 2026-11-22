@@ -194,7 +194,7 @@ public class StudentService {
     }
 
     public List<Notification> getNotificationsForUser(Long userId) {
-        return notificationRepository.findByUserIdAndTypeOrderByCreatedAtDesc(userId, "GENERAL");
+        return notificationRepository.findByUserIdOrderByCreatedAtDesc(userId);
     }
 
     @Transactional

@@ -30,6 +30,27 @@ public class Test {
     @com.fasterxml.jackson.annotation.JsonIgnore
     private User admin;
 
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "assigned_staff_id")
+    @com.fasterxml.jackson.annotation.JsonIgnore
+    private User assignedStaff;
+
+    public User getEffectiveStaff() {
+        return assignedStaff != null ? assignedStaff : admin;
+    }
+
+    @com.fasterxml.jackson.annotation.JsonProperty("assignedStaffId")
+    public Long getAssignedStaffId() {
+        User s = getEffectiveStaff();
+        return s != null ? s.getId() : null;
+    }
+
+    @com.fasterxml.jackson.annotation.JsonProperty("assignedStaffName")
+    public String getAssignedStaffName() {
+        User s = getEffectiveStaff();
+        return s != null ? s.getName() : null;
+    }
+
     @Column(nullable = false, length = 150)
     private String name;
 
@@ -44,6 +65,10 @@ public class Test {
 
     @Column(name = "max_marks")
     private Integer maxMarks = 100;
+
+    public Integer getMaxMarks() {
+        return (maxMarks != null && maxMarks > 0) ? maxMarks : Integer.valueOf(100);
+    }
 
     @Column(columnDefinition = "TEXT")
     private String instructions;

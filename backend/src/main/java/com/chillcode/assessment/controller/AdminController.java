@@ -258,4 +258,44 @@ public class AdminController {
         }
         return ResponseEntity.status(403).build();
     }
+
+    @Autowired
+    private com.chillcode.assessment.repository.NotificationRepository notificationRepository;
+
+    @GetMapping("/instructions/inbox")
+    public ResponseEntity<List<java.util.Map<String, Object>>> getAdminInstructions() {
+        User currentAdmin = com.chillcode.assessment.security.SecurityUtils.getCurrentUser();
+        if (currentAdmin == null) {
+            return ResponseEntity.ok(java.util.Collections.emptyList());
+        }
+        List<com.chillcode.assessment.entity.Notification> notifications = notificationRepository.findByUserIdOrderByCreatedAtDesc(currentAdmin.getId());
+        List<java.util.Map<String, Object>> result = new java.util.ArrayList<>();
+        for (com.chillcode.assessment.entity.Notification n : notifications) {
+            java.util.Map<String, Object> item = new java.util.HashMap<>();
+            item.put("id", n.getId());
+            item.put("title", n.getTitle());
+            item.put("message", n.getMessage());
+            item.put("type", n.getType());
+            item.put("isRead", n.getIsRead() != null ? n.getIsRead() : false);
+            item.put("senderName", n.getAdmin() != null ? n.getAdmin().getName() : "Super Administrator");
+            item.put("createdAt", n.getCreatedAt());
+            result.add(item);
+        }
+        return ResponseEntity.ok(result);
+    }
+
+    @PostMapping("/instructions/{id}/read")
+    @org.springframework.transaction.annotation.Transactional
+    public ResponseEntity<?> markInstructionAsRead(@PathVariable Long id) {
+        User currentAdmin = com.chillcode.assessment.security.SecurityUtils.getCurrentUser();
+        if (currentAdmin != null) {
+            notificationRepository.findById(id).ifPresent(n -> {
+                if (n.getUser() != null && n.getUser().getId().equals(currentAdmin.getId())) {
+                    n.setIsRead(true);
+                    notificationRepository.save(n);
+                }
+            });
+        }
+        return ResponseEntity.ok("Instruction marked as read.");
+    }
 }

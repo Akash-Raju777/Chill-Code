@@ -2,6 +2,7 @@ package com.chillcode.assessment.service;
 
 import com.chillcode.assessment.entity.Subject;
 import com.chillcode.assessment.entity.Submission;
+import com.chillcode.assessment.entity.User;
 import com.chillcode.assessment.repository.SubjectRepository;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
@@ -27,6 +28,10 @@ public class SubjectService {
     private com.chillcode.assessment.repository.UserRepository userRepository;
 
     public List<Subject> getAllSubjects() {
+        User currentUser = com.chillcode.assessment.security.SecurityUtils.getCurrentUser();
+        if (currentUser != null && currentUser.getRole() == com.chillcode.assessment.entity.Role.SUPER_ADMIN) {
+            return subjectRepository.findAll();
+        }
         Long adminId = com.chillcode.assessment.security.SecurityUtils.getCurrentAdminId();
         if (adminId == null) return java.util.Collections.emptyList();
         return subjectRepository.findByAdminId(adminId);
@@ -39,6 +44,9 @@ public class SubjectService {
             throw new RuntimeException("Subject with name " + subject.getName() + " already exists.");
         }
         subject.setAdmin(com.chillcode.assessment.security.SecurityUtils.getCurrentUser());
+        if (subject.getAssignedStaff() == null) {
+            subject.setAssignedStaff(com.chillcode.assessment.security.SecurityUtils.getCurrentUser());
+        }
         Subject savedSubject = subjectRepository.save(subject);
 
         // Auto-create Practice Arena test for the new subject
@@ -56,6 +64,7 @@ public class SubjectService {
                 .negativeMarking(false)
                 .questions(new java.util.HashSet<>())
                 .admin(com.chillcode.assessment.security.SecurityUtils.getCurrentUser())
+                .assignedStaff(savedSubject.getEffectiveStaff())
                 .build();
         test = testRepository.save(test);
 
@@ -210,94 +219,139 @@ public class SubjectService {
     }
 
     public com.chillcode.assessment.dto.SubjectStatsDto getSubjectStats(Long subjectId) {
-        Long adminId = com.chillcode.assessment.security.SecurityUtils.getCurrentAdminId();
-        Subject subject = subjectRepository.findByIdAndAdminId(subjectId, adminId)
-                .orElseThrow(() -> new RuntimeException("Subject not found with id: " + subjectId));
+        User currentUser = com.chillcode.assessment.security.SecurityUtils.getCurrentUser();
+        boolean isSuperAdmin = currentUser != null && currentUser.getRole() == com.chillcode.assessment.entity.Role.SUPER_ADMIN;
+        Subject subject;
+        if (isSuperAdmin) {
+            subject = subjectRepository.findById(subjectId)
+                    .orElseThrow(() -> new RuntimeException("Subject not found with id: " + subjectId));
+        } else {
+            Long adminId = com.chillcode.assessment.security.SecurityUtils.getCurrentAdminId();
+            subject = subjectRepository.findByIdAndAdminId(subjectId, adminId)
+                    .orElseThrow(() -> new RuntimeException("Subject not found with id: " + subjectId));
+        }
 
-        java.util.List<com.chillcode.assessment.entity.Test> tests = testRepository.findBySubjectId(subjectId);
-
+        java.util.List<com.chillcode.assessment.entity.Test> tests = testRepository.findBySubjectIdWithQuestions(subjectId);
         java.util.List<com.chillcode.assessment.entity.Question> subjectQuestions = questionRepository.findBySubjectId(subjectId);
-        subjectQuestions.sort(java.util.Comparator.comparing(com.chillcode.assessment.entity.Question::getTitle)); // Sort questions alphabetically
+        subjectQuestions.sort(java.util.Comparator.comparing(com.chillcode.assessment.entity.Question::getTitle));
 
         long questionsCount = subjectQuestions.size();
 
-        // Feed active questions into the testDtos list for the frontend dropdown
         java.util.List<com.chillcode.assessment.dto.SubjectStatsDto.TestDto> testDtos = subjectQuestions.stream()
                 .map(q -> new com.chillcode.assessment.dto.SubjectStatsDto.TestDto(q.getId(), q.getTitle()))
                 .collect(java.util.stream.Collectors.toList());
 
-        java.util.List<com.chillcode.assessment.entity.User> students = userRepository.findByRoleAndAdminId(com.chillcode.assessment.entity.Role.STUDENT, adminId);
+        java.util.List<com.chillcode.assessment.entity.User> students;
+        if (isSuperAdmin) {
+            students = subject.getAdmin() != null ?
+                    userRepository.findByRoleAndAdminId(com.chillcode.assessment.entity.Role.STUDENT, subject.getAdmin().getId()) :
+                    userRepository.findByRole(com.chillcode.assessment.entity.Role.STUDENT);
+        } else {
+            Long adminId = com.chillcode.assessment.security.SecurityUtils.getCurrentAdminId();
+            students = userRepository.findByRoleAndAdminId(com.chillcode.assessment.entity.Role.STUDENT, adminId);
+        }
+        java.util.Map<Long, com.chillcode.assessment.entity.User> studentMap = students.stream()
+                .collect(java.util.stream.Collectors.toMap(com.chillcode.assessment.entity.User::getId, s -> s, (s1, s2) -> s1));
+
+        if (tests.isEmpty() || subjectQuestions.isEmpty()) {
+            return new com.chillcode.assessment.dto.SubjectStatsDto(
+                    questionsCount, 0.0, 0.0, 0.0, "N/A", 0.0, 0L, 0L, testDtos, java.util.Collections.emptyList()
+            );
+        }
+
+        // Map questions to test IDs in memory
+        java.util.Map<Long, java.util.List<Long>> questionToTestIds = new java.util.HashMap<>();
+        for (com.chillcode.assessment.entity.Test t : tests) {
+            if (t.getQuestions() != null) {
+                for (com.chillcode.assessment.entity.Question q : t.getQuestions()) {
+                    questionToTestIds.computeIfAbsent(q.getId(), k -> new java.util.ArrayList<>()).add(t.getId());
+                }
+            }
+        }
+
+        java.util.List<Long> testIds = tests.stream().map(com.chillcode.assessment.entity.Test::getId).collect(java.util.stream.Collectors.toList());
+        java.util.List<Long> questionIds = subjectQuestions.stream().map(com.chillcode.assessment.entity.Question::getId).collect(java.util.stream.Collectors.toList());
+
+        // Batch Query 1: All StudentTests for this subject's tests (Eager fetch student & test)
+        java.util.List<com.chillcode.assessment.entity.StudentTest> allStudentTests = studentTestRepository.findByTestIdInWithStudentAndTest(testIds);
 
         java.util.Set<Long> assignedStudentIds = new java.util.HashSet<>();
         java.util.Set<Long> attendedStudentIds = new java.util.HashSet<>();
         java.util.Set<Long> passedStudentIds = new java.util.HashSet<>();
         int totalScore = 0;
         int studentTestCount = 0;
-        
         java.util.Map<Long, Integer> studentTotalScores = new java.util.HashMap<>();
-        java.util.List<com.chillcode.assessment.dto.SubjectStatsDto.StudentMarkDto> studentMarks = new java.util.ArrayList<>();
 
-        for (com.chillcode.assessment.entity.Test test : tests) {
-            java.util.List<com.chillcode.assessment.entity.StudentTest> studentTests = studentTestRepository.findByTestId(test.getId());
-            for (com.chillcode.assessment.entity.StudentTest st : studentTests) {
-                Long sId = st.getStudent().getId();
-                assignedStudentIds.add(sId);
-
-                // Consider attended if status is not ASSIGNED or has started
-                if (!"ASSIGNED".equals(st.getStatus()) || st.getStartedAt() != null) {
-                    attendedStudentIds.add(sId);
-                }
-
-                int score = st.getScore() != null ? st.getScore() : 0;
-                int maxMarks = test.getMaxMarks() != null ? test.getMaxMarks() : 100;
-                
-                studentTestCount++;
-                totalScore += score;
-                studentTotalScores.put(sId, studentTotalScores.getOrDefault(sId, 0) + score);
-                
-                if (score >= maxMarks * 0.4) {
-                    passedStudentIds.add(sId);
-                }
-            }
-        } // End of tests loop for metrics
-
-        // Pre-fetch data for all students to avoid N+1 queries
+        // Group StudentTests by student ID in memory
         java.util.Map<Long, java.util.List<com.chillcode.assessment.entity.StudentTest>> stByStudent = new java.util.HashMap<>();
-        java.util.List<com.chillcode.assessment.entity.StudentTest> allStudentTestsForTests = new java.util.ArrayList<>();
-        for (com.chillcode.assessment.entity.Test test : tests) {
-            allStudentTestsForTests.addAll(studentTestRepository.findByTestId(test.getId()));
-        }
-        for (com.chillcode.assessment.entity.StudentTest st : allStudentTestsForTests) {
-            if (st.getStudent() != null) {
-                stByStudent.computeIfAbsent(st.getStudent().getId(), k -> new java.util.ArrayList<>()).add(st);
+
+        for (com.chillcode.assessment.entity.StudentTest st : allStudentTests) {
+            if (st.getStudent() == null) continue;
+            Long sId = st.getStudent().getId();
+            stByStudent.computeIfAbsent(sId, k -> new java.util.ArrayList<>()).add(st);
+
+            assignedStudentIds.add(sId);
+            if (!"ASSIGNED".equals(st.getStatus()) || st.getStartedAt() != null) {
+                attendedStudentIds.add(sId);
+            }
+
+            int score = st.getScore() != null ? st.getScore() : 0;
+            int maxMarks = (st.getTest() != null && st.getTest().getMaxMarks() != null) ? st.getTest().getMaxMarks() : 100;
+
+            studentTestCount++;
+            totalScore += score;
+            studentTotalScores.put(sId, studentTotalScores.getOrDefault(sId, 0) + score);
+
+            if (score >= maxMarks * 0.4) {
+                passedStudentIds.add(sId);
             }
         }
 
+        // Batch Query 2: All Submissions for this subject's questions
+        java.util.List<com.chillcode.assessment.entity.Submission> allSubmissions = submissionRepository.findByQuestionIdInWithQuestionAndTest(questionIds);
         java.util.Map<Long, java.util.List<com.chillcode.assessment.entity.Submission>> subsByStudent = new java.util.HashMap<>();
-        java.util.Map<Long, java.util.List<com.chillcode.assessment.entity.StudentQuestionStatus>> sqsByStudent = new java.util.HashMap<>();
-        java.util.Map<Long, java.util.List<com.chillcode.assessment.entity.StudentBadge>> badgesByStudent = new java.util.HashMap<>();
-        java.util.Map<Long, java.util.List<com.chillcode.assessment.entity.StudentAchievement>> achievementsByStudent = new java.util.HashMap<>();
-        
-        for (com.chillcode.assessment.entity.User student : students) {
-            Long sId = student.getId();
-            subsByStudent.put(sId, submissionRepository.findAllByStudentIdOrderByCreatedAtDesc(sId));
-            sqsByStudent.put(sId, studentQuestionStatusRepository.findByStudentId(sId));
-            badgesByStudent.put(sId, studentBadgeRepository.findByStudentId(sId));
-            achievementsByStudent.put(sId, studentAchievementRepository.findByStudentIdOrderByAwardedAtDesc(sId));
+        for (com.chillcode.assessment.entity.Submission sub : allSubmissions) {
+            if (sub.getStudentTest() != null && sub.getStudentTest().getStudent() != null) {
+                Long sId = sub.getStudentTest().getStudent().getId();
+                subsByStudent.computeIfAbsent(sId, k -> new java.util.ArrayList<>()).add(sub);
+            }
         }
+
+        // Batch Query 3: All StudentQuestionStatus for this subject's questions
+        java.util.List<com.chillcode.assessment.entity.StudentQuestionStatus> allSqs = studentQuestionStatusRepository.findByQuestionIdIn(questionIds);
+        java.util.Map<Long, java.util.List<com.chillcode.assessment.entity.StudentQuestionStatus>> sqsByStudent = new java.util.HashMap<>();
+        for (com.chillcode.assessment.entity.StudentQuestionStatus sqs : allSqs) {
+            sqsByStudent.computeIfAbsent(sqs.getStudentId(), k -> new java.util.ArrayList<>()).add(sqs);
+        }
+
+        // Batch Query 4: Badges for tests
+        java.util.List<com.chillcode.assessment.entity.StudentBadge> allBadges = studentBadgeRepository.findBySourceTestIdInWithBadge(testIds);
+        java.util.Map<Long, java.util.List<com.chillcode.assessment.entity.StudentBadge>> badgesByStudent = new java.util.HashMap<>();
+        for (com.chillcode.assessment.entity.StudentBadge sb : allBadges) {
+            if (sb.getStudent() != null) {
+                badgesByStudent.computeIfAbsent(sb.getStudent().getId(), k -> new java.util.ArrayList<>()).add(sb);
+            }
+        }
+
+        // Batch Query 5: Achievements for tests
+        java.util.List<com.chillcode.assessment.entity.StudentAchievement> allAchievements = studentAchievementRepository.findByTestIdInWithTestOrderByAwardedAtDesc(testIds);
+        java.util.Map<Long, java.util.List<com.chillcode.assessment.entity.StudentAchievement>> achievementsByStudent = new java.util.HashMap<>();
+        for (com.chillcode.assessment.entity.StudentAchievement sa : allAchievements) {
+            if (sa.getStudent() != null) {
+                achievementsByStudent.computeIfAbsent(sa.getStudent().getId(), k -> new java.util.ArrayList<>()).add(sa);
+            }
+        }
+
+        java.util.List<com.chillcode.assessment.dto.SubjectStatsDto.StudentMarkDto> studentMarks = new java.util.ArrayList<>();
 
         // Loop over each Question once to avoid duplicates
         for (com.chillcode.assessment.entity.Question question : subjectQuestions) {
-            java.util.List<Long> testIdsWithQuestion = tests.stream()
-                    .filter(t -> t.getQuestions() != null && t.getQuestions().contains(question))
-                    .map(com.chillcode.assessment.entity.Test::getId)
-                    .collect(java.util.stream.Collectors.toList());
-
+            java.util.List<Long> testIdsWithQuestion = questionToTestIds.getOrDefault(question.getId(), java.util.Collections.emptyList());
             if (testIdsWithQuestion.isEmpty()) continue;
 
             for (com.chillcode.assessment.entity.User student : students) {
                 Long sId = student.getId();
-                
+
                 java.util.List<com.chillcode.assessment.entity.StudentTest> assignedTestRecords = stByStudent.getOrDefault(sId, java.util.Collections.emptyList())
                         .stream().filter(st -> testIdsWithQuestion.contains(st.getTest().getId()))
                         .collect(java.util.stream.Collectors.toList());
@@ -318,7 +372,7 @@ public class SubjectService {
                                     .filter(sub -> sub.getQuestion() != null && sub.getQuestion().getId().equals(question.getId()))
                                     .filter(sub -> sub.getStudentTest() != null && sub.getStudentTest().getId().equals(st.getId()))
                                     .findFirst().orElse(null);
-                            
+
                             if (latestSub != null) {
                                 score = latestSub.getScore() != null ? latestSub.getScore() : 0;
                             }
@@ -335,7 +389,7 @@ public class SubjectService {
                     com.chillcode.assessment.entity.StudentTest st = bestSt;
                     boolean hasAttended = bestHasAttended;
                     boolean hasMalpractice = (st.getIsSuspended() != null && st.getIsSuspended()) || (st.getWarningsCount() != null && st.getWarningsCount() > 0);
-                    
+
                     int score = 0;
                     int maxMarks = 100;
                     String resultStatus = "N/A";
@@ -387,7 +441,7 @@ public class SubjectService {
                             }
                         }
                     }
-                    
+
                     // Deduplicate badges
                     java.util.List<com.chillcode.assessment.dto.BadgeDto> uniqueBadges = new java.util.ArrayList<>();
                     java.util.Set<String> seenBadges = new java.util.HashSet<>();
@@ -399,22 +453,22 @@ public class SubjectService {
                     }
                     badgeDtos = uniqueBadges;
 
-                        String rollNo = student.getRegisterNumber() != null ? student.getRegisterNumber() : student.getUsername();
+                    String rollNo = student.getRegisterNumber() != null ? student.getRegisterNumber() : student.getUsername();
 
-                        studentMarks.add(new com.chillcode.assessment.dto.SubjectStatsDto.StudentMarkDto(
-                                question.getId(),
-                                question.getTitle(),
-                                student.getName(),
-                                rollNo,
-                                score, 
-                                maxMarks, 
-                                resultStatus,
-                                badgeDtos,
-                                st.getTest().getId(), 
-                                st.getTest().getName(), 
-                                attempts,
-                                hasMalpractice ? "YES" : "NO"
-                        ));
+                    studentMarks.add(new com.chillcode.assessment.dto.SubjectStatsDto.StudentMarkDto(
+                            question.getId(),
+                            question.getTitle(),
+                            student.getName(),
+                            rollNo,
+                            score,
+                            maxMarks,
+                            resultStatus,
+                            badgeDtos,
+                            st.getTest().getId(),
+                            st.getTest().getName(),
+                            attempts,
+                            hasMalpractice ? "YES" : "NO"
+                    ));
                 }
             }
         }
@@ -428,7 +482,7 @@ public class SubjectService {
         for (java.util.Map.Entry<Long, Integer> entry : studentTotalScores.entrySet()) {
             if (entry.getValue() > rankScore) {
                 rankScore = entry.getValue();
-                com.chillcode.assessment.entity.User u = userRepository.findById(entry.getKey()).orElse(null);
+                com.chillcode.assessment.entity.User u = studentMap.get(entry.getKey());
                 if (u != null) {
                     rankHolder = u.getName();
                 }
@@ -459,12 +513,28 @@ public class SubjectService {
      *          Attempt Date, Marks, Passing Marks, Percentage, PASS/FAIL, Time Taken, Rank, Attendance Status
      */
     public byte[] generateSubjectExcelReport(Long subjectId) {
-        Long adminId = com.chillcode.assessment.security.SecurityUtils.getCurrentAdminId();
-        Subject subject = subjectRepository.findByIdAndAdminId(subjectId, adminId)
-                .orElseThrow(() -> new RuntimeException("Subject not found with id: " + subjectId));
+        User currentUser = com.chillcode.assessment.security.SecurityUtils.getCurrentUser();
+        boolean isSuperAdmin = currentUser != null && currentUser.getRole() == com.chillcode.assessment.entity.Role.SUPER_ADMIN;
+        Subject subject;
+        if (isSuperAdmin) {
+            subject = subjectRepository.findById(subjectId)
+                    .orElseThrow(() -> new RuntimeException("Subject not found with id: " + subjectId));
+        } else {
+            Long adminId = com.chillcode.assessment.security.SecurityUtils.getCurrentAdminId();
+            subject = subjectRepository.findByIdAndAdminId(subjectId, adminId)
+                    .orElseThrow(() -> new RuntimeException("Subject not found with id: " + subjectId));
+        }
 
         java.util.List<com.chillcode.assessment.entity.Test> tests = testRepository.findBySubjectId(subjectId);
-        java.util.List<com.chillcode.assessment.entity.User> allStudents = userRepository.findByRoleAndAdminId(com.chillcode.assessment.entity.Role.STUDENT, adminId);
+        java.util.List<com.chillcode.assessment.entity.User> allStudents;
+        if (isSuperAdmin) {
+            allStudents = subject.getAdmin() != null ?
+                    userRepository.findByRoleAndAdminId(com.chillcode.assessment.entity.Role.STUDENT, subject.getAdmin().getId()) :
+                    userRepository.findByRole(com.chillcode.assessment.entity.Role.STUDENT);
+        } else {
+            Long adminId = com.chillcode.assessment.security.SecurityUtils.getCurrentAdminId();
+            allStudents = userRepository.findByRoleAndAdminId(com.chillcode.assessment.entity.Role.STUDENT, adminId);
+        }
 
         try (org.apache.poi.xssf.usermodel.XSSFWorkbook workbook = new org.apache.poi.xssf.usermodel.XSSFWorkbook()) {
             org.apache.poi.xssf.usermodel.XSSFSheet sheet = workbook.createSheet(subject.getName() + " Report");
@@ -517,12 +587,20 @@ public class SubjectService {
             // Freeze header row
             sheet.createFreezePane(0, 1);
 
-            // Gather all student-test data and calculate ranks
+            // Gather all student-test data and calculate ranks in batch
             java.util.List<Object[]> rows = new java.util.ArrayList<>();
+            java.util.List<Long> testIds = tests.stream().map(com.chillcode.assessment.entity.Test::getId).collect(java.util.stream.Collectors.toList());
+            java.util.List<com.chillcode.assessment.entity.StudentTest> allStudentTests = testIds.isEmpty() 
+                    ? java.util.Collections.emptyList() 
+                    : studentTestRepository.findByTestIdInWithStudentAndTest(testIds);
+
+            java.util.Map<Long, java.util.List<com.chillcode.assessment.entity.StudentTest>> stByTestId = allStudentTests.stream()
+                    .filter(st -> st.getTest() != null)
+                    .collect(java.util.stream.Collectors.groupingBy(st -> st.getTest().getId()));
 
             for (com.chillcode.assessment.entity.Test test : tests) {
                 java.util.List<com.chillcode.assessment.entity.StudentTest> studentTests =
-                        studentTestRepository.findByTestId(test.getId());
+                        stByTestId.getOrDefault(test.getId(), java.util.Collections.emptyList());
 
                 // Sort by score descending to determine rank
                 java.util.List<com.chillcode.assessment.entity.StudentTest> sortedByScore = studentTests.stream()
@@ -550,14 +628,7 @@ public class SubjectService {
 
                     int score = st.getScore() != null ? st.getScore() : 0;
                     int maxMarks = test.getMaxMarks() != null ? test.getMaxMarks() : 100;
-
-                    // Compute passingMarks from submissions
-                    java.util.List<com.chillcode.assessment.entity.Submission> subs =
-                            submissionRepository.findByStudentTestId(st.getId());
-                    int passingMarks = subs.stream()
-                            .mapToInt(s -> s.getPassingMarks() != null ? s.getPassingMarks() : 0)
-                            .sum();
-                    if (passingMarks == 0) passingMarks = maxMarks / 2;
+                    int passingMarks = maxMarks / 2;
 
                     double percentage = maxMarks > 0 ? Math.round((double) score / maxMarks * 1000.0) / 10.0 : 0.0;
                     String passFailStatus = attended ? (score >= passingMarks ? "PASS" : "FAIL") : "N/A";

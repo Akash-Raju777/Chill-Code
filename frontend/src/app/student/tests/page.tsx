@@ -140,7 +140,6 @@ export default function TestsWorkspace() {
   });
 
   useEffect(() => {
-    router.refresh();
     fetchTestsRef.current(true);
 
     const interval = setInterval(() => {
