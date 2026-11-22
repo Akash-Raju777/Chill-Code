@@ -27,29 +27,51 @@ import BackendStatusBanner from '@/components/BackendStatusBanner';
 import ToastContainer from '@/components/ToastContainer';
 import BrandedLoader from '@/components/BrandedLoader';
 
+import { apiCall } from '@/utils/api';
+import { getAuthorizedDashboard } from '@/store/authStore';
+
 export default function SuperAdminLayout({ children }: { children: React.ReactNode }) {
   const router = useRouter();
   const pathname = usePathname();
   const { user, logout, isAuthenticated } = useAuthStore();
   const [mounted, setMounted] = useState(false);
+  const [authorized, setAuthorized] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(false);
 
   useEffect(() => {
     setMounted(true);
-  }, []);
 
-  useEffect(() => {
-    if (!mounted) return;
-    if (!isAuthenticated || !user || user.role !== 'SUPER_ADMIN') {
-      const timer = setTimeout(() => {
-        router.push('/');
-      }, 50);
-      return () => clearTimeout(timer);
-    }
-  }, [mounted, isAuthenticated, user, router]);
+    const verifySuperAdmin = async () => {
+      const state = useAuthStore.getState();
+      if (!state.isAuthenticated || !state.token || !state.user) {
+        router.replace('/');
+        return;
+      }
 
-  if (!mounted || !isAuthenticated || !user || user.role !== 'SUPER_ADMIN') {
-    return <BrandedLoader message="Loading Super Admin Session..." fullScreen />;
+      if (state.user.role !== 'SUPER_ADMIN') {
+        router.replace(getAuthorizedDashboard(state.user.role));
+        return;
+      }
+
+      try {
+        const verified = await apiCall('/api/auth/me');
+        if (!verified || verified.role !== 'SUPER_ADMIN') {
+          router.replace(getAuthorizedDashboard(verified?.role));
+          return;
+        }
+        useAuthStore.getState().setUser(verified);
+        setAuthorized(true);
+      } catch (err) {
+        useAuthStore.getState().logout();
+        router.replace('/');
+      }
+    };
+
+    verifySuperAdmin();
+  }, [router]);
+
+  if (!mounted || !authorized || !isAuthenticated || !user || user.role !== 'SUPER_ADMIN') {
+    return <BrandedLoader message="Verifying Super Admin Authorization..." fullScreen />;
   }
 
   const navItems = [

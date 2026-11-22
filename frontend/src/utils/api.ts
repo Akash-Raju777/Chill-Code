@@ -161,8 +161,7 @@ export async function apiCall(endpoint: string, options: ApiCallOptions = {}): P
 
       const isAccountSuspendedOrInactive =
         errorText.toLowerCase().includes('inactive') ||
-        errorText.toLowerCase().includes('suspended') ||
-        cleanEndpoint.includes('/api/student/profile');
+        errorText.toLowerCase().includes('suspended');
 
       if (isAccountSuspendedOrInactive && !cleanEndpoint.includes('/api/auth/login')) {
         useAuthStore.getState().logout();

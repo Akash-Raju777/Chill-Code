@@ -34,26 +34,61 @@ function clearAllCodeBackups() {
   keysToRemove.forEach((key) => localStorage.removeItem(key));
 }
 
+/**
+ * Returns the primary route dashboard for a given role.
+ */
+export function getAuthorizedDashboard(role?: string): string {
+  switch (role) {
+    case 'SUPER_ADMIN':
+      return '/super-admin/dashboard';
+    case 'ADMIN':
+      return '/admin/dashboard';
+    case 'STUDENT':
+      return '/student/dashboard';
+    default:
+      return '/';
+  }
+}
+
+/**
+ * Resolves the authenticated session with strict per-tab isolation.
+ * Priority:
+ * 1. sessionStorage (isolated strictly to the current browser tab)
+ * 2. localStorage fallback (only for newly opened blank tabs inheriting the initial session)
+ */
 function getStoredAuth(): { user: User | null; token: string | null } {
   if (typeof window === 'undefined') {
     return { user: null, token: null };
   }
 
-  // Check localStorage first (multi-tab persistence), then sessionStorage (tab isolation fallback)
-  const savedUser = localStorage.getItem('chill_user') || sessionStorage.getItem('chill_user');
-  const savedToken = localStorage.getItem('chill_token') || sessionStorage.getItem('chill_token');
+  // 1. Check sessionStorage FIRST for per-tab isolation
+  const sessionUser = sessionStorage.getItem('chill_user');
+  const sessionToken = sessionStorage.getItem('chill_token');
 
-  if (savedUser && savedToken) {
+  if (sessionUser && sessionToken) {
     try {
-      const parsedUser = JSON.parse(savedUser);
-      // Ensure both storages are populated for compatibility
-      localStorage.setItem('chill_user', savedUser);
-      localStorage.setItem('chill_token', savedToken);
-      sessionStorage.setItem('chill_user', savedUser);
-      sessionStorage.setItem('chill_token', savedToken);
-      return { user: parsedUser, token: savedToken };
+      const parsedUser = JSON.parse(sessionUser);
+      return { user: parsedUser, token: sessionToken };
     } catch (e) {
-      console.error('Failed to parse saved auth user:', e);
+      sessionStorage.removeItem('chill_user');
+      sessionStorage.removeItem('chill_token');
+    }
+  }
+
+  // 2. Fallback to localStorage ONLY if this tab does not have a session yet (e.g. freshly opened blank tab)
+  const localUser = localStorage.getItem('chill_user');
+  const localToken = localStorage.getItem('chill_token');
+
+  if (localUser && localToken) {
+    try {
+      const parsedUser = JSON.parse(localUser);
+      // Clone into this tab's sessionStorage so future tab actions remain isolated
+      sessionStorage.setItem('chill_user', localUser);
+      sessionStorage.setItem('chill_token', localToken);
+      return { user: parsedUser, token: localToken };
+    } catch (e) {
+      localStorage.removeItem('chill_user');
+      localStorage.removeItem('chill_token');
     }
   }
 
@@ -67,32 +102,45 @@ export const useAuthStore = create<AuthState>((set) => {
     user: initial.user,
     token: initial.token,
     isAuthenticated: !!initial.token,
+
     login: (user, token) => {
-      // Clear any previous student's test session and code backups
+      // Clear any previous student test session and local code backups
       useTestStore.getState().clearTestSession();
       clearAllCodeBackups();
 
       if (typeof window !== 'undefined') {
         const userJson = JSON.stringify(user);
-        localStorage.setItem('chill_user', userJson);
-        localStorage.setItem('chill_token', token);
+        // Primary: Isolated per-tab storage
         sessionStorage.setItem('chill_user', userJson);
         sessionStorage.setItem('chill_token', token);
+
+        // Fallback: Default session for new tabs opened in the future
+        localStorage.setItem('chill_user', userJson);
+        localStorage.setItem('chill_token', token);
       }
       set({ user, token, isAuthenticated: true });
     },
+
     logout: () => {
+      const currentToken = useAuthStore.getState().token;
       useTestStore.getState().clearTestSession();
       clearAllCodeBackups();
 
       if (typeof window !== 'undefined') {
-        localStorage.removeItem('chill_user');
-        localStorage.removeItem('chill_token');
+        // Clear this tab's isolated session
         sessionStorage.removeItem('chill_user');
         sessionStorage.removeItem('chill_token');
+
+        // Only clear localStorage if it belongs to this same session
+        const storedLocalToken = localStorage.getItem('chill_token');
+        if (!storedLocalToken || storedLocalToken === currentToken) {
+          localStorage.removeItem('chill_user');
+          localStorage.removeItem('chill_token');
+        }
       }
       set({ user: null, token: null, isAuthenticated: false });
     },
+
     setUser: (newUser) => {
       set((state) => {
         if (state.user && JSON.stringify(state.user) === JSON.stringify(newUser)) {
@@ -100,41 +148,28 @@ export const useAuthStore = create<AuthState>((set) => {
         }
         if (typeof window !== 'undefined') {
           const userJson = JSON.stringify(newUser);
-          localStorage.setItem('chill_user', userJson);
           sessionStorage.setItem('chill_user', userJson);
+          // Update localStorage only if this tab's user matches localStorage
+          const localUser = localStorage.getItem('chill_user');
+          if (localUser) {
+            try {
+              const parsed = JSON.parse(localUser);
+              if (parsed.id === newUser.id) {
+                localStorage.setItem('chill_user', userJson);
+              }
+            } catch (_) {}
+          }
         }
         return { user: newUser };
       });
     },
+
     setToken: (newToken) => {
       if (typeof window !== 'undefined') {
-        localStorage.setItem('chill_token', newToken);
         sessionStorage.setItem('chill_token', newToken);
+        localStorage.setItem('chill_token', newToken);
       }
       set({ token: newToken, isAuthenticated: true });
     },
   };
 });
-
-// Setup Cross-tab Synchronization Listener in Browser
-if (typeof window !== 'undefined') {
-  window.addEventListener('storage', (event) => {
-    if (event.key === 'chill_token') {
-      if (!event.newValue) {
-        // Logged out in another tab
-        useAuthStore.setState({ user: null, token: null, isAuthenticated: false });
-      } else {
-        useAuthStore.setState({ token: event.newValue, isAuthenticated: true });
-      }
-    } else if (event.key === 'chill_user') {
-      if (event.newValue) {
-        try {
-          const parsedUser = JSON.parse(event.newValue);
-          useAuthStore.setState({ user: parsedUser });
-        } catch (_) {}
-      } else {
-        useAuthStore.setState({ user: null });
-      }
-    }
-  });
-}

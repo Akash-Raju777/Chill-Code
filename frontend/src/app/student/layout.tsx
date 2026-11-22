@@ -27,11 +27,14 @@ import ToastContainer from '../../components/ToastContainer';
 import { toast } from '../../store/toastStore';
 import BrandedLoader from '../../components/BrandedLoader';
 
+import { getAuthorizedDashboard } from '../../store/authStore';
+
 export default function StudentLayout({ children }: { children: React.ReactNode }) {
   const router = useRouter();
   const pathname = usePathname();
   const { user, logout, isAuthenticated } = useAuthStore();
   const [mounted, setMounted] = useState(false);
+  const [authorized, setAuthorized] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(false);
 
   const isSessionActive = useTestStore((s) => s.isSessionActive);
@@ -39,8 +42,41 @@ export default function StudentLayout({ children }: { children: React.ReactNode 
   const isSecurityActive = isSessionActive && !isViewMode && user?.status === 'ACTIVE';
   const setUser = useAuthStore((s) => s.setUser);
 
+  // Authorize student role and verify session with backend
   useEffect(() => {
     setMounted(true);
+
+    const verifyStudent = async () => {
+      const state = useAuthStore.getState();
+      if (!state.isAuthenticated || !state.token || !state.user) {
+        router.replace('/');
+        return;
+      }
+
+      if (state.user.role !== 'STUDENT') {
+        router.replace(getAuthorizedDashboard(state.user.role));
+        return;
+      }
+
+      try {
+        const verified = await apiCall('/api/auth/me');
+        if (!verified || verified.role !== 'STUDENT') {
+          router.replace(getAuthorizedDashboard(verified?.role));
+          return;
+        }
+        useAuthStore.getState().setUser(verified);
+        setAuthorized(true);
+      } catch (err) {
+        useAuthStore.getState().logout();
+        router.replace('/');
+      }
+    };
+
+    verifyStudent();
+  }, [router]);
+
+  useEffect(() => {
+    if (!authorized) return;
 
     const seenIds = new Set<number>();
 
@@ -88,20 +124,10 @@ export default function StudentLayout({ children }: { children: React.ReactNode 
       clearInterval(intervalProfile);
       clearInterval(intervalNotifications);
     };
-  }, [setUser]);
+  }, [authorized, setUser]);
 
-  useEffect(() => {
-    if (!mounted) return;
-    if (!isAuthenticated || !user || user.role !== 'STUDENT') {
-      const timer = setTimeout(() => {
-        router.push('/');
-      }, 50);
-      return () => clearTimeout(timer);
-    }
-  }, [mounted, isAuthenticated, user, router]);
-
-  if (!mounted || !isAuthenticated || !user || user.role !== 'STUDENT') {
-    return <BrandedLoader message="Loading Student Session..." fullScreen />;
+  if (!mounted || !authorized || !isAuthenticated || !user || user.role !== 'STUDENT') {
+    return <BrandedLoader message="Verifying Student Authorization..." fullScreen />;
   }
 
   return (

@@ -167,6 +167,29 @@ public class AuthController {
         return ResponseEntity.ok(authResponse);
     }
 
+    @GetMapping("/me")
+    public ResponseEntity<?> getCurrentUserSession() {
+        User user = com.chillcode.assessment.security.SecurityUtils.getCurrentUser();
+        if (user == null) {
+            return ResponseEntity.status(org.springframework.http.HttpStatus.UNAUTHORIZED).body("Session invalid or expired");
+        }
+        if (user.getStatus() == UserStatus.INACTIVE || user.getStatus() == UserStatus.SUSPENDED) {
+            return ResponseEntity.status(org.springframework.http.HttpStatus.FORBIDDEN)
+                    .body("Your account is " + user.getStatus().name().toLowerCase() + ".");
+        }
+        AuthResponse authResponse = AuthResponse.builder()
+                .id(user.getId())
+                .name(user.getName())
+                .email(user.getEmail())
+                .role(user.getRole().name())
+                .registerNumber(user.getRegisterNumber())
+                .username(user.getUsername())
+                .status(user.getStatus().name())
+                .department(user.getDepartment())
+                .build();
+        return ResponseEntity.ok(authResponse);
+    }
+
     @GetMapping("/health")
     public ResponseEntity<?> healthCheck() {
         return ResponseEntity.ok(java.util.Map.of("status", "UP", "timestamp", System.currentTimeMillis()));
