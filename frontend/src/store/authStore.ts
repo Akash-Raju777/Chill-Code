@@ -40,13 +40,6 @@ function clearAllCodeBackups() {
   keysToRemove.forEach((key) => localStorage.removeItem(key));
 }
 
-function setAuthCookies(token: string, role: string) {
-  if (typeof window === 'undefined') return;
-  const maxAge = 86400; // 24 hours
-  document.cookie = `chill_token=${encodeURIComponent(token)}; path=/; max-age=${maxAge}; SameSite=Lax`;
-  document.cookie = `chill_role=${encodeURIComponent(role)}; path=/; max-age=${maxAge}; SameSite=Lax`;
-}
-
 function clearAuthCookies() {
   if (typeof window === 'undefined') return;
   document.cookie = 'chill_token=; path=/; max-age=0; expires=Thu, 01 Jan 1970 00:00:00 GMT; SameSite=Lax';
@@ -139,7 +132,7 @@ async function verifySessionWithBackend(token: string): Promise<User | null> {
   } catch (err: any) {
     // Network failure / cold-start: if token is structurally unexpired, keep optimistic local user
     if (!isJwtExpired(token)) {
-      const stored = sessionStorage.getItem('chill_user') || localStorage.getItem('chill_user');
+      const stored = sessionStorage.getItem('chill_user');
       if (stored) {
         try {
           return JSON.parse(stored);
@@ -152,16 +145,21 @@ async function verifySessionWithBackend(token: string): Promise<User | null> {
 
 /**
  * Resolves the authenticated session with strict per-tab isolation.
- * Priority:
- * 1. sessionStorage (isolated strictly to the current browser tab)
- * 2. localStorage fallback for new tabs
+ * Uses sessionStorage EXCLUSIVELY so that each newly opened browser tab
+ * starts unauthenticated, while existing tabs preserve authentication on refresh.
  */
 function getStoredAuth(): { user: User | null; token: string | null } {
   if (typeof window === 'undefined') {
     return { user: null, token: null };
   }
 
-  // 1. Check sessionStorage FIRST for per-tab isolation
+  // Purge any legacy shared localStorage auth tokens once to prevent tab cross-talk
+  try {
+    localStorage.removeItem('chill_user');
+    localStorage.removeItem('chill_token');
+  } catch (_) {}
+
+  // Check sessionStorage ONLY for this browser tab
   const sessionUser = sessionStorage.getItem('chill_user');
   const sessionToken = sessionStorage.getItem('chill_token');
 
@@ -174,24 +172,6 @@ function getStoredAuth(): { user: User | null; token: string | null } {
     } catch (e) {
       sessionStorage.removeItem('chill_user');
       sessionStorage.removeItem('chill_token');
-    }
-  }
-
-  // 2. Fallback to localStorage for new tabs or re-opened windows
-  const localUser = localStorage.getItem('chill_user');
-  const localToken = localStorage.getItem('chill_token');
-
-  if (localUser && localToken) {
-    try {
-      const parsedUser = JSON.parse(localUser);
-      if (!isJwtExpired(localToken)) {
-        sessionStorage.setItem('chill_user', localUser);
-        sessionStorage.setItem('chill_token', localToken);
-        return { user: parsedUser, token: localToken };
-      }
-    } catch (e) {
-      localStorage.removeItem('chill_user');
-      localStorage.removeItem('chill_token');
     }
   }
 
@@ -221,14 +201,12 @@ export const useAuthStore = create<AuthState>((set) => {
       initPromise = (async () => {
         const stored = getStoredAuth();
 
-        // Case A: Missing or structurally expired token
+        // Case A: Missing or structurally expired token in this tab
         if (!stored.token || !stored.user || isJwtExpired(stored.token)) {
           clearAuthCookies();
           smartCache.clearAll();
           sessionStorage.removeItem('chill_token');
           sessionStorage.removeItem('chill_user');
-          localStorage.removeItem('chill_token');
-          localStorage.removeItem('chill_user');
 
           set({
             user: null,
@@ -245,9 +223,6 @@ export const useAuthStore = create<AuthState>((set) => {
         if (verifiedUser) {
           sessionStorage.setItem('chill_token', stored.token);
           sessionStorage.setItem('chill_user', JSON.stringify(verifiedUser));
-          localStorage.setItem('chill_token', stored.token);
-          localStorage.setItem('chill_user', JSON.stringify(verifiedUser));
-          setAuthCookies(stored.token, verifiedUser.role);
 
           set({
             user: verifiedUser,
@@ -263,8 +238,6 @@ export const useAuthStore = create<AuthState>((set) => {
           smartCache.clearAll();
           sessionStorage.removeItem('chill_token');
           sessionStorage.removeItem('chill_user');
-          localStorage.removeItem('chill_token');
-          localStorage.removeItem('chill_user');
 
           set({
             user: null,
@@ -288,12 +261,10 @@ export const useAuthStore = create<AuthState>((set) => {
       smartCache.clearAll();
 
       if (typeof window !== 'undefined') {
+        clearAuthCookies();
         const userJson = JSON.stringify(user);
         sessionStorage.setItem('chill_user', userJson);
         sessionStorage.setItem('chill_token', token);
-        localStorage.setItem('chill_user', userJson);
-        localStorage.setItem('chill_token', token);
-        setAuthCookies(token, user.role);
       }
       set({
         user,
@@ -313,8 +284,6 @@ export const useAuthStore = create<AuthState>((set) => {
         clearAuthCookies();
         sessionStorage.removeItem('chill_user');
         sessionStorage.removeItem('chill_token');
-        localStorage.removeItem('chill_user');
-        localStorage.removeItem('chill_token');
       }
       set({
         user: null,
@@ -333,7 +302,6 @@ export const useAuthStore = create<AuthState>((set) => {
         if (typeof window !== 'undefined') {
           const userJson = JSON.stringify(newUser);
           sessionStorage.setItem('chill_user', userJson);
-          localStorage.setItem('chill_user', userJson);
         }
         return { user: newUser };
       });
@@ -342,11 +310,6 @@ export const useAuthStore = create<AuthState>((set) => {
     setToken: (newToken) => {
       if (typeof window !== 'undefined') {
         sessionStorage.setItem('chill_token', newToken);
-        localStorage.setItem('chill_token', newToken);
-        const currentUser = useAuthStore.getState().user;
-        if (currentUser) {
-          setAuthCookies(newToken, currentUser.role);
-        }
       }
       set({
         token: newToken,
@@ -357,43 +320,3 @@ export const useAuthStore = create<AuthState>((set) => {
     },
   };
 });
-
-// Cross-tab synchronization via storage event
-if (typeof window !== 'undefined') {
-  window.addEventListener('storage', (event) => {
-    if (event.key === 'chill_token') {
-      if (!event.newValue) {
-        // Tab was logged out in another tab
-        smartCache.clearAll();
-        sessionStorage.removeItem('chill_token');
-        sessionStorage.removeItem('chill_user');
-        clearAuthCookies();
-        useAuthStore.setState({
-          user: null,
-          token: null,
-          isAuthenticated: false,
-          isInitialized: true,
-          authStatus: 'UNAUTHENTICATED',
-        });
-      } else {
-        // Another tab logged in or refreshed token
-        try {
-          const rawUser = localStorage.getItem('chill_user');
-          if (rawUser) {
-            const parsed = JSON.parse(rawUser);
-            sessionStorage.setItem('chill_token', event.newValue);
-            sessionStorage.setItem('chill_user', rawUser);
-            setAuthCookies(event.newValue, parsed.role);
-            useAuthStore.setState({
-              user: parsed,
-              token: event.newValue,
-              isAuthenticated: true,
-              isInitialized: true,
-              authStatus: 'AUTHENTICATED',
-            });
-          }
-        } catch (_) {}
-      }
-    }
-  });
-}

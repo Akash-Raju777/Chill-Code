@@ -73,7 +73,7 @@ export default function SubjectTrackerReport({
 
   const handleDownloadReport = async () => {
     try {
-      const token = useAuthStore.getState().token || (typeof window !== 'undefined' ? sessionStorage.getItem('chill_token') || localStorage.getItem('chill_token') : null);
+      const token = useAuthStore.getState().token || (typeof window !== 'undefined' ? sessionStorage.getItem('chill_token') : null);
       const res = await fetch(`${API_BASE_URL}/api/admin/subjects/${subject.id}/export`, {
         headers: {
           Authorization: token ? `Bearer ${token}` : '',
