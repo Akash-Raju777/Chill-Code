@@ -69,7 +69,6 @@ public class QuestionService {
     private QuestionService self;
 
     @org.springframework.context.event.EventListener(org.springframework.boot.context.event.ApplicationReadyEvent.class)
-    @org.springframework.transaction.annotation.Transactional
     public void onApplicationReady() {
         log.info("Application started: Running retroactive cleanup for orphaned deleted questions...");
         try {
@@ -560,11 +559,11 @@ public class QuestionService {
                 ")"
         ).executeUpdate();
 
-        // 10d. De-duplicate tests with identical names in the same subject that have no questions
+        // 10d. De-duplicate tests with identical names in the same subject that have no questions or student records
         entityManager.createNativeQuery(
                 "DELETE FROM tests t1 WHERE t1.id > (" +
                 "SELECT MIN(t2.id) FROM tests t2 WHERE LOWER(t2.name) = LOWER(t1.name) AND t2.subject_id = t1.subject_id" +
-                ") AND t1.id NOT IN (SELECT DISTINCT test_id FROM test_questions)"
+                ") AND t1.id NOT IN (SELECT DISTINCT test_id FROM test_questions) AND t1.id NOT IN (SELECT DISTINCT test_id FROM student_tests WHERE test_id IS NOT NULL)"
         ).executeUpdate();
 
         // 11. Delete warnings for student_tests of non-existent or empty tests

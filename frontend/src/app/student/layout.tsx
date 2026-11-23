@@ -66,9 +66,15 @@ export default function StudentLayout({ children }: { children: React.ReactNode 
         }
         useAuthStore.getState().setUser(verified);
         setAuthorized(true);
-      } catch (err) {
-        useAuthStore.getState().logout();
-        router.replace('/login');
+      } catch (err: any) {
+        // ONLY log out if backend explicitly returns 401 Unauthorized or 403 Forbidden
+        if (err?.isAuthError || err?.status === 401 || err?.status === 403) {
+          useAuthStore.getState().logout();
+          router.replace('/login');
+        } else {
+          // Backend may be sleeping or cold start: DO NOT destroy valid session!
+          setAuthorized(true);
+        }
       }
     };
 
@@ -125,6 +131,17 @@ export default function StudentLayout({ children }: { children: React.ReactNode 
       clearInterval(intervalNotifications);
     };
   }, [authorized, setUser]);
+
+  useEffect(() => {
+    if (mounted && (!isAuthenticated || !user)) {
+      router.replace('/login');
+    }
+  }, [mounted, isAuthenticated, user, router]);
+
+  const handleLogout = () => {
+    logout();
+    router.replace('/login');
+  };
 
   if (!mounted || !authorized || !isAuthenticated || !user || user.role !== 'STUDENT') {
     return <BrandedLoader message="Verifying Student Authorization..." fullScreen />;
@@ -300,8 +317,8 @@ export default function StudentLayout({ children }: { children: React.ReactNode 
               </div>
             </div>
             <button
-              onClick={logout}
-              className="p-2 text-gray-400 hover:text-red-400 hover:bg-red-400/10 rounded-lg transition-all flex-shrink-0"
+              onClick={handleLogout}
+              className="p-2 text-gray-400 hover:text-red-400 hover:bg-red-400/10 rounded-lg transition-all flex-shrink-0 cursor-pointer"
               title="Logout"
             >
               <LogOut className="w-4 h-4" />

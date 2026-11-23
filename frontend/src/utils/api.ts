@@ -1,14 +1,47 @@
 import { useAuthStore } from '../store/authStore';
 import { useBackendStore } from '../store/backendStore';
 
+export class ApiError extends Error {
+  status?: number;
+  isNetworkError: boolean;
+  isAuthError: boolean;
+
+  constructor(message: string, status?: number, isNetworkError: boolean = false) {
+    super(message);
+    this.name = 'ApiError';
+    this.status = status;
+    this.isNetworkError = isNetworkError;
+    this.isAuthError = status === 401 || status === 403;
+  }
+}
+
 /**
  * Centralized API Base URL Configuration.
  * Automatically switches based on environment:
  * - Local Development (.env.local): http://localhost:8080
  * - Production (.env.production): https://chill-code-2.onrender.com
+ * - Production browser fail-safe: ensures deployed frontend NEVER requests localhost
  */
-const RAW_API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080';
-const BASE_URL = RAW_API_URL.replace(/\/$/, '');
+function resolveBaseUrl(): string {
+  if (typeof window !== 'undefined') {
+    const hostname = window.location.hostname;
+    const isLocalhost = hostname === 'localhost' || hostname === '127.0.0.1' || hostname === '0.0.0.0';
+
+    // In production browser, ensure requests NEVER go to localhost
+    if (!isLocalhost) {
+      const configured = (process.env.NEXT_PUBLIC_API_URL || '').trim();
+      if (!configured || configured.includes('localhost') || configured.includes('127.0.0.1')) {
+        return 'https://chill-code-2.onrender.com';
+      }
+      return configured.replace(/\/+$/, '');
+    }
+  }
+
+  const raw = (process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080').trim();
+  return raw.replace(/\/+$/, '');
+}
+
+const BASE_URL = resolveBaseUrl();
 
 /** Exported so edge-case callers (keepalive beacon, blob downloads) can build full URLs. */
 export { BASE_URL as API_BASE_URL };
@@ -21,6 +54,7 @@ let refreshPromise: Promise<string | null> | null = null;
 export interface ApiCallOptions extends RequestInit {
   skipLocalCache?: boolean;
   isRetry?: boolean;
+  timeout?: number;
 }
 
 /**
@@ -103,18 +137,33 @@ export async function apiCall(endpoint: string, options: ApiCallOptions = {}): P
       headers.set('Content-Type', 'application/json');
     }
 
+    let timeoutId: any;
+    let fetchSignal = options.signal;
+    if (options.timeout && !fetchSignal) {
+      const controller = new AbortController();
+      timeoutId = setTimeout(() => controller.abort(), options.timeout);
+      fetchSignal = controller.signal;
+    }
+
     let response: Response;
     try {
       response = await fetch(fullUrl, {
         cache: 'no-store',
         ...options,
         headers,
+        signal: fetchSignal,
       });
       // Successful response clears backend offline status
+      if (timeoutId) clearTimeout(timeoutId);
       useBackendStore.getState().setOffline(false);
     } catch (err: any) {
+      if (timeoutId) clearTimeout(timeoutId);
       if (err.name === 'AbortError') {
-        throw err;
+        const isLocal = BASE_URL.includes('localhost') || BASE_URL.includes('127.0.0.1');
+        const msg = isLocal
+          ? `Backend request timed out after ${options.timeout}ms.`
+          : `Connecting to server, please wait... Cloud backend is waking up.`;
+        throw new ApiError(msg, 504, true);
       }
       const isLocal = BASE_URL.includes('localhost') || BASE_URL.includes('127.0.0.1');
       useBackendStore.getState().setOffline(true, BASE_URL);
@@ -125,20 +174,32 @@ export async function apiCall(endpoint: string, options: ApiCallOptions = {}): P
         console.error(`[API Network Error] Failed to connect to ${fullUrl}:`, err);
       }
 
-      if (isLocal) {
-        throw new Error(
-          `Backend server is not running. Please start the Spring Boot backend on ${BASE_URL} before using the application.`
-        );
-      } else {
-        throw new Error(
-          `Unable to connect to cloud backend (${BASE_URL}). Please check your connection or try again later.`
-        );
-      }
+      const msg = isLocal
+        ? `Backend server is not running. Please start the Spring Boot backend on ${BASE_URL} before using the application.`
+        : `Connecting to cloud backend... The server may be waking up, please wait a moment.`;
+      throw new ApiError(msg, undefined, true);
+    }
+
+    // Handle 502/503/504 (Cloud server waking up)
+    if (response.status === 502 || response.status === 503 || response.status === 504) {
+      useBackendStore.getState().setOffline(true, BASE_URL);
+      const isLocal = BASE_URL.includes('localhost') || BASE_URL.includes('127.0.0.1');
+      const msg = isLocal
+        ? `Backend server is temporarily unavailable (${response.status}).`
+        : `Connecting to server, please wait... Cloud backend is waking up.`;
+      throw new ApiError(msg, response.status, true);
     }
 
     // Handle 401 Unauthorized with automatic Token Refresh
     if (response.status === 401) {
-      if (!cleanEndpoint.includes('/api/auth/') && !options.isRetry) {
+      const isAuthEndpoint =
+        cleanEndpoint === '/api/auth/login' ||
+        cleanEndpoint === '/api/auth/register' ||
+        cleanEndpoint === '/api/auth/refresh' ||
+        cleanEndpoint === '/api/auth/health' ||
+        cleanEndpoint === '/api/auth/ping';
+
+      if (!isAuthEndpoint && !options.isRetry) {
         const newToken = await attemptTokenRefresh();
         if (newToken) {
           // Re-try original request once with fresh token
@@ -147,12 +208,18 @@ export async function apiCall(endpoint: string, options: ApiCallOptions = {}): P
       }
 
       // If refresh failed or already retried, clear session
-      if (!cleanEndpoint.includes('/api/auth/login')) {
+      if (!isAuthEndpoint) {
         useAuthStore.getState().logout();
-        if (typeof window !== 'undefined') {
-          window.location.href = '/login';
+        if (typeof window !== 'undefined' && window.location.pathname !== '/login' && window.location.pathname !== '/') {
+          window.location.replace('/login');
         }
       }
+
+      let errMessage = 'Session invalid or expired';
+      try {
+        errMessage = (await response.text()) || errMessage;
+      } catch (_) {}
+      throw new ApiError(errMessage, 401, false);
     }
 
     // Handle 403 Forbidden
@@ -168,13 +235,13 @@ export async function apiCall(endpoint: string, options: ApiCallOptions = {}): P
 
       if (isAccountSuspendedOrInactive && !cleanEndpoint.includes('/api/auth/login')) {
         useAuthStore.getState().logout();
-        if (typeof window !== 'undefined') {
-          window.location.href = '/login';
+        if (typeof window !== 'undefined' && window.location.pathname !== '/login' && window.location.pathname !== '/') {
+          window.location.replace('/login');
         }
-        throw new Error(errorText || 'Your account is inactive or suspended.');
+        throw new ApiError(errorText || 'Your account is inactive or suspended.', 403, false);
       }
 
-      throw new Error(errorText || 'Permission Denied (403)');
+      throw new ApiError(errorText || 'Permission Denied (403)', 403, false);
     }
 
     // Handle Specific Error Status Codes with Detailed Messages
@@ -187,14 +254,14 @@ export async function apiCall(endpoint: string, options: ApiCallOptions = {}): P
       console.error(`[API Error ${response.status}] ${method} ${fullUrl}:`, errorText || response.statusText);
 
       if (response.status === 404) {
-        throw new Error(errorText || `API endpoint not found (404): ${cleanEndpoint}`);
+        throw new ApiError(errorText || `API endpoint not found (404): ${cleanEndpoint}`, 404, false);
       }
 
       if (response.status === 500) {
-        throw new Error(errorText || `Server returned an unexpected error (500). Please try again later.`);
+        throw new ApiError(errorText || `Server returned an unexpected error (500). Please try again later.`, 500, false);
       }
 
-      throw new Error(errorText || `API Error: ${response.status} ${response.statusText}`);
+      throw new ApiError(errorText || `API Error: ${response.status} ${response.statusText}`, response.status, false);
     }
 
     const contentType = response.headers.get('content-type');

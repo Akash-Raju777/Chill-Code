@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useEffect, useRef } from 'react';
-import { useAuthStore } from '../store/authStore';
+import { useAuthStore, getAuthorizedDashboard } from '../store/authStore';
 import { apiCall } from '../utils/api';
 import { useRouter } from 'next/navigation';
 import { User as UserIcon, Lock, Mail, Phone, Eye, EyeOff, ArrowRight, Shield, Terminal, Sparkles } from 'lucide-react';
@@ -147,15 +147,34 @@ export default function LoginPage() {
   };
 
   useEffect(() => {
-    const timer = setTimeout(() => {
+    // Silently ping backend health to start wake-up on Render if asleep
+    apiCall('/api/auth/health', { timeout: 8000 }).catch(() => {
+      // Ignored - BackendStatusBanner or login retry will handle waking state
+    });
+  }, []);
+
+  const waitForBackendWakeup = async () => {
+    setLoading(true);
+    setLoadingText('Connecting to server, please wait... Cloud backend is waking up.');
+    setError('');
+
+    for (let attempt = 1; attempt <= 7; attempt++) {
       try {
-        router.prefetch('/student/dashboard');
-        router.prefetch('/admin/dashboard');
-        router.prefetch('/super-admin/dashboard');
-      } catch (_) {}
-    }, 250);
-    return () => clearTimeout(timer);
-  }, [router]);
+        await new Promise((r) => setTimeout(r, 4000));
+        const res = await apiCall('/api/auth/health', { timeout: 8000, skipLocalCache: true });
+        if (res && (res.status === 'UP' || res.status === 'OK')) {
+          setLoading(false);
+          setSuccess('Backend server is ready! Please click Login to continue.');
+          return true;
+        }
+      } catch (_) {
+        // Still waking up
+      }
+    }
+    setLoading(false);
+    setError('Backend server is taking longer than usual to wake up. Please wait a moment and try logging in again.');
+    return false;
+  };
 
   useEffect(() => {
     let timer: NodeJS.Timeout;
@@ -185,6 +204,7 @@ export default function LoginPage() {
 
   const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
+    if (loading) return;
     setLoading(true);
     setLoadingText('Processing...');
     setError('');
@@ -206,6 +226,9 @@ export default function LoginPage() {
         activeRole === 'STUDENT' ? 'student_password' : (activeRole === 'SUPER_ADMIN' ? 'super_admin_password' : 'admin_password')
       ) as string) || '';
 
+      const resolvedIdentifier = (formIdentifier || identifier).trim();
+      const resolvedPassword = formPassword || password;
+
       if (isRegister) {
         if (activeRole === 'SUPER_ADMIN') {
           setError('Public registration is not available for Super Admin.');
@@ -213,13 +236,13 @@ export default function LoginPage() {
         }
         // Register flow
         const registerPayload = {
-          name: formName,
-          email: formEmail,
-          phone: formPhone,
-          password: formPassword,
+          name: formName || name,
+          email: formEmail || email,
+          phone: formPhone || phone,
+          password: resolvedPassword,
           role: activeRole,
-          registerNumber: activeRole === 'STUDENT' ? formIdentifier : undefined,
-          username: activeRole === 'ADMIN' ? formIdentifier : undefined,
+          registerNumber: activeRole === 'STUDENT' ? resolvedIdentifier : undefined,
+          username: activeRole === 'ADMIN' ? resolvedIdentifier : undefined,
         };
         await apiCall('/api/auth/register', {
           method: 'POST',
@@ -227,18 +250,18 @@ export default function LoginPage() {
         });
         setSuccess('Registration successful! Please log in.');
         setIsRegister(false);
-        setIdentifier(formIdentifier);
+        setIdentifier(resolvedIdentifier);
         setPassword('');
       } else {
         // Login flow
-        if (!formIdentifier || !formPassword) {
+        if (!resolvedIdentifier || !resolvedPassword) {
           setError('Please enter both your identifier and password.');
           return;
         }
 
         const loginResponse = await apiCall('/api/auth/login', {
           method: 'POST',
-          body: JSON.stringify({ identifier: formIdentifier, password: formPassword }),
+          body: JSON.stringify({ identifier: resolvedIdentifier, password: resolvedPassword }),
         });
         if (loginResponse.role !== activeRole) {
           setError(`Invalid credentials for ${activeRole.toLowerCase().replace('_', ' ')} portal.`);
@@ -246,9 +269,16 @@ export default function LoginPage() {
         }
         login(loginResponse, loginResponse.token);
         isSuccess = true;
+        setPassword('');
+        router.replace(getAuthorizedDashboard(loginResponse.role));
+        return;
       }
     } catch (err: any) {
-      setError(err.message || 'Authentication failed. Please try again.');
+      if (err?.isNetworkError || err?.status === 502 || err?.status === 503 || err?.status === 504) {
+        await waitForBackendWakeup();
+      } else {
+        setError(err.message || 'Authentication failed. Please try again.');
+      }
     } finally {
       if (!isSuccess) {
         setLoading(false);
@@ -257,9 +287,11 @@ export default function LoginPage() {
   };
 
   const handleDemoLogin = async (demoRole: 'STUDENT' | 'ADMIN') => {
+    if (loading) return;
     setLoading(true);
     setLoadingText('Processing...');
     setError('');
+    setSuccess('');
     let isSuccess = false;
     try {
       const demoId = demoRole === 'ADMIN' ? 'admin_demo' : 'student_demo';
@@ -269,8 +301,14 @@ export default function LoginPage() {
       });
       login(loginResponse, loginResponse.token);
       isSuccess = true;
+      router.replace(getAuthorizedDashboard(loginResponse.role));
+      return;
     } catch (err: any) {
-      setError(err.message || 'Demo login failed');
+      if (err?.isNetworkError || err?.status === 502 || err?.status === 503 || err?.status === 504) {
+        await waitForBackendWakeup();
+      } else {
+        setError(err.message || 'Demo login failed');
+      }
     } finally {
       if (!isSuccess) {
         setLoading(false);
@@ -406,7 +444,7 @@ export default function LoginPage() {
           )}
 
           {/* Form */}
-          <form onSubmit={handleSubmit} autoComplete="off" className="space-y-4">
+          <form onSubmit={handleSubmit} action="#" method="POST" autoComplete="off" className="space-y-4">
 
             {isRegister && (
               <>

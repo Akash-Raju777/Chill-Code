@@ -157,8 +157,8 @@ public class DataSourceConfig {
         config.setMaximumPoolSize(5);
         config.setMinimumIdle(1);
         config.setIdleTimeout(30000);
-        config.setMaxLifetime(60000);
-        config.setKeepaliveTime(30000);
+        config.setMaxLifetime(45000);
+        config.setKeepaliveTime(15000);
         config.setValidationTimeout(5000);
         config.setConnectionTestQuery("SELECT 1");
         config.setTransactionIsolation("TRANSACTION_READ_COMMITTED");

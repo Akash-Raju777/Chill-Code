@@ -195,6 +195,12 @@ public class AuthController {
         return ResponseEntity.ok(java.util.Map.of("status", "UP", "timestamp", System.currentTimeMillis()));
     }
 
+    @PostMapping("/logout")
+    public ResponseEntity<?> logout() {
+        org.springframework.security.core.context.SecurityContextHolder.clearContext();
+        return ResponseEntity.ok(java.util.Map.of("message", "Logged out successfully"));
+    }
+
     @GetMapping("/ping")
     public ResponseEntity<?> ping() {
         return ResponseEntity.ok("PONG");

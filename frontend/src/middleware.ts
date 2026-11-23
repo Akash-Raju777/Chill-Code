@@ -16,10 +16,7 @@ export function middleware(request: NextRequest) {
   // 1. If unauthenticated user tries to access any protected route, redirect to /login immediately
   if (isProtected && (!token || !role)) {
     const loginUrl = new URL('/login', request.url);
-    const response = NextResponse.redirect(loginUrl);
-    response.cookies.delete('chill_token');
-    response.cookies.delete('chill_role');
-    return response;
+    return NextResponse.redirect(loginUrl);
   }
 
   // 2. If authenticated user attempts cross-role access, redirect to their authorized portal
