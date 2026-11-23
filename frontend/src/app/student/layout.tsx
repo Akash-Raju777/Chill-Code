@@ -34,7 +34,10 @@ export default function StudentLayout({ children }: { children: React.ReactNode 
   const pathname = usePathname();
   const { user, logout, isAuthenticated } = useAuthStore();
   const [mounted, setMounted] = useState(false);
-  const [authorized, setAuthorized] = useState(false);
+  const [authorized, setAuthorized] = useState(() => {
+    const s = useAuthStore.getState();
+    return !!(s.isAuthenticated && s.token && s.user?.role === 'STUDENT');
+  });
   const [sidebarOpen, setSidebarOpen] = useState(false);
 
   const isSessionActive = useTestStore((s) => s.isSessionActive);
@@ -47,7 +50,12 @@ export default function StudentLayout({ children }: { children: React.ReactNode 
     setMounted(true);
 
     const verifyStudent = async () => {
-      const state = useAuthStore.getState();
+      let state = useAuthStore.getState();
+      if (!state.isInitialized) {
+        await state.initializeAuth();
+        state = useAuthStore.getState();
+      }
+
       if (!state.isAuthenticated || !state.token || !state.user) {
         router.replace('/login');
         return;

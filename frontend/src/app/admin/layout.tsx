@@ -33,14 +33,22 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
   const pathname = usePathname();
   const { user, logout, isAuthenticated } = useAuthStore();
   const [mounted, setMounted] = useState(false);
-  const [authorized, setAuthorized] = useState(false);
+  const [authorized, setAuthorized] = useState(() => {
+    const s = useAuthStore.getState();
+    return !!(s.isAuthenticated && s.token && s.user?.role === 'ADMIN');
+  });
   const [sidebarOpen, setSidebarOpen] = useState(false);
 
   useEffect(() => {
     setMounted(true);
 
     const verifyAdmin = async () => {
-      const state = useAuthStore.getState();
+      let state = useAuthStore.getState();
+      if (!state.isInitialized) {
+        await state.initializeAuth();
+        state = useAuthStore.getState();
+      }
+
       if (!state.isAuthenticated || !state.token || !state.user) {
         router.replace('/login');
         return;

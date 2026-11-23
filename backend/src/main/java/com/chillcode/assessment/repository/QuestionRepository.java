@@ -16,4 +16,7 @@ public interface QuestionRepository extends JpaRepository<Question, Long> {
     java.util.Optional<Question> findByIdAndAdminId(Long id, Long adminId);
     long countByAdminId(Long adminId);
     java.util.Optional<Question> findByQuestionCodeAndAdminId(String questionCode, Long adminId);
+
+    @org.springframework.data.jpa.repository.Query("SELECT q.subject.id, COUNT(q) FROM Question q WHERE q.subject IS NOT NULL GROUP BY q.subject.id")
+    java.util.List<Object[]> countQuestionsGroupedBySubject();
 }

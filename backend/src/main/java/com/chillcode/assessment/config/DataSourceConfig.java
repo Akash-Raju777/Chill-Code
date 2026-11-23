@@ -153,14 +153,14 @@ public class DataSourceConfig {
         config.setPassword(password);
         config.setDriverClassName(driverClassName);
 
+        // High-performance settings tuned for Supabase PgBouncer (Transaction Pooler port 6543)
         config.setConnectionTimeout(30000);
-        config.setMaximumPoolSize(5);
-        config.setMinimumIdle(1);
-        config.setIdleTimeout(30000);
-        config.setMaxLifetime(45000);
-        config.setKeepaliveTime(15000);
+        config.setMaximumPoolSize(10);
+        config.setMinimumIdle(2);
+        config.setIdleTimeout(180000);
+        config.setMaxLifetime(300000);
+        config.setKeepaliveTime(60000);
         config.setValidationTimeout(5000);
-        config.setConnectionTestQuery("SELECT 1");
         config.setTransactionIsolation("TRANSACTION_READ_COMMITTED");
 
         return new HikariDataSource(config);

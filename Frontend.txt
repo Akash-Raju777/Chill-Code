@@ -1,0 +1,8 @@
+Frontend
+frontend cross check but 80% optimized
+frontend runs successfully
+
+Backend
+had little problems in Environment
+To add Environment dependency
+Ide api call crosscheck if it heavy to change ide (judge0)

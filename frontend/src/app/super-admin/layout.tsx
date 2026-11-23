@@ -35,14 +35,22 @@ export default function SuperAdminLayout({ children }: { children: React.ReactNo
   const pathname = usePathname();
   const { user, logout, isAuthenticated } = useAuthStore();
   const [mounted, setMounted] = useState(false);
-  const [authorized, setAuthorized] = useState(false);
+  const [authorized, setAuthorized] = useState(() => {
+    const s = useAuthStore.getState();
+    return !!(s.isAuthenticated && s.token && s.user?.role === 'SUPER_ADMIN');
+  });
   const [sidebarOpen, setSidebarOpen] = useState(false);
 
   useEffect(() => {
     setMounted(true);
 
     const verifySuperAdmin = async () => {
-      const state = useAuthStore.getState();
+      let state = useAuthStore.getState();
+      if (!state.isInitialized) {
+        await state.initializeAuth();
+        state = useAuthStore.getState();
+      }
+
       if (!state.isAuthenticated || !state.token || !state.user) {
         router.replace('/login');
         return;

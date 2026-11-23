@@ -8,4 +8,7 @@ import java.util.List;
 @Repository
 public interface ActivityLogRepository extends JpaRepository<ActivityLog, Long> {
     List<ActivityLog> findByUserIdOrderByTimestampDesc(Long userId);
+
+    @org.springframework.data.jpa.repository.Query("SELECT DISTINCT al.details FROM ActivityLog al WHERE UPPER(al.action) LIKE '%DELETE_TEST%' AND al.details IS NOT NULL")
+    java.util.Set<String> findDeletedTestNames();
 }

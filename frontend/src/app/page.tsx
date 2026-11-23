@@ -106,7 +106,7 @@ function FloatingChip({ children, className = '', delay = '0s' }: { children: Re
 /* ───────────────────────── Main Login Page ───────────────────────── */
 export default function LoginPage() {
   const router = useRouter();
-  const { login, logout, isAuthenticated, user } = useAuthStore();
+  const { login, logout, isAuthenticated, isInitialized, authStatus, initializeAuth, user } = useAuthStore();
 
   const [role, setRole] = useState<'STUDENT' | 'ADMIN' | 'SUPER_ADMIN'>('STUDENT');
   const [isRegister, setIsRegister] = useState(false);
@@ -189,7 +189,15 @@ export default function LoginPage() {
   }, [loading]);
 
   useEffect(() => {
-    if (isAuthenticated && user) {
+    initializeAuth();
+  }, [initializeAuth]);
+
+  useEffect(() => {
+    // 1. Never redirect before authentication initialization is completed
+    if (!isInitialized) return;
+
+    // 2. Only redirect away from login page if the session has been correctly verified
+    if (authStatus === 'AUTHENTICATED' && isAuthenticated && user) {
       if (user.role === 'SUPER_ADMIN') {
         router.replace('/super-admin/dashboard');
       } else if (user.role === 'ADMIN') {
@@ -200,7 +208,7 @@ export default function LoginPage() {
         logout();
       }
     }
-  }, [isAuthenticated, user, router, logout]);
+  }, [isInitialized, authStatus, isAuthenticated, user, router, logout]);
 
   const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
@@ -269,7 +277,6 @@ export default function LoginPage() {
         }
         login(loginResponse, loginResponse.token);
         isSuccess = true;
-        setPassword('');
         router.replace(getAuthorizedDashboard(loginResponse.role));
         return;
       }
@@ -444,7 +451,7 @@ export default function LoginPage() {
           )}
 
           {/* Form */}
-          <form onSubmit={handleSubmit} action="#" method="POST" autoComplete="off" className="space-y-4">
+          <form onSubmit={(e) => { e.preventDefault(); handleSubmit(e); }} autoComplete="off" className="space-y-4">
 
             {isRegister && (
               <>

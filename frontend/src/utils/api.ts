@@ -1,5 +1,6 @@
 import { useAuthStore } from '../store/authStore';
 import { useBackendStore } from '../store/backendStore';
+import { smartCache } from './cacheManager';
 
 export class ApiError extends Error {
   status?: number;
@@ -46,10 +47,10 @@ const BASE_URL = resolveBaseUrl();
 /** Exported so edge-case callers (keepalive beacon, blob downloads) can build full URLs. */
 export { BASE_URL as API_BASE_URL };
 
-const apiCache = new Map<string, { data: any; expiry: number }>();
 const inFlightRequests = new Map<string, Promise<any>>();
 let isRefreshing = false;
 let refreshPromise: Promise<string | null> | null = null;
+let lastRefreshFailedWithAuth = false;
 
 export interface ApiCallOptions extends RequestInit {
   skipLocalCache?: boolean;
@@ -66,6 +67,7 @@ async function attemptTokenRefresh(): Promise<string | null> {
   }
 
   isRefreshing = true;
+  lastRefreshFailedWithAuth = false;
   refreshPromise = (async () => {
     try {
       const currentToken = useAuthStore.getState().token;
@@ -80,6 +82,9 @@ async function attemptTokenRefresh(): Promise<string | null> {
       });
 
       if (!res.ok) {
+        if (res.status === 401 || res.status === 403) {
+          lastRefreshFailedWithAuth = true;
+        }
         return null;
       }
 
@@ -90,7 +95,7 @@ async function attemptTokenRefresh(): Promise<string | null> {
       }
       return null;
     } catch (e) {
-      console.warn('[API Auth] Token refresh failed:', e);
+      console.warn('[API Auth] Token refresh network issue:', e);
       return null;
     } finally {
       isRefreshing = false;
@@ -106,25 +111,13 @@ export async function apiCall(endpoint: string, options: ApiCallOptions = {}): P
   const cleanEndpoint = endpoint.startsWith('/') ? endpoint : `/${endpoint}`;
   const fullUrl = `${BASE_URL}${cleanEndpoint}`;
 
-  // Flush cache on mutations
+  // Flush and invalidate cache on mutations
   if (method !== 'GET') {
-    apiCache.clear();
+    smartCache.invalidateOnMutation(cleanEndpoint, method);
   }
 
-  const cacheKey = `${method}:${cleanEndpoint}`;
-
-  // Check Local Cache
-  if (method === 'GET' && !options.skipLocalCache) {
-    const cached = apiCache.get(cacheKey);
-    if (cached && Date.now() < cached.expiry) {
-      return cached.data;
-    }
-  }
-
-  // Deduplicate in-flight GET requests
-  if (method === 'GET' && inFlightRequests.has(cacheKey)) {
-    return inFlightRequests.get(cacheKey)!;
-  }
+  const normalizedEndpoint = smartCache.normalizeEndpoint(cleanEndpoint);
+  const inFlightKey = `${smartCache.getUserScope()}:${method}:${normalizedEndpoint}`;
 
   const executeRequest = async (): Promise<any> => {
     const token = useAuthStore.getState().token;
@@ -197,6 +190,7 @@ export async function apiCall(endpoint: string, options: ApiCallOptions = {}): P
         cleanEndpoint === '/api/auth/register' ||
         cleanEndpoint === '/api/auth/refresh' ||
         cleanEndpoint === '/api/auth/health' ||
+        cleanEndpoint === '/api/health' ||
         cleanEndpoint === '/api/auth/ping';
 
       if (!isAuthEndpoint && !options.isRetry) {
@@ -207,8 +201,9 @@ export async function apiCall(endpoint: string, options: ApiCallOptions = {}): P
         }
       }
 
-      // If refresh failed or already retried, clear session
-      if (!isAuthEndpoint) {
+      // ONLY clear session if refresh was explicitly rejected by backend (401/403) or token is absent
+      // NEVER clear session due to temporary network error or cloud backend cold-start delay
+      if (!isAuthEndpoint && (lastRefreshFailedWithAuth || !useAuthStore.getState().token)) {
         useAuthStore.getState().logout();
         if (typeof window !== 'undefined' && window.location.pathname !== '/login' && window.location.pathname !== '/') {
           window.location.replace('/login');
@@ -273,23 +268,55 @@ export async function apiCall(endpoint: string, options: ApiCallOptions = {}): P
     }
 
     if (method === 'GET' && !options.skipLocalCache) {
-      // 10s safe cache TTL for GET requests
-      apiCache.set(cacheKey, { data, expiry: Date.now() + 10000 });
+      smartCache.set(cleanEndpoint, data);
     }
 
     return data;
   };
 
+  // Check Smart Cache for GET requests
+  if (method === 'GET' && !options.skipLocalCache) {
+    const cached = smartCache.get(cleanEndpoint);
+    if (cached.status === 'FRESH') {
+      return cached.data;
+    }
+    if (cached.status === 'STALE') {
+      // Stale-While-Revalidate: Return cached data immediately, revalidate silently in background
+      if (!inFlightRequests.has(inFlightKey)) {
+        const bgPromise = executeRequest()
+          .then((fresh) => {
+            smartCache.set(cleanEndpoint, fresh);
+            return fresh;
+          })
+          .catch(() => {})
+          .finally(() => {
+            inFlightRequests.delete(inFlightKey);
+          });
+        inFlightRequests.set(inFlightKey, bgPromise);
+      }
+      return cached.data;
+    }
+  }
+
+  // Deduplicate in-flight GET requests
+  if (method === 'GET' && inFlightRequests.has(inFlightKey)) {
+    return inFlightRequests.get(inFlightKey)!;
+  }
+
   if (method === 'GET') {
     const promise = executeRequest().finally(() => {
-      inFlightRequests.delete(cacheKey);
+      inFlightRequests.delete(inFlightKey);
     });
-    inFlightRequests.set(cacheKey, promise);
+    inFlightRequests.set(inFlightKey, promise);
     return promise;
   }
 
   return executeRequest();
 }
+
+export { smartCache } from './cacheManager';
+export const invalidateCache = (tag: string) => smartCache.invalidateTag(tag);
+export const clearAllUserCaches = () => smartCache.clearAll();
 
 // Badge & Achievements APIs
 export const fetchMyAchievements = () => apiCall('/api/student/achievements');

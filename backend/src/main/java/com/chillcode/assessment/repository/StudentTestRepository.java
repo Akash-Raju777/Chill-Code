@@ -32,8 +32,24 @@ public interface StudentTestRepository extends JpaRepository<StudentTest, Long> 
     @Query("SELECT st FROM StudentTest st JOIN FETCH st.student JOIN FETCH st.test WHERE st.test.admin.id = :adminId")
     List<StudentTest> findAllWithStudentsByAdminId(@org.springframework.data.repository.query.Param("adminId") Long adminId);
 
+    // Optimized Single-Pass Analytics Aggregate Query (avoids streaming thousands of entities over network)
+    @Query(value = "SELECT " +
+            "COUNT(*), " +
+            "COUNT(CASE WHEN st.started_at IS NOT NULL OR UPPER(st.status) != 'ASSIGNED' THEN 1 END), " +
+            "COUNT(CASE WHEN UPPER(st.pass_fail_status) = 'PASS' OR UPPER(st.status) = 'COMPLETED' THEN 1 END), " +
+            "COUNT(DISTINCT CASE WHEN st.submitted_at >= :todayStart THEN st.student_id END) " +
+            "FROM student_tests st " +
+            "JOIN tests t ON st.test_id = t.id " +
+            "WHERE t.admin_id = :adminId", nativeQuery = true)
+    List<Object[]> getAdminAnalyticsSummary(
+            @org.springframework.data.repository.query.Param("adminId") Long adminId,
+            @org.springframework.data.repository.query.Param("todayStart") java.time.LocalDateTime todayStart);
+
     @Query("SELECT COUNT(st) FROM StudentTest st WHERE st.status = :status AND st.test.admin.id = :adminId")
     long countByStatusAndAdminId(@org.springframework.data.repository.query.Param("status") String status, @org.springframework.data.repository.query.Param("adminId") Long adminId);
+
+    @Query("SELECT st.test.subject.id, COUNT(DISTINCT st.student.id) FROM StudentTest st WHERE st.status IN ('SUBMITTED', 'EVALUATED', 'COMPLETED') AND st.test.subject IS NOT NULL GROUP BY st.test.subject.id")
+    List<Object[]> countAttendedStudentsGroupedBySubject();
 
     @org.springframework.transaction.annotation.Transactional(propagation = org.springframework.transaction.annotation.Propagation.REQUIRES_NEW)
     @org.springframework.data.jpa.repository.Modifying

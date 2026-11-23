@@ -39,32 +39,30 @@ public class AdminAnalyticsService {
 
         long totalStudents = userRepository.countByRoleAndAdminId(Role.STUDENT, adminId);
         long totalTests = testRepository.countByAdminId(adminId);
+        long totalBadges = studentAchievementRepository.countByAdminId(adminId);
 
-        List<StudentTest> allAssignments = studentTestRepository.findAllWithStudentsByAdminId(adminId);
-        
-        long totalAttempts = allAssignments.stream()
-                .filter(st -> st.getStartedAt() != null || !"ASSIGNED".equalsIgnoreCase(st.getStatus()))
-                .count();
+        // High-Performance: single-pass native aggregation instead of fetching 1400+ entity graphs over WAN
+        java.time.LocalDateTime todayStart = LocalDate.now().atStartOfDay();
+        List<Object[]> summaryList = studentTestRepository.getAdminAnalyticsSummary(adminId, todayStart);
 
-        long totalPassed = allAssignments.stream()
-                .filter(st -> "PASS".equalsIgnoreCase(st.getPassFailStatus()) || "COMPLETED".equalsIgnoreCase(st.getStatus()))
-                .count();
+        long totalAssignments = 0;
+        long totalAttempts = 0;
+        long totalPassed = 0;
+        long activeStudentsToday = 0;
+
+        if (summaryList != null && !summaryList.isEmpty() && summaryList.get(0) != null) {
+            Object[] row = summaryList.get(0);
+            totalAssignments = row[0] != null ? ((Number) row[0]).longValue() : 0;
+            totalAttempts = row[1] != null ? ((Number) row[1]).longValue() : 0;
+            totalPassed = row[2] != null ? ((Number) row[2]).longValue() : 0;
+            activeStudentsToday = row[3] != null ? ((Number) row[3]).longValue() : 0;
+        }
 
         long totalFailed = Math.max(0, totalAttempts - totalPassed);
-        long totalNotAttended = Math.max(0, allAssignments.size() - totalAttempts);
+        long totalNotAttended = Math.max(0, totalAssignments - totalAttempts);
 
         double passRate = totalAttempts > 0 ? ((double) totalPassed / totalAttempts) * 100 : 0.0;
         double failRate = totalAttempts > 0 ? 100.0 - passRate : 0.0;
-
-        long totalBadges = studentAchievementRepository.countByAdminId(adminId);
-
-        // Active Students Today (Students who have a submission today)
-        LocalDate today = LocalDate.now();
-        long activeStudentsToday = allAssignments.stream()
-                .filter(st -> st.getSubmittedAt() != null && st.getSubmittedAt().toLocalDate().equals(today))
-                .map(st -> st.getStudent().getId())
-                .distinct()
-                .count();
 
         stats.put("totalStudents", totalStudents);
         stats.put("totalTests", totalTests);

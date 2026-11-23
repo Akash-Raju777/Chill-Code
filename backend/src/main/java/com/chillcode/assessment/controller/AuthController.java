@@ -76,18 +76,20 @@ public class AuthController {
 
     @PostMapping("/login")
     public ResponseEntity<?> loginUser(@Valid @RequestBody LoginRequest loginRequest) {
+        org.springframework.security.core.Authentication authentication;
         try {
-            authenticationManager.authenticate(
+            authentication = authenticationManager.authenticate(
                     new UsernamePasswordAuthenticationToken(loginRequest.getIdentifier(), loginRequest.getPassword())
             );
         } catch (Exception e) {
             return ResponseEntity.status(401).body("Invalid credentials");
         }
 
-        UserDetails userDetails = userDetailsService.loadUserByUsername(loginRequest.getIdentifier());
-        
-        // Load User from DB to send details
-        User user = userRepository.findByIdentifier(userDetails.getUsername()).orElse(null);
+        // High-Performance: extract User directly from authenticated CustomUserDetails principal
+        // Eliminates 2 redundant remote DB queries to Supabase on every login!
+        com.chillcode.assessment.security.CustomUserDetails userDetails = 
+                (com.chillcode.assessment.security.CustomUserDetails) authentication.getPrincipal();
+        User user = userDetails.getUser();
 
         if (user == null) {
             return ResponseEntity.status(404).body("User record not found");
@@ -149,7 +151,7 @@ public class AuthController {
             return ResponseEntity.status(403).body("Your account is inactive.");
         }
 
-        UserDetails userDetails = userDetailsService.loadUserByUsername(username);
+        UserDetails userDetails = new com.chillcode.assessment.security.CustomUserDetails(user, username);
         String newToken = jwtUtils.generateToken(userDetails, user.getRole().name());
 
         AuthResponse authResponse = AuthResponse.builder()

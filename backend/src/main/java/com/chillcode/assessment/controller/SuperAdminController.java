@@ -307,32 +307,31 @@ public class SuperAdminController {
         List<Map<String, Object>> result = new ArrayList<>();
         List<Subject> subjects = subjectRepository.findAll();
         List<Test> allTests = testRepository.findAll();
-        List<Question> allQuestions = questionRepository.findAll();
-        List<StudentTest> allStudentTests = studentTestRepository.findAllWithStudents();
-        List<User> allStudents = userRepository.findByRole(Role.STUDENT);
+        long totalStudentsCount = userRepository.countByRole(Role.STUDENT);
+
+        // High-Performance: single-pass aggregate counts to avoid pulling thousands of questions and test results over WAN
+        Map<Long, Long> questionCounts = new HashMap<>();
+        for (Object[] row : questionRepository.countQuestionsGroupedBySubject()) {
+            if (row != null && row[0] != null && row[1] != null) {
+                questionCounts.put(((Number) row[0]).longValue(), ((Number) row[1]).longValue());
+            }
+        }
+
+        Map<Long, Long> attendedCounts = new HashMap<>();
+        for (Object[] row : studentTestRepository.countAttendedStudentsGroupedBySubject()) {
+            if (row != null && row[0] != null && row[1] != null) {
+                attendedCounts.put(((Number) row[0]).longValue(), ((Number) row[1]).longValue());
+            }
+        }
 
         Map<Long, List<Test>> testsBySubject = allTests.stream()
                 .filter(t -> t.getSubject() != null && t.getSubject().getId() != null)
                 .collect(Collectors.groupingBy(t -> t.getSubject().getId()));
 
-        Map<Long, List<Question>> questionsBySubject = allQuestions.stream()
-                .filter(q -> q.getSubject() != null && q.getSubject().getId() != null)
-                .collect(Collectors.groupingBy(q -> q.getSubject().getId()));
-
         for (Subject sub : subjects) {
             List<Test> subTests = testsBySubject.getOrDefault(sub.getId(), Collections.emptyList());
-            List<Question> subQuestions = questionsBySubject.getOrDefault(sub.getId(), Collections.emptyList());
-            Set<Long> subTestIds = subTests.stream().map(Test::getId).collect(Collectors.toSet());
-
-            Set<Long> attendedStudentIds = allStudentTests.stream()
-                    .filter(st -> st.getTest() != null && subTestIds.contains(st.getTest().getId()))
-                    .filter(st -> "SUBMITTED".equals(st.getStatus()) || "EVALUATED".equals(st.getStatus()) || "COMPLETED".equals(st.getStatus()))
-                    .filter(st -> st.getStudent() != null)
-                    .map(st -> st.getStudent().getId())
-                    .collect(Collectors.toSet());
-
-            long totalStudentsCount = allStudents.size();
-            long attendedCount = attendedStudentIds.size();
+            long totalQuestions = questionCounts.getOrDefault(sub.getId(), 0L);
+            long attendedCount = attendedCounts.getOrDefault(sub.getId(), 0L);
             long notAttendedCount = Math.max(0, totalStudentsCount - attendedCount);
 
             Map<String, Object> item = new HashMap<>();
@@ -342,7 +341,7 @@ public class SuperAdminController {
             item.put("color", sub.getColor() != null ? sub.getColor() : "#3B82F6");
             item.put("icon", sub.getIcon() != null ? sub.getIcon() : "BookOpen");
             item.put("status", sub.getStatus() != null ? sub.getStatus() : "ACTIVE");
-            item.put("totalQuestions", subQuestions.size());
+            item.put("totalQuestions", totalQuestions);
             item.put("totalTests", subTests.size());
             item.put("totalStudents", totalStudentsCount);
             item.put("studentsAttended", attendedCount);
@@ -359,12 +358,9 @@ public class SuperAdminController {
         List<Test> allTests = testRepository.findAll();
         List<StudentTest> studentTests = studentTestRepository.findAll();
 
-        // Get list of deleted test names from activity logs to exclude them completely
-        Set<String> deletedTestNames = activityLogRepository.findAll().stream()
-                .filter(log -> log.getAction() != null && log.getAction().toUpperCase().contains("DELETE_TEST"))
-                .map(ActivityLog::getDetails)
-                .filter(Objects::nonNull)
-                .collect(Collectors.toSet());
+        // High-Performance: retrieve only distinct deleted test names via indexed query
+        Set<String> rawDeleted = activityLogRepository.findDeletedTestNames();
+        final Set<String> deletedTestNames = rawDeleted != null ? rawDeleted : Collections.emptySet();
 
         // Group tests by unique test identity (normalized name + subject name) so duplicate DB rows from repeated seeds don't flood the overview
         Map<String, List<Test>> testsByGroup = allTests.stream()
