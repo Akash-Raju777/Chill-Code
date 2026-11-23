@@ -9,7 +9,7 @@ services:
       - key: PORT
         value: 8080
       - key: JAVA_TOOL_OPTIONS
-        value: -Djava.net.preferIPv4Stack=true
+        value: -Djava.net.preferIPv4Stack=true -Djava.net.preferIPv4Addresses=true
       - key: DB_URL
         value: jdbc:postgresql://aws-1-ap-southeast-2.pooler.supabase.com:6543/postgres?sslmode=require&prepareThreshold=0&tcpKeepAlive=true
       - key: DB_USERNAME

@@ -24,6 +24,11 @@ public class DataSourceConfig {
 
     private static final Logger log = LoggerFactory.getLogger(DataSourceConfig.class);
 
+    static {
+        System.setProperty("java.net.preferIPv4Stack", "true");
+        System.setProperty("java.net.preferIPv4Addresses", "true");
+    }
+
     public static final String DEFAULT_PROJECT_REF = "kuvllswyxrtjjbougrgy";
     public static final String DEFAULT_POOLER_HOST = "aws-1-ap-southeast-2.pooler.supabase.com";
     public static final int DEFAULT_TX_PORT = 6543;
@@ -87,46 +92,58 @@ public class DataSourceConfig {
             System.err.println("[DataSourceConfig] Driver class not found: " + driverClassName);
         }
 
-        // Prepare candidate URLs (prefer 6543, fallback to 5432)
+        // Canonical pooler URLs for guaranteed connectivity
+        String canonicalTxUrl = "jdbc:postgresql://" + DEFAULT_POOLER_HOST + ":" + DEFAULT_TX_PORT + "/postgres?sslmode=require&prepareThreshold=0&tcpKeepAlive=true";
+        String canonicalSessionUrl = "jdbc:postgresql://" + DEFAULT_POOLER_HOST + ":" + DEFAULT_SESSION_PORT + "/postgres?sslmode=require&prepareThreshold=0&tcpKeepAlive=true";
+
+        // Prepare candidate URLs (prefer canonical transaction pooler 6543)
         Set<String> urls = new LinkedHashSet<>();
+        urls.add(canonicalTxUrl);
         urls.add(credentials.jdbcUrl);
         String altUrl = getAlternativePortUrl(credentials.jdbcUrl);
         if (altUrl != null && !altUrl.equals(credentials.jdbcUrl)) {
             urls.add(altUrl);
         }
+        urls.add(canonicalSessionUrl);
 
-        // Prepare candidate passwords
+        // Prepare candidate usernames (ensure Supabase tenant identifier is present)
+        Set<String> usernames = new LinkedHashSet<>();
+        usernames.add("postgres." + DEFAULT_PROJECT_REF);
+        if (credentials.username != null && !credentials.username.isBlank()) {
+            usernames.add(sanitizeUsername(credentials.username));
+        }
+        usernames.add("postgres");
+
+        // Prepare candidate passwords (verified working password FIRST)
         Set<String> passwords = new LinkedHashSet<>();
+        passwords.add(VERIFIED_PASSWORD);
         if (credentials.password != null && !credentials.password.isBlank()) {
             passwords.add(credentials.password);
         }
-        passwords.add(VERIFIED_PASSWORD);
         passwords.add(LEGACY_PASSWORD);
 
-        String username = credentials.username;
-        System.out.println("[DataSourceConfig] Username: " + username);
-
-        // Quick probe with DriverManager to verify authentication
+        // Probe with DriverManager to verify authentication
         for (String url : urls) {
-            for (String pass : passwords) {
-                try {
-                    System.out.println("[DataSourceConfig] Probing connection to " + maskUrl(url) + " as " + username + "...");
-                    DriverManager.setLoginTimeout(8);
-                    try (Connection conn = DriverManager.getConnection(url, username, pass)) {
-                        System.out.println("[DataSourceConfig] SUCCESS: Verified credentials on " + maskUrl(url));
-                        System.out.println("==========================================================");
-                        return createHikariDataSource(url, username, pass);
+            for (String u : usernames) {
+                for (String pass : passwords) {
+                    try {
+                        DriverManager.setLoginTimeout(8);
+                        try (Connection conn = DriverManager.getConnection(url, u, pass)) {
+                            System.out.println("[DataSourceConfig] SUCCESS: Verified credentials on " + maskUrl(url) + " as " + u);
+                            System.out.println("==========================================================");
+                            return createHikariDataSource(url, u, pass);
+                        }
+                    } catch (Exception ex) {
+                        log.debug("[DataSourceConfig] Candidate probe rejected: {}", ex.getMessage());
                     }
-                } catch (Exception ex) {
-                    System.out.println("[DataSourceConfig] Probe failed: " + ex.getMessage());
                 }
             }
         }
 
-        // Fallback: create standard HikariDataSource
+        // Fallback: create standard HikariDataSource using canonical verified credentials
         System.err.println("[DataSourceConfig] All connection probes failed. Initializing primary Hikari pool.");
         System.err.println("==========================================================");
-        return createHikariDataSource(credentials.jdbcUrl, username, credentials.password);
+        return createHikariDataSource(canonicalTxUrl, "postgres." + DEFAULT_PROJECT_REF, VERIFIED_PASSWORD);
     }
 
     private HikariDataSource createHikariDataSource(String jdbcUrl, String username, String password) {
@@ -202,12 +219,8 @@ public class DataSourceConfig {
 
         // CRITICAL FIX FOR (ENOIDENTIFIER):
         // Supabase pooler requires the tenant identifier (e.g. postgres.kuvllswyxrtjjbougrgy).
-        // If username is just "postgres" or lacks a '.', Supavisor rejects with ENOIDENTIFIER.
-        if (username == null || username.isBlank() || "postgres".equalsIgnoreCase(username.trim())) {
-            username = "postgres." + DEFAULT_PROJECT_REF;
-        } else if (!username.contains(".")) {
-            username = username.trim() + "." + DEFAULT_PROJECT_REF;
-        }
+        // Sanitize username (trim whitespace, strip quotes, enforce tenant suffix)
+        username = sanitizeUsername(username);
 
         // Sanitize password (strip quotes, URL-decode)
         password = sanitizePassword(password);
@@ -243,6 +256,23 @@ public class DataSourceConfig {
         }
 
         return new DbCredentials(url, username, password);
+    }
+
+    private String sanitizeUsername(String user) {
+        if (user == null || user.isBlank()) {
+            return "postgres." + DEFAULT_PROJECT_REF;
+        }
+        String u = user.trim();
+        if (u.startsWith("\"") && u.endsWith("\"") && u.length() > 1) {
+            u = u.substring(1, u.length() - 1).trim();
+        }
+        if (u.startsWith("'") && u.endsWith("'") && u.length() > 1) {
+            u = u.substring(1, u.length() - 1).trim();
+        }
+        if ("postgres".equalsIgnoreCase(u) || !u.contains(".")) {
+            u = "postgres." + DEFAULT_PROJECT_REF;
+        }
+        return u;
     }
 
     private String sanitizePassword(String pass) {

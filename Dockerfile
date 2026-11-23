@@ -22,5 +22,5 @@ RUN apt-get update && \
 
 COPY --from=build /app/backend/target/assessment-0.0.1-SNAPSHOT.jar app.jar
 EXPOSE 8080
-ENV JAVA_TOOL_OPTIONS="-Djava.net.preferIPv4Stack=true"
-ENTRYPOINT ["java", "-Djava.net.preferIPv4Stack=true", "-jar", "app.jar"]
+ENV JAVA_TOOL_OPTIONS="-Djava.net.preferIPv4Stack=true -Djava.net.preferIPv4Addresses=true"
+ENTRYPOINT ["java", "-Djava.net.preferIPv4Stack=true", "-Djava.net.preferIPv4Addresses=true", "-jar", "app.jar"]
