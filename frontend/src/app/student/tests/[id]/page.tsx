@@ -6,7 +6,7 @@ import { useTestStore } from '../../../../store/testStore';
 import { useAuthStore } from '../../../../store/authStore';
 import { useSecurityStore } from '../../../../store/securityStore';
 import { useExamSecurity } from '../../../../hooks/useExamSecurity';
-import { apiCall } from '../../../../utils/api';
+import { apiCall, API_BASE_URL } from '../../../../utils/api';
 import { toast } from '../../../../store/toastStore';
 import dynamic from 'next/dynamic';
 
@@ -453,7 +453,7 @@ function CodingWorkspaceInner() {
       if (state.isSessionActive && !state.isViewMode && !isTestSuspended && !submittingExam) {
         const token = typeof window !== 'undefined' ? sessionStorage.getItem('chill_token') || localStorage.getItem('token') : null;
         if (token && currentQuestion) {
-          fetch(`/api/student/tests/${testId}/exit?questionId=${currentQuestion.id}`, {
+          fetch(`${API_BASE_URL}/api/student/tests/${testId}/exit?questionId=${currentQuestion.id}`, {
             method: 'POST',
             headers: { 'Authorization': `Bearer ${token}` },
             keepalive: true
@@ -640,7 +640,7 @@ function CodingWorkspaceInner() {
           const token = sessionStorage.getItem('chill_token') || localStorage.getItem('token');
           if (token) {
             const timeTaken = Math.max(1, useTestStore.getState().totalSeconds - useTestStore.getState().timeLeftSeconds);
-            await fetch(`http://localhost:8080/api/student/tests/${testId}/exit?questionId=${currentQuestion?.id || ''}&timeTakenSeconds=${timeTaken}`, {
+            await fetch(`${API_BASE_URL}/api/student/tests/${testId}/exit?questionId=${currentQuestion?.id || ''}&timeTakenSeconds=${timeTaken}`, {
               method: 'POST',
               headers: { 'Authorization': `Bearer ${token}` }
             });

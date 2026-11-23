@@ -1,7 +1,8 @@
 'use client';
 
 import React, { useEffect, useState, useMemo } from 'react';
-import { apiCall } from '@/utils/api';
+import { apiCall, API_BASE_URL } from '@/utils/api';
+import { useAuthStore } from '@/store/authStore';
 import {
   ArrowLeft,
   RefreshCw,
@@ -72,9 +73,10 @@ export default function SubjectTrackerReport({
 
   const handleDownloadReport = async () => {
     try {
-      const res = await fetch(`/api/admin/subjects/${subject.id}/export`, {
+      const token = useAuthStore.getState().token || (typeof window !== 'undefined' ? sessionStorage.getItem('chill_token') || localStorage.getItem('chill_token') : null);
+      const res = await fetch(`${API_BASE_URL}/api/admin/subjects/${subject.id}/export`, {
         headers: {
-          Authorization: `Bearer ${localStorage.getItem('token') || sessionStorage.getItem('token') || ''}`,
+          Authorization: token ? `Bearer ${token}` : '',
         },
       });
       if (!res.ok) throw new Error('Failed to generate export file');

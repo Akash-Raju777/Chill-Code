@@ -6,8 +6,10 @@ import {
   fetchSubjectLeaderboard, 
   fetchAdminAnalyticsOverview,
   apiCall,
-  formatISTDate
+  formatISTDate,
+  API_BASE_URL
 } from '../../../utils/api';
+import { useAuthStore } from '../../../store/authStore';
 import { 
   Trophy, 
   Download, 
@@ -102,8 +104,9 @@ export default function AdminLeaderboardPage() {
 
   const handleExport = async () => {
     try {
-      const res = await fetch(`/api/admin/leaderboard/export?departmentFilter=${departmentFilter}`, {
-        headers: { 'Authorization': `Bearer ${localStorage.getItem('chillcode_token')}` }
+      const token = useAuthStore.getState().token || (typeof window !== 'undefined' ? localStorage.getItem('chill_token') || sessionStorage.getItem('chill_token') : null);
+      const res = await fetch(`${API_BASE_URL}/api/admin/leaderboard/export?departmentFilter=${departmentFilter}`, {
+        headers: { 'Authorization': token ? `Bearer ${token}` : '' }
       });
       const blob = await res.blob();
       const url = window.URL.createObjectURL(blob);

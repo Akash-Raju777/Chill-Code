@@ -2,7 +2,7 @@
 
 import React, { useEffect, useState, useRef, useMemo } from 'react';
 import ConfirmModal from '../../../components/ConfirmModal';
-import { apiCall } from '../../../utils/api';
+import { apiCall, API_BASE_URL } from '../../../utils/api';
 import { 
   BookOpen, 
   Plus, 
@@ -116,11 +116,9 @@ export default function SubjectManagement() {
 
   const handleDownloadReport = async (subjectId: number, subjectName: string) => {
     try {
-      const RAW_API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080';
-      const API_URL = RAW_API_URL.replace(/\/$/, '');
       const token = useAuthStore.getState().token || (typeof window !== 'undefined' ? localStorage.getItem('chill_token') || sessionStorage.getItem('chill_token') : null);
       
-      const response = await fetch(`${API_URL}/api/admin/subjects/${subjectId}/export`, {
+      const response = await fetch(`${API_BASE_URL}/api/admin/subjects/${subjectId}/export`, {
         headers: { Authorization: token ? `Bearer ${token}` : '' },
       });
       

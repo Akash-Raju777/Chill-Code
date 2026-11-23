@@ -10,6 +10,9 @@ import { useBackendStore } from '../store/backendStore';
 const RAW_API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080';
 const BASE_URL = RAW_API_URL.replace(/\/$/, '');
 
+/** Exported so edge-case callers (keepalive beacon, blob downloads) can build full URLs. */
+export { BASE_URL as API_BASE_URL };
+
 const apiCache = new Map<string, { data: any; expiry: number }>();
 const inFlightRequests = new Map<string, Promise<any>>();
 let isRefreshing = false;
