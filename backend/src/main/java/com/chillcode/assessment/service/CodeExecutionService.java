@@ -18,6 +18,7 @@ import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
 import java.time.LocalDateTime;
 import java.util.*;
+import java.util.concurrent.CompletableFuture;
 import java.util.stream.Collectors;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.JsonNode;
@@ -28,6 +29,9 @@ public class CodeExecutionService {
 
     @Autowired
     private QuestionRepository questionRepository;
+
+    @Autowired
+    private TestRepository testRepository;
 
     @Autowired
     private StudentTestRepository studentTestRepository;
@@ -53,6 +57,9 @@ public class CodeExecutionService {
     @Autowired
     private StudentQuestionStatusRepository studentQuestionStatusRepository;
 
+    @jakarta.persistence.PersistenceContext
+    private jakarta.persistence.EntityManager entityManager;
+
     @Autowired
     private StudentQuestionStatusService studentQuestionStatusService;
 
@@ -66,13 +73,61 @@ public class CodeExecutionService {
     @Value("${xai.api.key:gsk_default_key_placeholder}")
     private String xaiApiKey;
 
+    private final java.util.concurrent.ExecutorService testCaseExecutor = java.util.concurrent.Executors.newFixedThreadPool(8);
+
+    private static class TcExecutionResult {
+        int index;
+        TestCaseResultDto tcResult;
+        int statusId;
+        int timeMs;
+        int memoryKb;
+        String stdout;
+        String stderr;
+        String compileOutput;
+        boolean passed;
+    }
+
+    private static final org.slf4j.Logger log = org.slf4j.LoggerFactory.getLogger(CodeExecutionService.class);
+
     private final HttpClient httpClient = HttpClient.newBuilder()
             .version(HttpClient.Version.HTTP_1_1)
-            .connectTimeout(java.time.Duration.ofSeconds(10))
+            .connectTimeout(java.time.Duration.ofSeconds(6))
             .build();
+
+    private final java.util.Map<String, String> localHintCache = new java.util.concurrent.ConcurrentHashMap<>();
+
+    private volatile boolean judge0Available = false;
+    private volatile long lastJudge0Check = 0;
+    private static final long JUDGE0_CHECK_INTERVAL = 20000; // 20s cached probe
+
+    private boolean isJudge0Available() {
+        long now = System.currentTimeMillis();
+        if (now - lastJudge0Check < JUDGE0_CHECK_INTERVAL) {
+            return judge0Available;
+        }
+        synchronized (this) {
+            if (System.currentTimeMillis() - lastJudge0Check < JUDGE0_CHECK_INTERVAL) {
+                return judge0Available;
+            }
+            lastJudge0Check = System.currentTimeMillis();
+            try {
+                HttpRequest probe = HttpRequest.newBuilder()
+                        .uri(URI.create(judge0ApiUrl + "/about"))
+                        .timeout(java.time.Duration.ofMillis(800))
+                        .GET()
+                        .build();
+                HttpResponse<String> resp = httpClient.send(probe, HttpResponse.BodyHandlers.ofString());
+                judge0Available = (resp.statusCode() == 200);
+            } catch (Exception e) {
+                judge0Available = false;
+            }
+            return judge0Available;
+        }
+    }
 
     @Transactional
     public SubmissionResultDto submitCode(SubmitRequest request) {
+        long startTime = System.currentTimeMillis();
         Question question = questionRepository.findById(request.getQuestionId())
                 .orElseThrow(() -> new RuntimeException("Question not found"));
 
@@ -82,24 +137,7 @@ public class CodeExecutionService {
         }
 
         List<TestCase> allTestCases = testCaseRepository.findByQuestionId(question.getId());
-        String lang = request.getLanguage().toLowerCase();
-        int languageId = getJudge0LanguageId(lang);
-
-        SubmissionResultDto resultDto = new SubmissionResultDto();
-        resultDto.setTestCaseResults(new ArrayList<>());
-        resultDto.setRunTimeMs(0);
-        resultDto.setMemoryUsedKb(0);
-
         boolean runOnly = Boolean.TRUE.equals(request.getRunOnly());
-
-        String overallVerdict = "ACCEPTED";
-        int maxRunTimeMs = 0;
-        int maxMemoryUsedKb = 0;
-        int passedCount = 0;
-        int failedTestCaseIndex = -1; // 1-based index
-        String firstFailedExpected = null;
-        String firstFailedActual = null;
-        String firstFailedJudge0Status = "Accepted";
 
         List<TestCase> testCases = new ArrayList<>();
         if (runOnly) {
@@ -143,7 +181,69 @@ public class CodeExecutionService {
             testCases.addAll(allTestCases);
         }
 
-        if (testCases.isEmpty()) {
+        long evalStartTime = System.currentTimeMillis();
+        SubmissionResultDto resultDto = evaluateCode(request, question, testCases, studentTest);
+        long evalEndTime = System.currentTimeMillis();
+
+        if (!runOnly) {
+            Submission sub = saveSubmissionRecord(studentTest, question, request, resultDto);
+            sub.setScore(resultDto.getScore());
+            sub.setTotalMarks(resultDto.getTotalMarks());
+            sub.setPassingMarks(resultDto.getPassingMarks());
+            sub.setPercentage(resultDto.getPercentage());
+            sub.setOverallResult(resultDto.getOverallResult());
+            submissionRepository.save(sub);
+            resultDto.setSubmissionId(sub.getId());
+
+            try {
+                User student = studentTest != null ? studentTest.getStudent() : getCurrentUser();
+                Long adminId = studentQuestionStatusService.resolveAdminId(studentTest, question);
+                StudentQuestionStatus sqs = studentQuestionStatusService.updateStatus(student, question, sub, adminId);
+                if (sqs != null && sqs.getAttemptCount() != null) {
+                    resultDto.setAttemptCount(sqs.getAttemptCount());
+                }
+            } catch (Exception e) {
+                System.err.println(String.format(
+                    "[StudentQuestionStatus] FAILED to update: studentTestId=%s, questionId=%s, error=%s",
+                    studentTest != null ? studentTest.getId() : "null",
+                    question != null ? question.getId() : "null",
+                    e.getMessage()
+                ));
+            }
+
+            if (studentTest != null) {
+                updateStudentTestScore(studentTest, question, resultDto.getScore());
+            }
+
+            logSubmission(sub, studentTest, question, request, resultDto);
+        }
+
+        long totalTime = System.currentTimeMillis() - startTime;
+        log.info("[Performance Metrics] {} completed in {}ms (Execution: {}ms, Status: {})",
+                runOnly ? "Compile & Run" : "Submit Question", totalTime, (evalEndTime - evalStartTime), resultDto.getStatus());
+
+        return resultDto;
+    }
+
+    public SubmissionResultDto evaluateCode(SubmitRequest request, Question question, List<TestCase> testCases, StudentTest studentTest) {
+        String lang = request.getLanguage().toLowerCase();
+        int languageId = getJudge0LanguageId(lang);
+
+        SubmissionResultDto resultDto = new SubmissionResultDto();
+        resultDto.setTestCaseResults(new ArrayList<>());
+        resultDto.setRunTimeMs(0);
+        resultDto.setMemoryUsedKb(0);
+
+        String overallVerdict = "ACCEPTED";
+        int maxRunTimeMs = 0;
+        int maxMemoryUsedKb = 0;
+        int passedCount = 0;
+        int failedTestCaseIndex = -1; // 1-based index
+        String firstFailedExpected = null;
+        String firstFailedActual = null;
+        String firstFailedJudge0Status = "Accepted";
+
+        if (testCases == null || testCases.isEmpty()) {
             overallVerdict = "WRONG_ANSWER";
             TestCaseResultDto tcResult = new TestCaseResultDto();
             tcResult.setStatus("FAILED");
@@ -152,136 +252,70 @@ public class CodeExecutionService {
             resultDto.setTotalTests(0);
             resultDto.setPassedTests(0);
         } else {
-            for (int i = 0; i < testCases.size(); i++) {
-                TestCase tc = testCases.get(i);
-                TestCaseResultDto tcResult = new TestCaseResultDto();
-                tcResult.setTestCaseId(tc.getId());
-                tcResult.setInputData(tc.getInputData());
-                tcResult.setExpectedOutput(tc.getExpectedOutput());
-                int tcMaxMarks = tc.getMarks() != null ? tc.getMarks() : 5;
-                tcResult.setMarks(tcMaxMarks);
-                tcResult.setMarksAwarded(0);
+            final int finalLanguageId = languageId;
+            final String sourceCode = request.getCode() != null ? request.getCode() : "";
 
-                try {
-                    JsonNode res = executeOnJudge0(request.getCode(), languageId, tc.getInputData(), null);
-                    int statusId = res.path("status").path("id").asInt();
+            List<TcExecutionResult> results = executeAllTestCases(sourceCode, finalLanguageId, testCases);
 
-                    double time = res.path("time").asDouble();
-                    int timeMs = (int)(time * 1000);
-                    tcResult.setRunTimeMs(timeMs);
-                    if (timeMs > maxRunTimeMs) maxRunTimeMs = timeMs;
+            for (int i = 0; i < results.size(); i++) {
+                TcExecutionResult item = results.get(i);
+                TestCase tc = (i < testCases.size()) ? testCases.get(i) : null;
+                TestCaseResultDto tcResult = item.tcResult;
 
-                    int memory = res.path("memory").asInt();
-                    tcResult.setMemoryUsedKb(memory);
-                    if (memory > maxMemoryUsedKb) maxMemoryUsedKb = memory;
+                if (item.timeMs > maxRunTimeMs) maxRunTimeMs = item.timeMs;
+                if (item.memoryKb > maxMemoryUsedKb) maxMemoryUsedKb = item.memoryKb;
 
-                    String stdout = decodeBase64(res.path("stdout").asText());
-                    String stderr = decodeBase64(res.path("stderr").asText());
-                    String compileOutput = decodeBase64(res.path("compile_output").asText());
+                if (resultDto.getStdout() == null || resultDto.getStdout().isEmpty()) {
+                    resultDto.setStdout(item.stdout);
+                }
+                if (resultDto.getStderr() == null || resultDto.getStderr().isEmpty()) {
+                    resultDto.setStderr(item.stderr);
+                }
 
-                    resultDto.setStdout(stdout);
-                    resultDto.setStderr(stderr);
-
-                    if (statusId == 6) { // Compilation Error
-                        tcResult.setStatus("COMPILATION_ERROR");
-                        tcResult.setMarksAwarded(0);
-                        resultDto.setCompileError(compileOutput);
-                        tcResult.setMessage("Compilation Error:\n" + compileOutput);
-                        tcResult.setActualOutput("Compilation Error:\n" + compileOutput);
-                        overallVerdict = "COMPILATION_ERROR";
-                        resultDto.getTestCaseResults().add(tcResult);
-                        firstFailedJudge0Status = "Compilation Error";
-                        break; // Stop execution immediately!
-                    } else if (statusId == 5) { // TLE
-                        tcResult.setStatus("TLE");
-                        tcResult.setMarksAwarded(0);
-                        tcResult.setMessage("Time Limit Exceeded");
-                        tcResult.setActualOutput("Time Limit Exceeded");
-                        overallVerdict = updateVerdict(overallVerdict, "TIME_LIMIT_EXCEEDED");
-                        if (failedTestCaseIndex == -1) {
-                            failedTestCaseIndex = i + 1;
-                            firstFailedJudge0Status = "Time Limit Exceeded";
-                        }
-                    } else if (statusId == 8) { // MLE
-                        tcResult.setStatus("MLE");
-                        tcResult.setMarksAwarded(0);
-                        tcResult.setMessage("Memory Limit Exceeded");
-                        tcResult.setActualOutput("Memory Limit Exceeded");
-                        overallVerdict = updateVerdict(overallVerdict, "MEMORY_LIMIT_EXCEEDED");
-                        if (failedTestCaseIndex == -1) {
-                            failedTestCaseIndex = i + 1;
-                            firstFailedJudge0Status = "Memory Limit Exceeded";
-                        }
-                    } else if (statusId == 7 || statusId == 9 || statusId == 10 || statusId == 11 || statusId == 12) { // Runtime Error
-                        tcResult.setStatus("RTE");
-                        tcResult.setMarksAwarded(0);
-                        tcResult.setMessage("Runtime Error:\n" + stderr);
-                        tcResult.setActualOutput("Runtime Error:\n" + stderr);
-                        overallVerdict = updateVerdict(overallVerdict, "RUNTIME_ERROR");
-                        if (failedTestCaseIndex == -1) {
-                            failedTestCaseIndex = i + 1;
-                            resultDto.setStderr(stderr);
-                            firstFailedJudge0Status = "Runtime Error";
-                        }
-                    } else { // Process finished successfully. Run comparison
-                        String expectedOut = tc.getExpectedOutput();
-                        tcResult.setActualOutput(stdout);
-                        
-                        boolean hasValidExpected = (expectedOut != null && !expectedOut.trim().isEmpty() && !"N/A".equalsIgnoreCase(expectedOut.trim()));
-                        
-                        if (hasValidExpected) {
-                            boolean match = compareOutputs(expectedOut, stdout);
-                            if (match) {
-                                tcResult.setStatus("PASSED");
-                                tcResult.setMarksAwarded(tcMaxMarks);
-                                tcResult.setMessage("Test Case Passed");
-                                passedCount++;
-                            } else {
-                                tcResult.setStatus("FAILED");
-                                tcResult.setMarksAwarded(0);
-                                if (tc.getIsHidden() != null && tc.getIsHidden()) {
-                                    tcResult.setMessage("Output doesn't match expected output. (Hidden testcase failed)");
-                                } else {
-                                    tcResult.setMessage("Output doesn't match expected output.\nExpected:\n" + expectedOut.trim() + "\nYour Output:\n" + stdout.trim());
-                                }
-                                overallVerdict = updateVerdict(overallVerdict, "WRONG_ANSWER");
-                                if (failedTestCaseIndex == -1) {
-                                    failedTestCaseIndex = i + 1;
-                                    firstFailedJudge0Status = "Wrong Answer";
-                                    if (tc.getIsHidden() == null || !tc.getIsHidden()) {
-                                        firstFailedExpected = expectedOut;
-                                        firstFailedActual = stdout;
-                                    }
-                                }
-                            }
-                        } else {
-                            // No valid expected output present: mark as FAILED (Wrong Output) so incorrect outputs are never falsely accepted
-                            tcResult.setStatus("FAILED");
-                            tcResult.setMarksAwarded(0);
-                            tcResult.setMessage("Output verification failed: Output does not match expected result for given input.");
-                            overallVerdict = updateVerdict(overallVerdict, "WRONG_ANSWER");
-                            if (failedTestCaseIndex == -1) {
-                                failedTestCaseIndex = i + 1;
-                                firstFailedJudge0Status = "Wrong Answer";
-                                firstFailedExpected = "Valid expected output data";
-                                firstFailedActual = stdout;
-                            }
-                        }
+                if (item.statusId == 6) { // Compilation Error
+                    resultDto.setCompileError(item.compileOutput);
+                    overallVerdict = "COMPILATION_ERROR";
+                    firstFailedJudge0Status = "Compilation Error";
+                    resultDto.getTestCaseResults().add(tcResult);
+                    break; // Stop collecting subsequent testcases on compilation error
+                } else if (item.statusId == 5) {
+                    overallVerdict = updateVerdict(overallVerdict, "TIME_LIMIT_EXCEEDED");
+                    if (failedTestCaseIndex == -1) {
+                        failedTestCaseIndex = i + 1;
+                        firstFailedJudge0Status = "Time Limit Exceeded";
                     }
-                } catch (Exception e) {
-                    tcResult.setStatus("FAILED");
-                    tcResult.setMarksAwarded(0);
-                    tcResult.setMessage("Execution error: " + e.getMessage());
-                    tcResult.setActualOutput("Execution error: " + e.getMessage());
+                } else if (item.statusId == 8) {
+                    overallVerdict = updateVerdict(overallVerdict, "MEMORY_LIMIT_EXCEEDED");
+                    if (failedTestCaseIndex == -1) {
+                        failedTestCaseIndex = i + 1;
+                        firstFailedJudge0Status = "Memory Limit Exceeded";
+                    }
+                } else if (item.statusId == 7 || item.statusId == 9 || item.statusId == 10 || item.statusId == 11 || item.statusId == 12) {
                     overallVerdict = updateVerdict(overallVerdict, "RUNTIME_ERROR");
                     if (failedTestCaseIndex == -1) {
                         failedTestCaseIndex = i + 1;
+                        resultDto.setStderr(item.stderr);
                         firstFailedJudge0Status = "Runtime Error";
+                    }
+                } else {
+                    if (item.passed) {
+                        passedCount++;
+                    } else {
+                        overallVerdict = updateVerdict(overallVerdict, "WRONG_ANSWER");
+                        if (failedTestCaseIndex == -1) {
+                            failedTestCaseIndex = i + 1;
+                            firstFailedJudge0Status = "Wrong Answer";
+                            if (tc != null && (tc.getIsHidden() == null || !tc.getIsHidden())) {
+                                firstFailedExpected = tc.getExpectedOutput();
+                                firstFailedActual = item.stdout;
+                            }
+                        }
                     }
                 }
 
                 resultDto.getTestCaseResults().add(tcResult);
             }
+
             resultDto.setTotalTests(testCases.size());
             resultDto.setPassedTests(passedCount);
         }
@@ -302,7 +336,6 @@ public class CodeExecutionService {
             resultDto.setAiExplanation(explanation);
         }
 
-        // MODULE 3 & 4: Calculate score, total marks, passing marks, percentage & overallResult
         int finalScore = 0;
         if (resultDto.getTestCaseResults() != null) {
             for (TestCaseResultDto tcRes : resultDto.getTestCaseResults()) {
@@ -314,8 +347,6 @@ public class CodeExecutionService {
 
         int qTotalMarks = (question != null && question.getTotalMarks() != null) ? question.getTotalMarks() : 20;
         int qPassingMarks = (question != null && question.getPassingMarks() != null) ? question.getPassingMarks() : 10;
-        
-        // Safety recalculation of total marks from test cases if question.totalMarks wasn't initialized
         if (testCases != null && !testCases.isEmpty()) {
             int tcSum = testCases.stream().mapToInt(tc -> tc.getMarks() != null ? tc.getMarks() : 5).sum();
             if (tcSum > 0) {
@@ -332,45 +363,82 @@ public class CodeExecutionService {
         resultDto.setPercentage(percentage);
         resultDto.setOverallResult(overallResult);
 
-        // ONLY save state and update database for SUBMIT runs (runOnly == false)
-        if (!runOnly) {
-            // Save submission and individual test case runs
-            Submission sub = saveSubmissionRecord(studentTest, question, request, resultDto);
-            sub.setScore(finalScore);
-            sub.setTotalMarks(qTotalMarks);
-            sub.setPassingMarks(qPassingMarks);
-            sub.setPercentage(percentage);
-            sub.setOverallResult(overallResult);
-            submissionRepository.save(sub);
-            resultDto.setSubmissionId(sub.getId());
+        return resultDto;
+    }
 
-            // Update StudentQuestionStatus (runs in REQUIRES_NEW transaction to isolate from Submission):
-            try {
-                User student = studentTest != null ? studentTest.getStudent() : getCurrentUser();
-                Long adminId = studentQuestionStatusService.resolveAdminId(studentTest, question);
-                studentQuestionStatusService.updateStatus(student, question, sub, adminId);
-            } catch (Exception e) {
-                // Log the failure but do NOT let it crash the Submission transaction.
-                // The Submission is already saved and committed in the parent transaction.
-                System.err.println(String.format(
-                    "[StudentQuestionStatus] FAILED to update: studentTestId=%s, questionId=%s, error=%s",
-                    studentTest != null ? studentTest.getId() : "null",
-                    question != null ? question.getId() : "null",
-                    e.getMessage()
-                ));
-                e.printStackTrace();
-            }
+    @Transactional
+    public void evaluateExistingSubmission(Long submissionId, SubmitRequest request) {
+        Submission sub = submissionRepository.findById(submissionId).orElse(null);
+        if (sub == null) return;
 
-            // Update overall StudentTest score:
-            if (studentTest != null) {
-                updateStudentTestScore(studentTest, question, finalScore);
+        Question question = sub.getQuestion();
+        if (question == null) return;
+
+        StudentTest studentTest = sub.getStudentTest();
+        List<TestCase> allTestCases = testCaseRepository.findByQuestionId(question.getId());
+
+        SubmissionResultDto resultDto = evaluateCode(request, question, allTestCases, studentTest);
+
+        sub.setStatus(resultDto.getStatus());
+        sub.setScore(resultDto.getScore());
+        sub.setTotalMarks(resultDto.getTotalMarks());
+        sub.setPassingMarks(resultDto.getPassingMarks());
+        sub.setPercentage(resultDto.getPercentage());
+        sub.setOverallResult(resultDto.getOverallResult());
+        sub.setRunTimeMs(resultDto.getRunTimeMs());
+        sub.setMemoryUsedKb(resultDto.getMemoryUsedKb());
+        sub.setCompileError(resultDto.getCompileError());
+        sub.setStdout(resultDto.getStdout());
+        sub.setStderr(resultDto.getStderr());
+        sub.setExpectedOutput(resultDto.getExpectedOutput());
+        sub.setActualOutput(resultDto.getActualOutput());
+        sub.setFailedTestCaseNumber(resultDto.getFailedTestCaseNumber());
+        sub.setPassedTests(resultDto.getPassedTests() != null ? resultDto.getPassedTests() : 0);
+        sub.setTotalTests(resultDto.getTotalTests() != null ? resultDto.getTotalTests() : 0);
+        sub.setJudge0Token(resultDto.getJudge0Status() != null ? resultDto.getJudge0Status() : "local_run");
+        submissionRepository.save(sub);
+
+        if (resultDto.getTestCaseResults() != null) {
+            List<SubmissionTestCase> subTcList = new ArrayList<>();
+            for (TestCaseResultDto tcRes : resultDto.getTestCaseResults()) {
+                if (tcRes.getTestCaseId() != null) {
+                    TestCase tc = testCaseRepository.findById(tcRes.getTestCaseId()).orElse(null);
+                    if (tc != null) {
+                        String msg = tcRes.getMessage();
+                        if (msg != null && msg.length() > 1000) {
+                            msg = msg.substring(0, 997) + "...";
+                        }
+                        SubmissionTestCase subTc = SubmissionTestCase.builder()
+                                .submission(sub)
+                                .testCase(tc)
+                                .status(tcRes.getStatus() != null ? tcRes.getStatus() : "FAILED")
+                                .runTimeMs(tcRes.getRunTimeMs() != null ? tcRes.getRunTimeMs() : 0)
+                                .memoryUsedKb(tcRes.getMemoryUsedKb() != null ? tcRes.getMemoryUsedKb() : 0)
+                                .marksAwarded(tcRes.getMarksAwarded() != null ? tcRes.getMarksAwarded() : 0)
+                                .message(msg)
+                                .build();
+                        subTcList.add(subTc);
+                    }
+                }
             }
-            
-            // Log submission details securely
-            logSubmission(sub, studentTest, question, request, resultDto);
+            if (!subTcList.isEmpty()) {
+                submissionTestCaseRepository.saveAll(subTcList);
+                sub.setSubmissionTestCases(subTcList);
+            }
         }
 
-        return resultDto;
+        try {
+            User student = studentTest != null ? studentTest.getStudent() : sub.getAdmin();
+            Long adminId = studentQuestionStatusService.resolveAdminId(studentTest, question);
+            studentQuestionStatusService.updateStatus(student, question, sub, adminId);
+        } catch (Exception e) {
+            System.err.println("[StudentQuestionStatus] async update status failed: " + e.getMessage());
+        }
+
+        if (studentTest != null) {
+            updateStudentTestScore(studentTest, question, resultDto.getScore());
+        }
+        logSubmission(sub, studentTest, question, request, resultDto);
     }
 
     private void logSubmission(Submission sub, StudentTest studentTest, Question question, SubmitRequest request, SubmissionResultDto result) {
@@ -414,7 +482,558 @@ public class CodeExecutionService {
     // updateStudentQuestionStatus is now in StudentQuestionStatusService
     // with REQUIRES_NEW transaction isolation to prevent Submission cascade failures.
 
+    private List<TcExecutionResult> executeAllTestCases(String sourceCode, int languageId, List<TestCase> testCases) {
+        if (!isJudge0Available()) {
+            return executeLocallyBatch(sourceCode, languageId, testCases);
+        }
+        return executeJudge0BatchOrConcurrent(sourceCode, languageId, testCases);
+    }
+
+    private List<TcExecutionResult> executeJudge0BatchOrConcurrent(String sourceCode, int languageId, List<TestCase> testCases) {
+        List<CompletableFuture<TcExecutionResult>> futures = new ArrayList<>();
+        for (int i = 0; i < testCases.size(); i++) {
+            final int tcIdx = i;
+            final TestCase tc = testCases.get(i);
+            futures.add(CompletableFuture.supplyAsync(() -> {
+                try {
+                    JsonNode res = executeOnJudge0(sourceCode, languageId, tc.getInputData(), null);
+                    return mapJsonNodeToTcResult(res, tc, tcIdx);
+                } catch (Exception ex) {
+                    TcExecutionResult item = new TcExecutionResult();
+                    item.index = tcIdx;
+                    item.statusId = 11;
+                    item.tcResult = buildFailedTcResult(tc, "FAILED", "Execution error: " + ex.getMessage());
+                    return item;
+                }
+            }, testCaseExecutor));
+        }
+        CompletableFuture.allOf(futures.toArray(new CompletableFuture[0])).join();
+        List<TcExecutionResult> results = new ArrayList<>();
+        for (CompletableFuture<TcExecutionResult> f : futures) {
+            try {
+                results.add(f.get());
+            } catch (Exception ignored) {}
+        }
+        results.sort(Comparator.comparingInt(a -> a.index));
+        return results;
+    }
+
+    private TcExecutionResult mapJsonNodeToTcResult(JsonNode res, TestCase tc, int tcIdx) {
+        TcExecutionResult item = new TcExecutionResult();
+        item.index = tcIdx;
+        TestCaseResultDto tcResult = new TestCaseResultDto();
+        tcResult.setTestCaseId(tc.getId());
+        tcResult.setInputData(tc.getInputData());
+        tcResult.setExpectedOutput(tc.getExpectedOutput());
+        int tcMaxMarks = tc.getMarks() != null ? tc.getMarks() : 5;
+        tcResult.setMarks(tcMaxMarks);
+        tcResult.setMarksAwarded(0);
+        item.tcResult = tcResult;
+
+        item.statusId = res.path("status").path("id").asInt();
+        double time = res.path("time").asDouble();
+        item.timeMs = (int) (time * 1000);
+        tcResult.setRunTimeMs(item.timeMs);
+        item.memoryKb = res.path("memory").asInt();
+        tcResult.setMemoryUsedKb(item.memoryKb);
+
+        item.stdout = decodeBase64(res.path("stdout").asText());
+        item.stderr = decodeBase64(res.path("stderr").asText());
+        item.compileOutput = decodeBase64(res.path("compile_output").asText());
+
+        if (item.statusId == 6) {
+            tcResult.setStatus("COMPILATION_ERROR");
+            tcResult.setMessage("Compilation Error:\n" + item.compileOutput);
+            tcResult.setActualOutput("Compilation Error:\n" + item.compileOutput);
+        } else if (item.statusId == 5) {
+            tcResult.setStatus("TLE");
+            tcResult.setMessage("Time Limit Exceeded");
+            tcResult.setActualOutput("Time Limit Exceeded");
+        } else if (item.statusId == 8) {
+            tcResult.setStatus("MLE");
+            tcResult.setMessage("Memory Limit Exceeded");
+            tcResult.setActualOutput("Memory Limit Exceeded");
+        } else if (item.statusId == 7 || item.statusId == 9 || item.statusId == 10 || item.statusId == 11 || item.statusId == 12) {
+            tcResult.setStatus("RTE");
+            tcResult.setMessage("Runtime Error:\n" + item.stderr);
+            tcResult.setActualOutput("Runtime Error:\n" + item.stderr);
+        } else {
+            String expectedOut = tc.getExpectedOutput();
+            tcResult.setActualOutput(item.stdout);
+            boolean hasValidExpected = (expectedOut != null && !expectedOut.trim().isEmpty() && !"N/A".equalsIgnoreCase(expectedOut.trim()));
+            if (hasValidExpected && compareOutputs(expectedOut, item.stdout)) {
+                item.statusId = 3;
+                item.passed = true;
+                tcResult.setStatus("PASSED");
+                tcResult.setMarksAwarded(tcMaxMarks);
+                tcResult.setMessage("Test Case Passed");
+            } else {
+                item.statusId = 4;
+                tcResult.setStatus("FAILED");
+                tcResult.setMarksAwarded(0);
+                if (tc.getIsHidden() != null && tc.getIsHidden()) {
+                    tcResult.setMessage("Output doesn't match expected output. (Hidden testcase failed)");
+                } else {
+                    tcResult.setMessage("Output doesn't match expected output.\nExpected:\n" + (expectedOut != null ? expectedOut.trim() : "") + "\nYour Output:\n" + (item.stdout != null ? item.stdout.trim() : ""));
+                }
+            }
+        }
+        return item;
+    }
+
+    private TestCaseResultDto buildFailedTcResult(TestCase tc, String status, String message) {
+        TestCaseResultDto tcResult = new TestCaseResultDto();
+        tcResult.setTestCaseId(tc.getId());
+        tcResult.setInputData(tc.getInputData());
+        tcResult.setExpectedOutput(tc.getExpectedOutput());
+        tcResult.setMarks(tc.getMarks() != null ? tc.getMarks() : 5);
+        tcResult.setMarksAwarded(0);
+        tcResult.setStatus(status);
+        tcResult.setMessage(message);
+        tcResult.setActualOutput(message);
+        return tcResult;
+    }
+
+    private List<TcExecutionResult> executeLocallyBatch(String code, int languageId, List<TestCase> testCases) {
+        List<TcExecutionResult> results = new ArrayList<>();
+        File tempDir = new File(System.getProperty("user.dir"), "temp_batch_" + System.currentTimeMillis() + "_" + (int)(Math.random() * 1000));
+        tempDir.mkdirs();
+
+        try {
+            if (languageId == 62) { // Java
+                String className = "Main";
+                java.util.regex.Matcher matcher = java.util.regex.Pattern.compile("public\\s+class\\s+([A-Za-z0-9_]+)").matcher(code);
+                if (matcher.find()) {
+                    className = matcher.group(1);
+                }
+                File sourceFile = new File(tempDir, className + ".java");
+                java.nio.file.Files.writeString(sourceFile.toPath(), code, StandardCharsets.UTF_8);
+
+                int compileResult = -1;
+                ByteArrayOutputStream errStream = new ByteArrayOutputStream();
+                javax.tools.JavaCompiler compiler = javax.tools.ToolProvider.getSystemJavaCompiler();
+                if (compiler != null) {
+                    compileResult = compiler.run(null, null, errStream, sourceFile.getAbsolutePath());
+                } else {
+                    ProcessBuilder compilePb = System.getProperty("os.name").toLowerCase().contains("win")
+                            ? new ProcessBuilder("cmd.exe", "/c", "javac", sourceFile.getAbsolutePath())
+                            : new ProcessBuilder("javac", sourceFile.getAbsolutePath());
+                    Process compileProcess = compilePb.start();
+                    try (InputStream is = compileProcess.getErrorStream()) {
+                        is.transferTo(errStream);
+                    }
+                    boolean done = compileProcess.waitFor(10, java.util.concurrent.TimeUnit.SECONDS);
+                    compileResult = done ? compileProcess.exitValue() : -1;
+                }
+
+                if (compileResult != 0) {
+                    String compileOutput = errStream.toString(StandardCharsets.UTF_8);
+                    for (int i = 0; i < testCases.size(); i++) {
+                        TestCase tc = testCases.get(i);
+                        TcExecutionResult item = new TcExecutionResult();
+                        item.index = i;
+                        item.statusId = 6;
+                        item.compileOutput = compileOutput;
+                        item.tcResult = buildFailedTcResult(tc, "COMPILATION_ERROR", "Compilation Error:\n" + compileOutput);
+                        results.add(item);
+                    }
+                    return results;
+                }
+
+                final String finalClassName = className;
+                List<CompletableFuture<TcExecutionResult>> runFutures = new ArrayList<>();
+                for (int i = 0; i < testCases.size(); i++) {
+                    final int tcIdx = i;
+                    final TestCase tc = testCases.get(i);
+                    runFutures.add(CompletableFuture.supplyAsync(() -> runCompiledJavaTestCase(tempDir, finalClassName, tc, tcIdx), testCaseExecutor));
+                }
+                CompletableFuture.allOf(runFutures.toArray(new CompletableFuture[0])).join();
+                for (CompletableFuture<TcExecutionResult> f : runFutures) {
+                    results.add(f.get());
+                }
+                results.sort(Comparator.comparingInt(a -> a.index));
+                return results;
+
+            } else if (languageId == 71) { // Python
+                File sourceFile = new File(tempDir, "solution.py");
+                java.nio.file.Files.writeString(sourceFile.toPath(), code, StandardCharsets.UTF_8);
+                String pyCmd = getPythonExecutable();
+
+                List<CompletableFuture<TcExecutionResult>> runFutures = new ArrayList<>();
+                for (int i = 0; i < testCases.size(); i++) {
+                    final int tcIdx = i;
+                    final TestCase tc = testCases.get(i);
+                    runFutures.add(CompletableFuture.supplyAsync(() -> runPythonTestCase(sourceFile, pyCmd, tc, tcIdx), testCaseExecutor));
+                }
+                CompletableFuture.allOf(runFutures.toArray(new CompletableFuture[0])).join();
+                for (CompletableFuture<TcExecutionResult> f : runFutures) {
+                    results.add(f.get());
+                }
+                results.sort(Comparator.comparingInt(a -> a.index));
+                return results;
+
+            } else if (languageId == 50 || languageId == 54) { // C or C++
+                boolean isCpp = (languageId == 54);
+                String fileName = isCpp ? "solution.cpp" : "solution.c";
+                File sourceFile = new File(tempDir, fileName);
+                java.nio.file.Files.writeString(sourceFile.toPath(), code, StandardCharsets.UTF_8);
+                File exeFile = new File(tempDir, System.getProperty("os.name").toLowerCase().contains("win") ? "solution.exe" : "solution");
+
+                String compilerCmd = isCpp ? getCompilerExecutable("g++") : getCompilerExecutable("gcc");
+                ProcessBuilder compilePb = new ProcessBuilder(compilerCmd, "-O2", sourceFile.getAbsolutePath(), "-o", exeFile.getAbsolutePath());
+                ByteArrayOutputStream errStream = new ByteArrayOutputStream();
+                Process compileProcess = compilePb.start();
+                try (InputStream is = compileProcess.getErrorStream()) {
+                    is.transferTo(errStream);
+                }
+                boolean done = compileProcess.waitFor(10, java.util.concurrent.TimeUnit.SECONDS);
+                int compileResult = done ? compileProcess.exitValue() : -1;
+
+                if (compileResult != 0) {
+                    String compileOutput = errStream.toString(StandardCharsets.UTF_8);
+                    if (compileOutput.isBlank()) compileOutput = "Compilation failed with exit code " + compileResult;
+                    for (int i = 0; i < testCases.size(); i++) {
+                        TestCase tc = testCases.get(i);
+                        TcExecutionResult item = new TcExecutionResult();
+                        item.index = i;
+                        item.statusId = 6;
+                        item.compileOutput = compileOutput;
+                        item.tcResult = buildFailedTcResult(tc, "COMPILATION_ERROR", "Compilation Error:\n" + compileOutput);
+                        results.add(item);
+                    }
+                    return results;
+                }
+
+                List<CompletableFuture<TcExecutionResult>> runFutures = new ArrayList<>();
+                for (int i = 0; i < testCases.size(); i++) {
+                    final int tcIdx = i;
+                    final TestCase tc = testCases.get(i);
+                    runFutures.add(CompletableFuture.supplyAsync(() -> runNativeExecutableTestCase(exeFile, tc, tcIdx), testCaseExecutor));
+                }
+                CompletableFuture.allOf(runFutures.toArray(new CompletableFuture[0])).join();
+                for (CompletableFuture<TcExecutionResult> f : runFutures) {
+                    results.add(f.get());
+                }
+                results.sort(Comparator.comparingInt(a -> a.index));
+                return results;
+
+            } else {
+                for (int i = 0; i < testCases.size(); i++) {
+                    TestCase tc = testCases.get(i);
+                    JsonNode res = executeLocallyFallback(code, languageId, tc.getInputData(), tc.getExpectedOutput());
+                    results.add(mapJsonNodeToTcResult(res, tc, i));
+                }
+                return results;
+            }
+        } catch (Exception ex) {
+            System.err.println("executeLocallyBatch error: " + ex.getMessage());
+            for (int i = 0; i < testCases.size(); i++) {
+                TestCase tc = testCases.get(i);
+                TcExecutionResult item = new TcExecutionResult();
+                item.index = i;
+                item.statusId = 11;
+                item.stderr = "Execution error: " + ex.getMessage();
+                item.tcResult = buildFailedTcResult(tc, "FAILED", "Execution error: " + ex.getMessage());
+                results.add(item);
+            }
+            return results;
+        } finally {
+            deleteDirectory(tempDir);
+        }
+    }
+
+    private TcExecutionResult runCompiledJavaTestCase(File classDir, String className, TestCase tc, int tcIdx) {
+        TcExecutionResult item = new TcExecutionResult();
+        item.index = tcIdx;
+        TestCaseResultDto tcResult = new TestCaseResultDto();
+        tcResult.setTestCaseId(tc.getId());
+        tcResult.setInputData(tc.getInputData());
+        tcResult.setExpectedOutput(tc.getExpectedOutput());
+        int tcMaxMarks = tc.getMarks() != null ? tc.getMarks() : 5;
+        tcResult.setMarks(tcMaxMarks);
+        tcResult.setMarksAwarded(0);
+        item.tcResult = tcResult;
+
+        long startTime = System.currentTimeMillis();
+        try {
+            ProcessBuilder pb = System.getProperty("os.name").toLowerCase().contains("win")
+                    ? new ProcessBuilder("cmd.exe", "/c", "java", "-cp", classDir.getAbsolutePath(), className)
+                    : new ProcessBuilder("java", "-cp", classDir.getAbsolutePath(), className);
+            Process process = pb.start();
+
+            if (tc.getInputData() != null && !tc.getInputData().isEmpty()) {
+                try (OutputStream os = process.getOutputStream()) {
+                    os.write(tc.getInputData().getBytes(StandardCharsets.UTF_8));
+                    os.flush();
+                }
+            } else {
+                try { process.getOutputStream().close(); } catch (Exception ignored) {}
+            }
+
+            ByteArrayOutputStream outStream = new ByteArrayOutputStream();
+            ByteArrayOutputStream errStream = new ByteArrayOutputStream();
+
+            Thread outThread = new Thread(() -> {
+                try (InputStream is = process.getInputStream()) { is.transferTo(outStream); } catch (Exception ignored) {}
+            });
+            Thread errThread = new Thread(() -> {
+                try (InputStream is = process.getErrorStream()) { is.transferTo(errStream); } catch (Exception ignored) {}
+            });
+            outThread.start();
+            errThread.start();
+
+            boolean finished = process.waitFor(5, java.util.concurrent.TimeUnit.SECONDS);
+            if (!finished) {
+                process.destroyForcibly();
+                item.statusId = 5;
+                tcResult.setStatus("TLE");
+                tcResult.setMessage("Time Limit Exceeded");
+                tcResult.setActualOutput("Time Limit Exceeded");
+            } else {
+                outThread.join(1000);
+                errThread.join(1000);
+                item.timeMs = (int) (System.currentTimeMillis() - startTime);
+                tcResult.setRunTimeMs(item.timeMs);
+                tcResult.setMemoryUsedKb(1200);
+
+                int exitCode = process.exitValue();
+                item.stdout = outStream.toString(StandardCharsets.UTF_8);
+                item.stderr = errStream.toString(StandardCharsets.UTF_8);
+
+                if (exitCode != 0) {
+                    item.statusId = 11;
+                    tcResult.setStatus("RTE");
+                    tcResult.setMessage("Runtime Error:\n" + item.stderr);
+                    tcResult.setActualOutput("Runtime Error:\n" + item.stderr);
+                } else {
+                    tcResult.setActualOutput(item.stdout);
+                    String expectedOut = tc.getExpectedOutput();
+                    boolean hasValidExpected = (expectedOut != null && !expectedOut.trim().isEmpty() && !"N/A".equalsIgnoreCase(expectedOut.trim()));
+                    if (hasValidExpected && compareOutputs(expectedOut, item.stdout)) {
+                        item.statusId = 3;
+                        item.passed = true;
+                        tcResult.setStatus("PASSED");
+                        tcResult.setMarksAwarded(tcMaxMarks);
+                        tcResult.setMessage("Test Case Passed");
+                    } else {
+                        item.statusId = 4;
+                        tcResult.setStatus("FAILED");
+                        tcResult.setMarksAwarded(0);
+                        if (tc.getIsHidden() != null && tc.getIsHidden()) {
+                            tcResult.setMessage("Output doesn't match expected output. (Hidden testcase failed)");
+                        } else {
+                            tcResult.setMessage("Output doesn't match expected output.\nExpected:\n" + (expectedOut != null ? expectedOut.trim() : "") + "\nYour Output:\n" + (item.stdout != null ? item.stdout.trim() : ""));
+                        }
+                    }
+                }
+            }
+        } catch (Exception e) {
+            item.statusId = 11;
+            tcResult.setStatus("FAILED");
+            tcResult.setMessage("Execution error: " + e.getMessage());
+            tcResult.setActualOutput("Execution error: " + e.getMessage());
+        }
+        return item;
+    }
+
+    private TcExecutionResult runPythonTestCase(File sourceFile, String pyCmd, TestCase tc, int tcIdx) {
+        TcExecutionResult item = new TcExecutionResult();
+        item.index = tcIdx;
+        TestCaseResultDto tcResult = new TestCaseResultDto();
+        tcResult.setTestCaseId(tc.getId());
+        tcResult.setInputData(tc.getInputData());
+        tcResult.setExpectedOutput(tc.getExpectedOutput());
+        int tcMaxMarks = tc.getMarks() != null ? tc.getMarks() : 5;
+        tcResult.setMarks(tcMaxMarks);
+        tcResult.setMarksAwarded(0);
+        item.tcResult = tcResult;
+
+        long startTime = System.currentTimeMillis();
+        try {
+            ProcessBuilder pb = System.getProperty("os.name").toLowerCase().contains("win")
+                    ? new ProcessBuilder("cmd.exe", "/c", pyCmd, sourceFile.getAbsolutePath())
+                    : new ProcessBuilder(pyCmd, sourceFile.getAbsolutePath());
+            Process process = pb.start();
+
+            if (tc.getInputData() != null && !tc.getInputData().isEmpty()) {
+                try (OutputStream os = process.getOutputStream()) {
+                    os.write(tc.getInputData().getBytes(StandardCharsets.UTF_8));
+                    os.flush();
+                }
+            } else {
+                try { process.getOutputStream().close(); } catch (Exception ignored) {}
+            }
+
+            ByteArrayOutputStream outStream = new ByteArrayOutputStream();
+            ByteArrayOutputStream errStream = new ByteArrayOutputStream();
+
+            Thread outThread = new Thread(() -> {
+                try (InputStream is = process.getInputStream()) { is.transferTo(outStream); } catch (Exception ignored) {}
+            });
+            Thread errThread = new Thread(() -> {
+                try (InputStream is = process.getErrorStream()) { is.transferTo(errStream); } catch (Exception ignored) {}
+            });
+            outThread.start();
+            errThread.start();
+
+            boolean finished = process.waitFor(5, java.util.concurrent.TimeUnit.SECONDS);
+            if (!finished) {
+                process.destroyForcibly();
+                item.statusId = 5;
+                tcResult.setStatus("TLE");
+                tcResult.setMessage("Time Limit Exceeded");
+                tcResult.setActualOutput("Time Limit Exceeded");
+            } else {
+                outThread.join(1000);
+                errThread.join(1000);
+                item.timeMs = (int) (System.currentTimeMillis() - startTime);
+                tcResult.setRunTimeMs(item.timeMs);
+                tcResult.setMemoryUsedKb(1200);
+
+                int exitCode = process.exitValue();
+                item.stdout = outStream.toString(StandardCharsets.UTF_8);
+                item.stderr = errStream.toString(StandardCharsets.UTF_8);
+
+                if (exitCode != 0) {
+                    if (item.stderr.contains("SyntaxError") || item.stderr.contains("IndentationError")) {
+                        item.statusId = 6;
+                        item.compileOutput = item.stderr;
+                        tcResult.setStatus("COMPILATION_ERROR");
+                        tcResult.setMessage("Syntax Error:\n" + item.stderr);
+                        tcResult.setActualOutput("Syntax Error:\n" + item.stderr);
+                    } else {
+                        item.statusId = 11;
+                        tcResult.setStatus("RTE");
+                        tcResult.setMessage("Runtime Error:\n" + item.stderr);
+                        tcResult.setActualOutput("Runtime Error:\n" + item.stderr);
+                    }
+                } else {
+                    tcResult.setActualOutput(item.stdout);
+                    String expectedOut = tc.getExpectedOutput();
+                    boolean hasValidExpected = (expectedOut != null && !expectedOut.trim().isEmpty() && !"N/A".equalsIgnoreCase(expectedOut.trim()));
+                    if (hasValidExpected && compareOutputs(expectedOut, item.stdout)) {
+                        item.statusId = 3;
+                        item.passed = true;
+                        tcResult.setStatus("PASSED");
+                        tcResult.setMarksAwarded(tcMaxMarks);
+                        tcResult.setMessage("Test Case Passed");
+                    } else {
+                        item.statusId = 4;
+                        tcResult.setStatus("FAILED");
+                        tcResult.setMarksAwarded(0);
+                        if (tc.getIsHidden() != null && tc.getIsHidden()) {
+                            tcResult.setMessage("Output doesn't match expected output. (Hidden testcase failed)");
+                        } else {
+                            tcResult.setMessage("Output doesn't match expected output.\nExpected:\n" + (expectedOut != null ? expectedOut.trim() : "") + "\nYour Output:\n" + (item.stdout != null ? item.stdout.trim() : ""));
+                        }
+                    }
+                }
+            }
+        } catch (Exception e) {
+            item.statusId = 11;
+            tcResult.setStatus("FAILED");
+            tcResult.setMessage("Execution error: " + e.getMessage());
+            tcResult.setActualOutput("Execution error: " + e.getMessage());
+        }
+        return item;
+    }
+
+    private TcExecutionResult runNativeExecutableTestCase(File exeFile, TestCase tc, int tcIdx) {
+        TcExecutionResult item = new TcExecutionResult();
+        item.index = tcIdx;
+        TestCaseResultDto tcResult = new TestCaseResultDto();
+        tcResult.setTestCaseId(tc.getId());
+        tcResult.setInputData(tc.getInputData());
+        tcResult.setExpectedOutput(tc.getExpectedOutput());
+        int tcMaxMarks = tc.getMarks() != null ? tc.getMarks() : 5;
+        tcResult.setMarks(tcMaxMarks);
+        tcResult.setMarksAwarded(0);
+        item.tcResult = tcResult;
+
+        long startTime = System.currentTimeMillis();
+        try {
+            ProcessBuilder pb = new ProcessBuilder(exeFile.getAbsolutePath());
+            Process process = pb.start();
+
+            if (tc.getInputData() != null && !tc.getInputData().isEmpty()) {
+                try (OutputStream os = process.getOutputStream()) {
+                    os.write(tc.getInputData().getBytes(StandardCharsets.UTF_8));
+                    os.flush();
+                }
+            } else {
+                try { process.getOutputStream().close(); } catch (Exception ignored) {}
+            }
+
+            ByteArrayOutputStream outStream = new ByteArrayOutputStream();
+            ByteArrayOutputStream errStream = new ByteArrayOutputStream();
+
+            Thread outThread = new Thread(() -> {
+                try (InputStream is = process.getInputStream()) { is.transferTo(outStream); } catch (Exception ignored) {}
+            });
+            Thread errThread = new Thread(() -> {
+                try (InputStream is = process.getErrorStream()) { is.transferTo(errStream); } catch (Exception ignored) {}
+            });
+            outThread.start();
+            errThread.start();
+
+            boolean finished = process.waitFor(5, java.util.concurrent.TimeUnit.SECONDS);
+            if (!finished) {
+                process.destroyForcibly();
+                item.statusId = 5;
+                tcResult.setStatus("TLE");
+                tcResult.setMessage("Time Limit Exceeded");
+                tcResult.setActualOutput("Time Limit Exceeded");
+            } else {
+                outThread.join(1000);
+                errThread.join(1000);
+                item.timeMs = (int) (System.currentTimeMillis() - startTime);
+                tcResult.setRunTimeMs(item.timeMs);
+                tcResult.setMemoryUsedKb(1200);
+
+                int exitCode = process.exitValue();
+                item.stdout = outStream.toString(StandardCharsets.UTF_8);
+                item.stderr = errStream.toString(StandardCharsets.UTF_8);
+
+                if (exitCode != 0) {
+                    item.statusId = 11;
+                    tcResult.setStatus("RTE");
+                    tcResult.setMessage("Runtime Error:\n" + item.stderr);
+                    tcResult.setActualOutput("Runtime Error:\n" + item.stderr);
+                } else {
+                    tcResult.setActualOutput(item.stdout);
+                    String expectedOut = tc.getExpectedOutput();
+                    boolean hasValidExpected = (expectedOut != null && !expectedOut.trim().isEmpty() && !"N/A".equalsIgnoreCase(expectedOut.trim()));
+                    if (hasValidExpected && compareOutputs(expectedOut, item.stdout)) {
+                        item.statusId = 3;
+                        item.passed = true;
+                        tcResult.setStatus("PASSED");
+                        tcResult.setMarksAwarded(tcMaxMarks);
+                        tcResult.setMessage("Test Case Passed");
+                    } else {
+                        item.statusId = 4;
+                        tcResult.setStatus("FAILED");
+                        tcResult.setMarksAwarded(0);
+                        if (tc.getIsHidden() != null && tc.getIsHidden()) {
+                            tcResult.setMessage("Output doesn't match expected output. (Hidden testcase failed)");
+                        } else {
+                            tcResult.setMessage("Output doesn't match expected output.\nExpected:\n" + (expectedOut != null ? expectedOut.trim() : "") + "\nYour Output:\n" + (item.stdout != null ? item.stdout.trim() : ""));
+                        }
+                    }
+                }
+            }
+        } catch (Exception e) {
+            item.statusId = 11;
+            tcResult.setStatus("FAILED");
+            tcResult.setMessage("Execution error: " + e.getMessage());
+            tcResult.setActualOutput("Execution error: " + e.getMessage());
+        }
+        return item;
+    }
+
     private JsonNode executeOnJudge0(String code, int languageId, String stdin, String expectedOutput) {
+        if (!isJudge0Available()) {
+            return executeLocallyFallback(code, languageId, stdin, expectedOutput);
+        }
         try {
             ObjectMapper mapper = new ObjectMapper();
             Map<String, Object> payload = new HashMap<>();
@@ -435,7 +1054,7 @@ public class CodeExecutionService {
             HttpRequest httpRequest = HttpRequest.newBuilder()
                     .uri(URI.create(judge0ApiUrl + "/submissions?base64_encoded=true&wait=true"))
                     .header("Content-Type", "application/json")
-                    .timeout(java.time.Duration.ofSeconds(10))
+                    .timeout(java.time.Duration.ofSeconds(6))
                     .POST(HttpRequest.BodyPublishers.ofString(jsonPayload))
                     .build();
                     
@@ -1089,20 +1708,32 @@ public class CodeExecutionService {
         studentTest.setTestCasesPassed(totalPassedCases);
         studentTest.setTotalTestCases(totalCases);
 
-        int maxMarks = studentTest.getTest().getMaxMarks() != null ? studentTest.getTest().getMaxMarks() : 100;
+        com.chillcode.assessment.entity.Test test = null;
+        try {
+            test = studentTest.getTest();
+            if (test != null) {
+                test.getMaxMarks();
+            }
+        } catch (Exception e) {
+            if (studentTest.getTest() != null && studentTest.getTest().getId() != null) {
+                test = testRepository.findById(studentTest.getTest().getId()).orElse(null);
+            }
+        }
+
+        int maxMarks = test != null && test.getMaxMarks() != null ? test.getMaxMarks() : 100;
         studentTest.setPassFailStatus(totalScore >= (maxMarks / 2) ? "PASS" : "FAIL");
 
         studentTest.setSubmittedAt(java.time.LocalDateTime.now());
         
-        boolean isPracticeArena = studentTest.getTest() != null && studentTest.getTest().getName() != null && studentTest.getTest().getName().toLowerCase().contains("practice arena");
+        boolean isPracticeArena = test != null && test.getName() != null && test.getName().toLowerCase().contains("practice arena");
         
         if (!isPracticeArena) {
             if (studentTest.getTimeTakenSeconds() == null || studentTest.getTimeTakenSeconds() == 0L) {
                 if (studentTest.getStartedAt() != null) {
                     long seconds = java.time.Duration.between(studentTest.getStartedAt(), studentTest.getSubmittedAt()).getSeconds();
                     studentTest.setTimeTakenSeconds(Math.max(1L, seconds));
-                } else if (studentTest.getAutoSubmitted() != null && studentTest.getAutoSubmitted() && studentTest.getTest() != null && studentTest.getTest().getDurationMinutes() != null) {
-                    studentTest.setTimeTakenSeconds((long) studentTest.getTest().getDurationMinutes() * 60);
+                } else if (studentTest.getAutoSubmitted() != null && studentTest.getAutoSubmitted() && test != null && test.getDurationMinutes() != null) {
+                    studentTest.setTimeTakenSeconds((long) test.getDurationMinutes() * 60);
                 } else {
                     studentTest.setTimeTakenSeconds(1L); // Prevent 0 sec
                 }
@@ -1120,8 +1751,8 @@ public class CodeExecutionService {
 
         if (acceptedCount >= 1 && achievementRepository.findByStudentId(studentTest.getStudent().getId()).isEmpty()) {
             User admin = null;
-            if (studentTest.getTest() != null && studentTest.getTest().getAdmin() != null) {
-                admin = studentTest.getTest().getAdmin();
+            if (test != null && test.getAdmin() != null) {
+                admin = test.getAdmin();
             } else if (studentTest.getAdmin() != null) {
                 admin = studentTest.getAdmin();
             } else if (studentTest.getStudent() != null && studentTest.getStudent().getAdmin() != null) {
@@ -1132,7 +1763,7 @@ public class CodeExecutionService {
                 String diagnostics = String.format(
                     "studentTestId=%s, testId=%s, studentId=%s",
                     studentTest.getId(),
-                    studentTest.getTest() != null ? studentTest.getTest().getId() : "null",
+                    test != null ? test.getId() : "null",
                     studentTest.getStudent() != null ? studentTest.getStudent().getId() : "null"
                 );
                 throw new IllegalStateException("Cannot resolve admin ownership for Achievement. Diagnostics: " + diagnostics);
@@ -1156,8 +1787,8 @@ public class CodeExecutionService {
 
         // Dynamically recalculate badges for this test, which handles standalone question badges
         try {
-            if (studentTest.getTest() != null) {
-                badgeSetService.allocateBadgesForTest(studentTest.getTest().getId());
+            if (test != null) {
+                badgeSetService.allocateBadgesForTest(test.getId());
             }
         } catch (Exception ignored) {}
     }
@@ -1176,6 +1807,36 @@ public class CodeExecutionService {
         }
         if (admin == null && question != null && question.getAdmin() != null) {
             admin = question.getAdmin();
+        }
+
+        if (studentTest == null && question != null) {
+            try {
+                User student = getCurrentUser();
+                Test qTest = null;
+                @SuppressWarnings("unchecked")
+                List<Number> testIds = (List<Number>) entityManager.createNativeQuery(
+                        "SELECT DISTINCT test_id FROM test_questions WHERE question_id = :qId")
+                        .setParameter("qId", question.getId())
+                        .getResultList();
+                if (testIds != null && !testIds.isEmpty()) {
+                    qTest = testRepository.findById(testIds.get(0).longValue()).orElse(null);
+                }
+                if (qTest != null && student != null) {
+                    studentTest = studentTestRepository.findByStudentIdAndTestId(student.getId(), qTest.getId()).orElse(null);
+                    if (studentTest == null) {
+                        studentTest = StudentTest.builder()
+                                .student(student)
+                                .test(qTest)
+                                .admin(admin != null ? admin : qTest.getAdmin())
+                                .status("STARTED")
+                                .startedAt(LocalDateTime.now())
+                                .build();
+                        studentTest = studentTestRepository.save(studentTest);
+                    }
+                }
+            } catch (Exception ex) {
+                System.err.println("Auto-resolve studentTest for standalone submission notice: " + ex.getMessage());
+            }
         }
 
         if (admin == null) {
@@ -1336,9 +1997,28 @@ public class CodeExecutionService {
             String hashInput = code + "|" + (errorContext != null ? errorContext : "");
             String hash = calculateSHA256(hashInput);
 
+            String memoryCached = localHintCache.get(hash);
+            if (memoryCached != null) {
+                return memoryCached;
+            }
+
+            // FAST GUARD: If AI API key is unconfigured or placeholder, use instant local explanation without blocking
+            if (xaiApiKey == null || xaiApiKey.isBlank() || xaiApiKey.contains("placeholder") || "gsk_default_key_placeholder".equals(xaiApiKey)) {
+                String localExp = getLocalFallbackExplanation(status, compileError, stderr);
+                localHintCache.put(hash, localExp);
+                CompletableFuture.runAsync(() -> {
+                    try {
+                        aiHintCacheRepository.save(AiHintCache.builder().hash(hash).aiHint(localExp).build());
+                    } catch (Exception ignored) {}
+                });
+                return localExp;
+            }
+
             Optional<AiHintCache> cachedHintOpt = aiHintCacheRepository.findByHash(hash);
             if (cachedHintOpt.isPresent()) {
-                return cachedHintOpt.get().getAiHint();
+                String dbHint = cachedHintOpt.get().getAiHint();
+                localHintCache.put(hash, dbHint);
+                return dbHint;
             }
 
             if (studentTest != null) {
@@ -1442,29 +2122,28 @@ public class CodeExecutionService {
 
             String requestBody = mapper.writeValueAsString(requestMap);
 
-            java.net.http.HttpClient client = java.net.http.HttpClient.newBuilder()
-                .connectTimeout(java.time.Duration.ofSeconds(10))
-                .build();
-            java.net.http.HttpRequest httpRequest = java.net.http.HttpRequest.newBuilder()
-                .uri(java.net.URI.create("https://api.groq.com/openai/v1/chat/completions"))
+            HttpRequest httpRequest = HttpRequest.newBuilder()
+                .uri(URI.create("https://api.groq.com/openai/v1/chat/completions"))
                 .header("Content-Type", "application/json")
                 .header("Authorization", "Bearer " + xaiApiKey)
-                .POST(java.net.http.HttpRequest.BodyPublishers.ofString(requestBody, StandardCharsets.UTF_8))
+                .timeout(java.time.Duration.ofSeconds(4))
+                .POST(HttpRequest.BodyPublishers.ofString(requestBody, StandardCharsets.UTF_8))
                 .build();
 
-            java.net.http.HttpResponse<String> response = client.send(httpRequest, java.net.http.HttpResponse.BodyHandlers.ofString());
+            HttpResponse<String> response = httpClient.send(httpRequest, HttpResponse.BodyHandlers.ofString());
             
             if (response.statusCode() != 200) {
-                System.err.println("Primary Grok request in CodeExecutionService failed with status: " + response.statusCode() + ", Body: " + response.body());
+                System.err.println("Primary Grok request in CodeExecutionService failed with status: " + response.statusCode());
                 requestMap.put("model", "llama-3.1-8b-instant");
                 requestBody = mapper.writeValueAsString(requestMap);
-                httpRequest = java.net.http.HttpRequest.newBuilder()
-                    .uri(java.net.URI.create("https://api.groq.com/openai/v1/chat/completions"))
+                httpRequest = HttpRequest.newBuilder()
+                    .uri(URI.create("https://api.groq.com/openai/v1/chat/completions"))
                     .header("Content-Type", "application/json")
                     .header("Authorization", "Bearer " + xaiApiKey)
-                    .POST(java.net.http.HttpRequest.BodyPublishers.ofString(requestBody, StandardCharsets.UTF_8))
+                    .timeout(java.time.Duration.ofSeconds(4))
+                    .POST(HttpRequest.BodyPublishers.ofString(requestBody, StandardCharsets.UTF_8))
                     .build();
-                response = client.send(httpRequest, java.net.http.HttpResponse.BodyHandlers.ofString());
+                response = httpClient.send(httpRequest, HttpResponse.BodyHandlers.ofString());
             }
 
             String aiExplanation = null;

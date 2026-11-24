@@ -53,6 +53,9 @@ public class SuperAdminController {
     @Autowired
     private com.chillcode.assessment.repository.NotificationRepository notificationRepository;
 
+    @Autowired
+    private com.chillcode.assessment.repository.StudentQuestionStatusRepository studentQuestionStatusRepository;
+
     private boolean isAttendedStatus(String status) {
         if (status == null) return false;
         String s = status.trim().toUpperCase();
@@ -573,6 +576,11 @@ public class SuperAdminController {
             testHistory.add(th);
         }
 
+        List<com.chillcode.assessment.entity.StudentQuestionStatus> sqsList = studentQuestionStatusRepository.findByStudentId(id);
+        Map<Long, Integer> sqsAttemptsMap = sqsList.stream()
+                .filter(s -> s.getQuestionId() != null && s.getAttemptCount() != null)
+                .collect(Collectors.toMap(com.chillcode.assessment.entity.StudentQuestionStatus::getQuestionId, com.chillcode.assessment.entity.StudentQuestionStatus::getAttemptCount, (a, b) -> a));
+
         List<Map<String, Object>> submissionHistory = new ArrayList<>();
         for (Submission sub : submissions) {
             Map<String, Object> sh = new HashMap<>();
@@ -584,6 +592,9 @@ public class SuperAdminController {
             sh.put("score", sub.getScore());
             sh.put("executionTime", sub.getRunTimeMs());
             sh.put("createdAt", sub.getCreatedAt());
+            if (sub.getQuestion() != null) {
+                sh.put("attempts", sqsAttemptsMap.getOrDefault(sub.getQuestion().getId(), 1));
+            }
             submissionHistory.add(sh);
         }
 

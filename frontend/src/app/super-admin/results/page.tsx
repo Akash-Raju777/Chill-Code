@@ -175,7 +175,7 @@ export default function DepartmentLeaderboardPage() {
       if (isRefresh) setRefreshing(true);
       else setLoading(true);
 
-      const res = await apiCall('/api/super-admin/leaderboard/overview');
+      const res = await apiCall('/api/super-admin/leaderboard/overview', { skipLocalCache: isRefresh });
       setData(res as OverviewData);
 
       // Default selected subject to first available

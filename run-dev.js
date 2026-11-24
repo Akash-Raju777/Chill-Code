@@ -20,6 +20,8 @@ if (fs.existsSync(envPath)) {
   });
 }
 
+let isShuttingDown = false;
+
 // 2. Start Backend
 console.log('Starting Spring Boot Backend...');
 const backendProcess = spawn('cmd.exe', ['/c', 'mvnw.cmd', 'spring-boot:run'], {
@@ -30,23 +32,43 @@ const backendProcess = spawn('cmd.exe', ['/c', 'mvnw.cmd', 'spring-boot:run'], {
 
 backendProcess.on('close', (code) => {
   console.log(`Backend process exited with code ${code}`);
+  if (!isShuttingDown) {
+    console.log('Backend exited unexpectedly.');
+  }
 });
 
-// 3. Start Frontend
-console.log('Starting Next.js Frontend...');
-const frontendProcess = spawn('cmd.exe', ['/c', 'npm', 'run', 'dev'], {
-  cwd: path.join(__dirname, 'frontend'),
-  env,
-  stdio: 'inherit'
-});
+// 3. Start Frontend with auto-restart resilience
+let frontendProcess = null;
+function startFrontend() {
+  console.log('Starting Next.js Frontend...');
+  frontendProcess = spawn('cmd.exe', ['/c', 'npm', 'run', 'dev'], {
+    cwd: path.join(__dirname, 'frontend'),
+    env,
+    stdio: 'inherit'
+  });
 
-frontendProcess.on('close', (code) => {
-  console.log(`Frontend process exited with code ${code}`);
-});
+  frontendProcess.on('close', (code) => {
+    console.log(`Frontend process exited with code ${code}`);
+    if (!isShuttingDown) {
+      console.log('Restarting frontend in 2 seconds...');
+      setTimeout(startFrontend, 2000);
+    }
+  });
+}
+
+startFrontend();
 
 // Handle termination
 process.on('SIGINT', () => {
-  backendProcess.kill();
-  frontendProcess.kill();
+  isShuttingDown = true;
+  if (backendProcess) backendProcess.kill();
+  if (frontendProcess) frontendProcess.kill();
+  process.exit();
+});
+
+process.on('SIGTERM', () => {
+  isShuttingDown = true;
+  if (backendProcess) backendProcess.kill();
+  if (frontendProcess) frontendProcess.kill();
   process.exit();
 });

@@ -3,7 +3,7 @@
 import React, { useEffect, useState } from 'react';
 import ConfirmModal from '../../../components/ConfirmModal';
 import { apiCall } from '../../../utils/api';
-import { Users, Loader2, UserX, AlertTriangle, ShieldCheck, Edit2, Plus, Lock } from 'lucide-react';
+import { Users, Loader2, UserX, AlertTriangle, ShieldCheck, Edit2, Plus, Lock, RefreshCw } from 'lucide-react';
 
 interface Student {
   id: number;
@@ -19,6 +19,7 @@ interface Student {
 export default function StudentManagement() {
   const [students, setStudents] = useState<Student[]>([]);
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState('');
   
   // Modal toggle states
@@ -35,17 +36,20 @@ export default function StudentManagement() {
   const [status, setStatus] = useState('ACTIVE');
   const [saveLoading, setSaveLoading] = useState(false);
 
-  const fetchStudents = async (isInitial = false) => {
-    if (isInitial || students.length === 0) {
+  const fetchStudents = async (isInitial = false, isRefresh = false) => {
+    if (isRefresh) {
+      setRefreshing(true);
+    } else if (isInitial || students.length === 0) {
       setLoading(true);
     }
     try {
-      const data = await apiCall('/api/admin/students');
+      const data = await apiCall('/api/admin/students', { skipLocalCache: isRefresh });
       setStudents(data);
     } catch (err: any) {
       setError('Failed to fetch students database list');
     } finally {
       setLoading(false);
+      setRefreshing(false);
     }
   };
 
@@ -142,13 +146,24 @@ export default function StudentManagement() {
           <h1 className="text-2xl font-bold text-white tracking-tight">Student Control Deck</h1>
           <p className="text-sm text-gray-500">View and update college student accounts and execution parameters</p>
         </div>
-        <button
-          onClick={handleOpenAdd}
-          className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-[#7c3aed] hover:bg-[#8b5cf6] text-white text-xs font-bold transition-all shadow-md shadow-[#7c3aed]/10"
-        >
-          <Plus className="w-4 h-4" />
-          Add Student
-        </button>
+        <div className="flex items-center gap-3">
+          <button
+            onClick={() => fetchStudents(false, true)}
+            disabled={refreshing || loading}
+            className="flex items-center gap-2 px-3.5 py-2 rounded-xl bg-white/5 hover:bg-white/10 text-gray-300 hover:text-white border border-white/10 text-xs font-medium transition-all shadow-sm disabled:opacity-50"
+            title="Refresh students"
+          >
+            <RefreshCw className={`w-3.5 h-3.5 ${refreshing ? 'animate-spin text-indigo-400' : ''}`} />
+            <span>{refreshing ? 'Refreshing...' : 'Refresh'}</span>
+          </button>
+          <button
+            onClick={handleOpenAdd}
+            className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-[#7c3aed] hover:bg-[#8b5cf6] text-white text-xs font-bold transition-all shadow-md shadow-[#7c3aed]/10"
+          >
+            <Plus className="w-4 h-4" />
+            Add Student
+          </button>
+        </div>
       </div>
 
       {error && (

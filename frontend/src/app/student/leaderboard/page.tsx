@@ -18,7 +18,8 @@ import {
   Loader2, 
   Flame, 
   Layers, 
-  Filter 
+  Filter,
+  RefreshCw
 } from 'lucide-react';
 
 interface Subject {
@@ -34,6 +35,7 @@ export default function StudentLeaderboardPage() {
   const [summary, setSummary] = useState<any>(null);
   const [leaderboardData, setLeaderboardData] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState('');
 
   // Filters
@@ -41,22 +43,25 @@ export default function StudentLeaderboardPage() {
   const [departmentFilter, setDepartmentFilter] = useState('ALL');
   const [searchQuery, setSearchQuery] = useState('');
 
-  const loadInitialData = async () => {
-    setLoading(true);
+  const loadInitialData = async (isRefresh = false) => {
+    if (!isRefresh) setLoading(true);
+    if (isRefresh) setRefreshing(true);
     try {
       const [subjData, sumData] = await Promise.all([
-        apiCall('/api/subjects'),
-        fetchStudentLeaderboardSummary().catch(() => null)
+        apiCall('/api/subjects', { skipLocalCache: isRefresh }),
+        fetchStudentLeaderboardSummary({ skipLocalCache: isRefresh }).catch(() => null)
       ]);
       setSubjects(subjData || []);
-      if (subjData && subjData.length > 0) {
+      if (subjData && subjData.length > 0 && !selectedSubjectId) {
         setSelectedSubjectId(subjData[0].id);
       }
       setSummary(sumData);
+      setError('');
     } catch (err: any) {
       setError(err.message || 'Failed to load leaderboard settings');
     } finally {
-      setLoading(false);
+      if (!isRefresh) setLoading(false);
+      setRefreshing(false);
     }
   };
 
@@ -64,21 +69,31 @@ export default function StudentLeaderboardPage() {
     loadInitialData();
   }, []);
 
-  const loadLeaderboard = async () => {
-    setLoading(true);
+  const loadLeaderboard = async (isRefresh = false) => {
+    if (!isRefresh) setLoading(true);
+    if (isRefresh) setRefreshing(true);
     try {
       if (activeTab === 'OVERALL') {
-        const data = await fetchOverallLeaderboard(timeFilter, departmentFilter);
+        const data = await fetchOverallLeaderboard(timeFilter, departmentFilter, { skipLocalCache: isRefresh });
         setLeaderboardData(data || []);
       } else if (selectedSubjectId) {
-        const data = await fetchSubjectLeaderboard(Number(selectedSubjectId));
+        const data = await fetchSubjectLeaderboard(Number(selectedSubjectId), { skipLocalCache: isRefresh });
         setLeaderboardData(data || []);
       }
+      setError('');
     } catch (err: any) {
       setError(err.message || 'Failed to load leaderboard rankings');
     } finally {
-      setLoading(false);
+      if (!isRefresh) setLoading(false);
+      setRefreshing(false);
     }
+  };
+
+  const handleRefresh = async () => {
+    await Promise.all([
+      loadInitialData(true),
+      loadLeaderboard(true)
+    ]);
   };
 
   useEffect(() => {
@@ -107,23 +122,33 @@ export default function StudentLeaderboardPage() {
             <p className="text-xs text-gray-400">Live rankings derived from test marks and test cases passed</p>
           </div>
 
-          {/* Student Stats Summary Cards */}
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-            <div className="glass-panel p-3 rounded-xl border border-white/10 bg-white/5 space-y-0.5">
-              <div className="text-[10px] text-gray-400 uppercase font-bold">Overall Rank</div>
-              <div className="text-xl font-black text-amber-400">#{summary?.overallRank || 1}</div>
-            </div>
-            <div className="glass-panel p-3 rounded-xl border border-white/10 bg-white/5 space-y-0.5">
-              <div className="text-[10px] text-gray-400 uppercase font-bold">Current Rank</div>
-              <div className="text-xl font-black text-emerald-400">#{summary?.myCurrentRank || 1}</div>
-            </div>
-            <div className="glass-panel p-3 rounded-xl border border-white/10 bg-white/5 space-y-0.5">
-              <div className="text-[10px] text-gray-400 uppercase font-bold">Total Badges</div>
-              <div className="text-xl font-black text-purple-400">{summary?.totalBadgesEarned || 0}</div>
-            </div>
-            <div className="glass-panel p-3 rounded-xl border border-white/10 bg-white/5 space-y-0.5 truncate">
-              <div className="text-[10px] text-gray-400 uppercase font-bold truncate">Recent Badge</div>
-              <div className="text-xs font-bold text-white truncate">{summary?.recentAchievement?.badgeName || 'None'}</div>
+          <div className="flex flex-col sm:flex-row items-start sm:items-center gap-3">
+            <button
+              onClick={handleRefresh}
+              disabled={refreshing}
+              className="flex items-center gap-2 px-3.5 py-2.5 bg-white/5 hover:bg-white/10 border border-white/10 rounded-xl text-xs font-bold text-gray-300 hover:text-white transition-all disabled:opacity-50 select-none shadow-sm"
+            >
+              <RefreshCw className={`w-3.5 h-3.5 ${refreshing ? 'animate-spin text-purple-400' : ''}`} />
+              {refreshing ? 'Refreshing...' : 'Refresh'}
+            </button>
+            {/* Student Stats Summary Cards */}
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+              <div className="glass-panel p-3 rounded-xl border border-white/10 bg-white/5 space-y-0.5">
+                <div className="text-[10px] text-gray-400 uppercase font-bold">Overall Rank</div>
+                <div className="text-xl font-black text-amber-400">#{summary?.overallRank || 1}</div>
+              </div>
+              <div className="glass-panel p-3 rounded-xl border border-white/10 bg-white/5 space-y-0.5">
+                <div className="text-[10px] text-gray-400 uppercase font-bold">Current Rank</div>
+                <div className="text-xl font-black text-emerald-400">#{summary?.myCurrentRank || 1}</div>
+              </div>
+              <div className="glass-panel p-3 rounded-xl border border-white/10 bg-white/5 space-y-0.5">
+                <div className="text-[10px] text-gray-400 uppercase font-bold">Total Badges</div>
+                <div className="text-xl font-black text-purple-400">{summary?.totalBadgesEarned || 0}</div>
+              </div>
+              <div className="glass-panel p-3 rounded-xl border border-white/10 bg-white/5 space-y-0.5 truncate">
+                <div className="text-[10px] text-gray-400 uppercase font-bold truncate">Recent Badge</div>
+                <div className="text-xs font-bold text-white truncate">{summary?.recentAchievement?.badgeName || 'None'}</div>
+              </div>
             </div>
           </div>
         </div>

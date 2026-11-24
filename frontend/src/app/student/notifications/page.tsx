@@ -2,7 +2,7 @@
 
 import React, { useEffect, useState } from 'react';
 import { apiCall, formatISTDateTime } from '../../../utils/api';
-import { Bell, Loader2, Calendar, AlertTriangle, ShieldCheck, MailOpen } from 'lucide-react';
+import { Bell, Loader2, Calendar, AlertTriangle, ShieldCheck, MailOpen, RefreshCw } from 'lucide-react';
 
 interface Notification {
   id: number;
@@ -16,17 +16,21 @@ interface Notification {
 export default function StudentNotifications() {
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState('');
 
-  const fetchNotifications = async () => {
-    setLoading(true);
+  const fetchNotifications = async (isRefresh = false) => {
+    if (!isRefresh) setLoading(true);
+    if (isRefresh) setRefreshing(true);
     try {
-      const data = await apiCall('/api/student/notifications');
-      setNotifications(data);
+      const data = await apiCall('/api/student/notifications', { skipLocalCache: isRefresh });
+      setNotifications(data || []);
+      setError('');
     } catch (err: any) {
       setError('Failed to load notifications list');
     } finally {
-      setLoading(false);
+      if (!isRefresh) setLoading(false);
+      setRefreshing(false);
     }
   };
 
@@ -58,11 +62,19 @@ export default function StudentNotifications() {
 
   return (
     <div className="space-y-6 min-h-screen bg-[#0b0c10] text-[#c5c6c7] p-2">
-      <div className="flex justify-between items-center">
+      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
         <div>
           <h1 className="text-2xl font-bold text-white tracking-tight">System Notifications</h1>
           <p className="text-sm text-gray-500">Official broadcast notifications from the administrator</p>
         </div>
+        <button
+          onClick={() => fetchNotifications(true)}
+          disabled={refreshing}
+          className="flex items-center gap-2 px-3.5 py-2 bg-white/5 hover:bg-white/10 border border-white/10 rounded-xl text-xs font-bold text-gray-300 hover:text-white transition-all disabled:opacity-50 select-none shadow-sm"
+        >
+          <RefreshCw className={`w-3.5 h-3.5 ${refreshing ? 'animate-spin text-purple-400' : ''}`} />
+          {refreshing ? 'Refreshing...' : 'Refresh'}
+        </button>
       </div>
 
       {error && (

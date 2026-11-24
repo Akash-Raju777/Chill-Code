@@ -22,6 +22,12 @@ public interface SubmissionRepository extends JpaRepository<Submission, Long> {
     @org.springframework.data.jpa.repository.Query("SELECT s FROM Submission s WHERE s.studentTest.student.id = :studentId AND s.question.id = :questionId ORDER BY s.createdAt DESC")
     List<Submission> findByStudentIdAndQuestionIdOrderByCreatedAtDesc(@org.springframework.data.repository.query.Param("studentId") Long studentId, @org.springframework.data.repository.query.Param("questionId") Long questionId);
 
+    @org.springframework.data.jpa.repository.Query("SELECT COUNT(s) FROM Submission s WHERE s.studentTest.student.id = :studentId AND s.question.id = :questionId")
+    long countByStudentIdAndQuestionId(@org.springframework.data.repository.query.Param("studentId") Long studentId, @org.springframework.data.repository.query.Param("questionId") Long questionId);
+
+    @org.springframework.data.jpa.repository.Query("SELECT s.question.id, COUNT(s.id) FROM Submission s WHERE s.studentTest.student.id = :studentId GROUP BY s.question.id")
+    List<Object[]> countSubmissionsGroupedByQuestionForStudent(@org.springframework.data.repository.query.Param("studentId") Long studentId);
+
     @org.springframework.data.jpa.repository.Query("SELECT DISTINCT CONCAT(s.studentTest.id, '_', s.question.id) FROM Submission s WHERE s.studentTest.student.id = :studentId AND (s.status = 'ACCEPTED' OR s.overallResult = 'PASS') AND (s.active IS NULL OR s.active = true)")
     List<String> findSolvedTestQuestionPairsByStudentId(@org.springframework.data.repository.query.Param("studentId") Long studentId);
 

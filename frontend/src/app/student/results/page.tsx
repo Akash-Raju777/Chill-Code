@@ -8,7 +8,8 @@ import {
   Loader2, 
   Calendar, 
   ExternalLink,
-  Clock
+  Clock,
+  RefreshCw
 } from 'lucide-react';
 
 interface SubmissionResult {
@@ -58,16 +59,18 @@ export default function StudentResults() {
   const router = useRouter();
   const [submissions, setSubmissions] = useState<SubmissionResult[]>([]);
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState('');
 
   const [unlockedBadgeModal, setUnlockedBadgeModal] = useState<any>(null);
 
-  const fetchSubmissions = async () => {
-    setLoading(true);
+  const fetchSubmissions = async (showLoading = true, isRefresh = false) => {
+    if (showLoading) setLoading(true);
+    if (isRefresh) setRefreshing(true);
     try {
       const [submissionsData, earnedList] = await Promise.all([
-        apiCall('/api/student/submissions').catch(() => []),
-        apiCall('/api/student/badges/earned').catch(() => []),
+        apiCall('/api/student/submissions', { skipLocalCache: isRefresh }).catch(() => []),
+        apiCall('/api/student/badges/earned', { skipLocalCache: isRefresh }).catch(() => []),
       ]);
 
       setSubmissions(submissionsData || []);
@@ -87,13 +90,26 @@ export default function StudentResults() {
     } catch (err: any) {
       setError(err.message || 'Failed to load submission results.');
     } finally {
-      setLoading(false);
+      if (showLoading) setLoading(false);
+      setRefreshing(false);
     }
   };
 
   useEffect(() => {
-    fetchSubmissions();
+    fetchSubmissions(true, false);
   }, []);
+
+  // Real-time automatic polling when any submission is in PENDING/EVALUATING state
+  useEffect(() => {
+    const hasPending = submissions.some(s => s.status === 'PENDING' || (s as any).status === 'EVALUATING');
+    if (!hasPending) return;
+
+    const interval = setInterval(() => {
+      fetchSubmissions(false, true);
+    }, 1500);
+
+    return () => clearInterval(interval);
+  }, [submissions]);
 
   if (loading) {
     return (
@@ -133,10 +149,20 @@ export default function StudentResults() {
         </div>
       )}
 
-      {/* Header */}
-      <div>
-        <h1 className="text-2xl font-bold text-white tracking-tight">Academic Results</h1>
-        <p className="text-sm text-gray-500">View detailed scoring outputs and code submission history</p>
+      {/* Header with Refresh button */}
+      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+        <div>
+          <h1 className="text-2xl font-bold text-white tracking-tight">Academic Results</h1>
+          <p className="text-sm text-gray-500">View detailed scoring outputs and code submission history</p>
+        </div>
+        <button
+          onClick={() => fetchSubmissions(false, true)}
+          disabled={refreshing}
+          className="flex items-center gap-2 px-3.5 py-2 bg-white/5 hover:bg-white/10 border border-white/10 rounded-xl text-xs font-bold text-gray-300 hover:text-white transition-all disabled:opacity-50 select-none shadow-sm"
+        >
+          <RefreshCw className={`w-3.5 h-3.5 ${refreshing ? 'animate-spin text-purple-400' : ''}`} />
+          {refreshing ? 'Refreshing...' : 'Refresh'}
+        </button>
       </div>
 
       {error && (
@@ -158,6 +184,8 @@ export default function StudentResults() {
         ) : (
           <div className="space-y-4">
             {submissions.map((item) => {
+              const isPending = item.status === 'PENDING' || (item as any).status === 'EVALUATING';
+              const isExited = item.status === 'EXITED';
               const isAccepted = item.overallResult === 'PASS' || item.status === 'ACCEPTED';
               let verdictText = isAccepted ? 'PASS' : 'FAIL';
               let badgeStyle = isAccepted 
@@ -168,9 +196,20 @@ export default function StudentResults() {
                 <div key={item.id} className="glass-panel p-6 rounded-2xl flex flex-col md:flex-row md:items-center justify-between gap-6 border border-white/5 bg-[#11131c] hover:border-white/10 transition-all">
                   <div className="space-y-2 flex-1">
                     <div className="flex flex-wrap items-center gap-2">
-                      <span className={`text-[10px] font-black px-3 py-1 rounded-full uppercase tracking-wider ${badgeStyle}`}>
-                        {verdictText}
-                      </span>
+                      {isPending ? (
+                        <span className="text-[10px] font-black px-3 py-1 rounded-full uppercase tracking-wider bg-amber-500/10 text-amber-400 border border-amber-500/20 flex items-center gap-1.5">
+                          <Loader2 className="w-3 h-3 animate-spin text-amber-400" />
+                          Evaluating
+                        </span>
+                      ) : isExited ? (
+                        <span className="text-[10px] font-black px-3 py-1 rounded-full uppercase tracking-wider bg-rose-500/10 text-rose-400 border border-rose-500/20">
+                          EXITED (FAIL)
+                        </span>
+                      ) : (
+                        <span className={`text-[10px] font-black px-3 py-1 rounded-full uppercase tracking-wider ${badgeStyle}`}>
+                          {verdictText}
+                        </span>
+                      )}
                       <h3 className="font-bold text-white text-lg">{item.questionName || 'Unknown Question'}</h3>
                     </div>
                     <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-gray-500 font-medium">
@@ -178,7 +217,7 @@ export default function StudentResults() {
                         {item.subjectName || 'Unknown Subject'}
                       </span>
                       <span className="text-indigo-400 font-bold text-[10px] tracking-wider bg-indigo-500/10 border border-indigo-500/20 px-2 py-0.5 rounded">
-                        Attempts: {item.attempts ?? 0}
+                        Attempts: {item.attempts ?? 1}
                       </span>
                       <span className="flex items-center gap-1 text-indigo-300 font-medium">
                         <Clock className="w-3.5 h-3.5 text-indigo-400" />

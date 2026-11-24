@@ -103,7 +103,7 @@ export default function StudentManagementPage() {
       if (isRefresh) setRefreshing(true);
       else setLoading(true);
 
-      const data = await apiCall('/api/super-admin/students');
+      const data = await apiCall('/api/super-admin/students', { skipLocalCache: isRefresh });
       setStudents(data as StudentItem[]);
     } catch (err: any) {
       toast.error(err.message || 'Failed to load students');

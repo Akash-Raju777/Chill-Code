@@ -3,7 +3,7 @@
 import React, { useEffect, useState } from 'react';
 import { apiCall } from '../../../utils/api';
 import { useAuthStore } from '../../../store/authStore';
-import { Timer, Award, Bell, CheckSquare, Loader2, Sparkles, BookOpen, User as UserIcon } from 'lucide-react';
+import { Timer, Award, Bell, CheckSquare, Loader2, Sparkles, BookOpen, User as UserIcon, RefreshCw } from 'lucide-react';
 
 interface SubjectStat {
   subjectId: number;
@@ -31,18 +31,22 @@ interface Stats {
 export default function StudentDashboard() {
   const [stats, setStats] = useState<Stats | null>(null);
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState('');
   const { user } = useAuthStore();
 
-  const fetchDashboardData = async (isSilent = false) => {
-    if (!isSilent) setLoading(true);
+  const fetchDashboardData = async (isSilent = false, isRefresh = false) => {
+    if (!isSilent && !isRefresh) setLoading(true);
+    if (isRefresh) setRefreshing(true);
     try {
-      const statsRes = await apiCall('/api/student/dashboard/stats');
+      const statsRes = await apiCall('/api/student/dashboard/stats', { skipLocalCache: isRefresh });
       setStats(statsRes);
+      setError('');
     } catch (err: any) {
       if (!isSilent) setError('Failed to load dashboard metrics');
     } finally {
-      if (!isSilent) setLoading(false);
+      if (!isSilent && !isRefresh) setLoading(false);
+      setRefreshing(false);
     }
   };
 
@@ -103,10 +107,20 @@ export default function StudentDashboard() {
 
   return (
     <div className="space-y-8">
-      {/* Title greeting */}
-      <div>
-        <h1 className="text-2xl font-bold text-white tracking-tight">Student Dashboard</h1>
-        <p className="text-sm text-gray-500">Track your exam assignments, performance logs, and profile</p>
+      {/* Title greeting & Refresh */}
+      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+        <div>
+          <h1 className="text-2xl font-bold text-white tracking-tight">Student Dashboard</h1>
+          <p className="text-sm text-gray-500">Track your exam assignments, performance logs, and profile</p>
+        </div>
+        <button
+          onClick={() => fetchDashboardData(false, true)}
+          disabled={refreshing}
+          className="flex items-center gap-2 px-3.5 py-2 bg-white/5 hover:bg-white/10 border border-white/10 rounded-xl text-xs font-bold text-gray-300 hover:text-white transition-all disabled:opacity-50 select-none shadow-sm"
+        >
+          <RefreshCw className={`w-3.5 h-3.5 ${refreshing ? 'animate-spin text-purple-400' : ''}`} />
+          {refreshing ? 'Refreshing...' : 'Refresh'}
+        </button>
       </div>
 
       {/* Cards Row */}

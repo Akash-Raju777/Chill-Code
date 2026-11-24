@@ -3,7 +3,7 @@
 import React, { useEffect, useState } from 'react';
 import { apiCall, formatISTDateTime } from '../../../utils/api';
 import { toast } from '../../../store/toastStore';
-import { Plus, Timer, Calendar, CheckSquare, Loader2, Award, Clipboard, UserCheck, Edit3 } from 'lucide-react';
+import { Plus, Timer, Calendar, CheckSquare, Loader2, Award, Clipboard, UserCheck, Edit3, RefreshCw } from 'lucide-react';
 
 interface Subject {
   id: number;
@@ -46,6 +46,7 @@ export default function TestManagement() {
   const [selectedStaffId, setSelectedStaffId] = useState<number | null>(null);
   
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
   const [showAddForm, setShowAddForm] = useState(false);
   const [error, setError] = useState('');
 
@@ -67,22 +68,24 @@ export default function TestManagement() {
   const [securityShieldEnabled, setSecurityShieldEnabled] = useState(true);
   const [testCode, setTestCode] = useState('');
 
-  const fetchInitialData = async (isInitial = false) => {
-    if (isInitial || tests.length === 0) {
+  const fetchInitialData = async (isInitial = false, isRefresh = false) => {
+    if (isRefresh) {
+      setRefreshing(true);
+    } else if (isInitial || tests.length === 0) {
       setLoading(true);
     }
     try {
-      const testsData = await apiCall('/api/admin/tests');
+      const testsData = await apiCall('/api/admin/tests', { skipLocalCache: isRefresh });
       setTests(testsData);
 
-      const subs = await apiCall('/api/admin/subjects');
+      const subs = await apiCall('/api/admin/subjects', { skipLocalCache: isRefresh });
       setSubjects(subs);
       if (subs.length > 0 && !selectedSubjectId) {
         setSelectedSubjectId(subs[0].id);
       }
 
       // Fetch staff members
-      const staffData = await apiCall('/api/admin/staff').catch(() => []);
+      const staffData = await apiCall('/api/admin/staff', { skipLocalCache: isRefresh }).catch(() => []);
       if (staffData && Array.isArray(staffData)) {
         setStaffList(staffData);
         if (staffData.length > 0 && !selectedStaffId) {
@@ -93,6 +96,7 @@ export default function TestManagement() {
       setError('Failed to fetch scheduled tests');
     } finally {
       setLoading(false);
+      setRefreshing(false);
     }
   };
 
@@ -199,13 +203,24 @@ export default function TestManagement() {
           <h1 className="text-2xl font-bold text-white tracking-tight">Test Scheduler</h1>
           <p className="text-sm text-gray-500">Plan, assign responsible educators, and schedule examination instances</p>
         </div>
-        <button
-          onClick={() => setShowAddForm(true)}
-          className="flex items-center gap-2 px-4 py-2 rounded-xl gradient-btn text-sm"
-        >
-          <Plus className="w-4 h-4" />
-          Schedule Test
-        </button>
+        <div className="flex items-center gap-3">
+          <button
+            onClick={() => fetchInitialData(false, true)}
+            disabled={refreshing || loading}
+            className="flex items-center gap-2 px-3.5 py-2 rounded-xl bg-white/5 hover:bg-white/10 text-gray-300 hover:text-white border border-white/10 text-xs font-medium transition-all shadow-sm disabled:opacity-50"
+            title="Refresh tests"
+          >
+            <RefreshCw className={`w-3.5 h-3.5 ${refreshing ? 'animate-spin text-indigo-400' : ''}`} />
+            <span>{refreshing ? 'Refreshing...' : 'Refresh'}</span>
+          </button>
+          <button
+            onClick={() => setShowAddForm(true)}
+            className="flex items-center gap-2 px-4 py-2 rounded-xl gradient-btn text-sm"
+          >
+            <Plus className="w-4 h-4" />
+            Schedule Test
+          </button>
+        </div>
       </div>
 
       {error && (

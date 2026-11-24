@@ -49,7 +49,7 @@ function AssessmentOverviewContent() {
       if (isRefresh) setRefreshing(true);
       else setLoading(true);
 
-      const data = await apiCall('/api/super-admin/overview/assessments');
+      const data = await apiCall('/api/super-admin/overview/assessments', { skipLocalCache: isRefresh });
       const list = Array.isArray(data) ? data : [];
       setAssessments(list);
     } catch (err: any) {

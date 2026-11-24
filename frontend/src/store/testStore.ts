@@ -53,6 +53,7 @@ interface TestState {
   updateCode: (questionId: number, code: string) => void;
   updateLanguage: (questionId: number, language: string) => void;
   decrementTime: () => void;
+  updateQuestionAttemptCount: (questionId: number, count: number) => void;
   clearTestSession: () => void;
 }
 
@@ -124,6 +125,10 @@ export const useTestStore = create<TestState>((set) => ({
       // clearTestSession() after the API call completes.
     };
   }),
+
+  updateQuestionAttemptCount: (questionId, count) => set((state) => ({
+    questions: state.questions.map((q) => (q && q.id === questionId ? { ...q, attemptCount: count } : q))
+  })),
 
   clearTestSession: () => set({
     activeTestId: null,

@@ -125,6 +125,7 @@ function CodingWorkspaceInner() {
   const [customInput3, setCustomInput3] = useState('');
   const [consoleTab, setConsoleTab] = useState<'TESTCASE' | 'RESULT'>('TESTCASE');
   const [submittingExam, setSubmittingExam] = useState(false);
+  const [isExited, setIsExited] = useState(false);
   const [showExternalPasteWarning, setShowExternalPasteWarning] = useState(false);
   const [confirmDialog, setConfirmDialog] = useState<{
     isOpen: boolean;
@@ -189,15 +190,16 @@ function CodingWorkspaceInner() {
         setRecoverError(null);
         console.log('[ExamInit] Loading student/test & questions...');
 
-        // Fetch tests, questions, and student profile in parallel
-        const [testsRes, questionsRes, profileRes] = await Promise.allSettled([
+        // Fetch tests, question details, and student profile in parallel (targeted lookup for instant init)
+        const promises: Promise<any>[] = [
           apiCall('/api/student/tests'),
-          apiCall('/api/student/questions'),
-          apiCall('/api/student/profile')
-        ]);
+          questionIdParam ? apiCall(`/api/student/questions/${questionIdParam}`).catch(() => null) : apiCall('/api/student/questions').catch(() => []),
+          apiCall('/api/student/profile').catch(() => null)
+        ];
+        const [testsRes, questionsRes, profileRes] = await Promise.allSettled(promises);
 
         const tests = testsRes.status === 'fulfilled' ? testsRes.value : [];
-        let allQuestions = questionsRes.status === 'fulfilled' ? questionsRes.value : [];
+        let fetchedQuestionData = questionsRes.status === 'fulfilled' ? questionsRes.value : null;
         const updatedProfile = profileRes.status === 'fulfilled' ? profileRes.value : null;
 
         if (updatedProfile) {
@@ -231,38 +233,13 @@ function CodingWorkspaceInner() {
 
         setWarnings(activeTest.warningsCount || 0);
 
-        let targetQuestions = allQuestions;
-        if (questionIdParam) {
-          const qId = Number(questionIdParam);
-          try {
-            // Always fetch detailed question to get test cases (getAllQuestions omits them for performance)
-            const matchedQ = await apiCall(`/api/student/questions/${qId}`);
-            if (matchedQ && matchedQ.id) {
-              targetQuestions = [matchedQ];
-            }
-          } catch (err) {
-            console.warn('[ExamInit] Question lookup by ID failed:', err);
-            const fallbackQ = allQuestions.find((q: any) => q.id === qId);
-            if (fallbackQ) {
-              targetQuestions = [fallbackQ];
-            }
-          }
-        } else {
-          try {
-            const detailedQuestions = await Promise.all(
-              targetQuestions.map(async (q: any) => {
-                try {
-                  const detailedQ = await apiCall(`/api/student/questions/${q.id}`);
-                  return detailedQ && detailedQ.id ? detailedQ : q;
-                } catch (e) {
-                  return q;
-                }
-              })
-            );
-            targetQuestions = detailedQuestions;
-          } catch (err) {
-            console.warn('[ExamInit] Failed to fetch detailed questions:', err);
-          }
+        let targetQuestions: any[] = [];
+        if (questionIdParam && fetchedQuestionData && fetchedQuestionData.id) {
+          targetQuestions = [fetchedQuestionData];
+        } else if (Array.isArray(fetchedQuestionData) && fetchedQuestionData.length > 0) {
+          targetQuestions = fetchedQuestionData;
+        } else if (activeTest.test?.questions && activeTest.test.questions.length > 0) {
+          targetQuestions = activeTest.test.questions;
         }
 
         if (!targetQuestions || targetQuestions.length === 0) {
@@ -585,10 +562,13 @@ function CodingWorkspaceInner() {
         if (autoSubmittedRef.current) return;
         autoSubmittedRef.current = true;
         
-        // FREEZE timer only when confirm is clicked
+        // FREEZE timer immediately upon confirmation
         timerFrozenRef.current = true;
-        frozenElapsedSecondsRef.current = Math.max(1, useTestStore.getState().totalSeconds - useTestStore.getState().timeLeftSeconds);
+        const timeTaken = Math.max(1, useTestStore.getState().totalSeconds - useTestStore.getState().timeLeftSeconds);
+        frozenElapsedSecondsRef.current = timeTaken;
         
+        // Immediately disable editor & code interaction
+        setIsExited(true);
         setSubmittingExam(true);
         try {
           const currentStore = useTestStore.getState();
@@ -602,7 +582,6 @@ function CodingWorkspaceInner() {
             };
           });
 
-          let timeTaken = frozenElapsedSecondsRef.current;
           await apiCall(`/api/student/tests/${testId}/submit?timeTakenSeconds=${timeTaken}`, {
             method: 'POST',
             body: JSON.stringify(questionCodes),
@@ -617,13 +596,14 @@ function CodingWorkspaceInner() {
           if (document.fullscreenElement) {
             try { await document.exitFullscreen(); } catch (_) {}
           }
-          toast.success('Exam submitted successfully!');
+          toast.success('Exam submitted successfully! Results will update automatically.');
           router.push('/student/results');
         } catch (e: any) {
           autoSubmittedRef.current = false; // Allow retry on failure
-          toast.error(e.message || 'Failed to submit exam. Please try again.');
-        } finally {
+          setIsExited(false);
           setSubmittingExam(false);
+          timerFrozenRef.current = false;
+          toast.error(e.message || 'Failed to submit exam. Please try again.');
         }
       }
     });
@@ -633,28 +613,56 @@ function CodingWorkspaceInner() {
     setConfirmDialog({
       isOpen: true,
       title: 'Exit Test',
-      message: 'Are you sure you want to exit? Your attempt will be marked as PENDING and you will lose access until re-assigned.',
+      message: 'Are you sure you want to exit? Your attempt will be recorded as PENDING/EXITED and you will lose access until re-assigned.',
       onConfirm: async () => {
+        // FREEZE timer immediately upon confirmation
+        timerFrozenRef.current = true;
+        const timeTaken = Math.max(1, useTestStore.getState().totalSeconds - useTestStore.getState().timeLeftSeconds);
+        frozenElapsedSecondsRef.current = timeTaken;
+
+        // Immediately disable editor & code interaction
+        setIsExited(true);
         setSubmittingExam(true);
+
+        const currentStore = useTestStore.getState();
+        const currentCodes = currentStore.codes;
+        const currentLanguages = currentStore.languages;
+        const questionCodes: Record<string, { code: string; language: string }> = {};
+        Object.keys(currentCodes).forEach((qId) => {
+          questionCodes[qId] = {
+            code: currentCodes[Number(qId)] ?? '',
+            language: currentLanguages[Number(qId)] || 'java',
+          };
+        });
+
+        // Trigger background exit request with keepalive so it completes without blocking navigation
         try {
           const token = sessionStorage.getItem('chill_token') || localStorage.getItem('token');
           if (token) {
-            const timeTaken = Math.max(1, useTestStore.getState().totalSeconds - useTestStore.getState().timeLeftSeconds);
-            await fetch(`${API_BASE_URL}/api/student/tests/${testId}/exit?questionId=${currentQuestion?.id || ''}&timeTakenSeconds=${timeTaken}`, {
+            fetch(`${API_BASE_URL}/api/student/tests/${testId}/exit?questionId=${currentQuestion?.id || ''}&timeTakenSeconds=${timeTaken}`, {
               method: 'POST',
-              headers: { 'Authorization': `Bearer ${token}` }
-            });
+              headers: {
+                'Authorization': `Bearer ${token}`,
+                'Content-Type': 'application/json',
+              },
+              body: JSON.stringify(questionCodes),
+              keepalive: true,
+            }).catch((err) => console.warn('Background exit request:', err));
           }
-          if (document.fullscreenElement) {
-            try { await document.exitFullscreen(); } catch (_) {}
-          }
-          useTestStore.getState().clearTestSession();
-          router.push('/student/tests');
-        } catch (err: any) {
-          console.error("Failed to exit properly", err);
-          useTestStore.getState().clearTestSession();
-          router.push('/student/tests');
+        } catch (_) {}
+
+        if (user?.id) {
+          Object.keys(currentCodes).forEach((qId) => {
+            localStorage.removeItem(`chillcode_code_backup_${user.id}_${qId}`);
+          });
         }
+        if (document.fullscreenElement) {
+          try { await document.exitFullscreen(); } catch (_) {}
+        }
+        clearTestSession();
+        resetWarnings();
+        toast.info('Test session exited and recorded.');
+        router.push('/student/results');
       }
     });
   };
@@ -726,7 +734,7 @@ function CodingWorkspaceInner() {
   };
 
   const handleRunCode = async () => {
-    if (!currentQuestion) return;
+    if (executing || !currentQuestion) return;
 
     const sampleTestcases = currentQuestion.testCases?.filter((tc: any) => !tc.isHidden) || [];
     let curInput1 = customInput;
@@ -755,11 +763,13 @@ function CodingWorkspaceInner() {
       runOnly: true,
     };
 
+    const startTime = Date.now();
     try {
       const response = await apiCall(`/api/student/question/${currentQuestion.id}/submit`, {
         method: 'POST',
         body: JSON.stringify(payload),
       });
+      console.log(`[Performance Metrics] Compile & Run finished in ${Date.now() - startTime}ms`);
       setExecResult(response);
     } catch (err: any) {
       setExecResult({
@@ -774,7 +784,7 @@ function CodingWorkspaceInner() {
   };
 
   const handleSubmitCode = async () => {
-    if (!currentQuestion) return;
+    if (executing || !currentQuestion) return;
     setExecuting(true);
     setExecResult(null);
     setConsoleOpen(true);
@@ -792,21 +802,23 @@ function CodingWorkspaceInner() {
       runOnly: false,
     };
 
+    const startTime = Date.now();
     try {
-      await new Promise((r) => setTimeout(r, 400));
       setEvaluationStage('RUNNING_TESTS');
 
       const response = await apiCall(`/api/student/question/${currentQuestion.id}/submit`, {
         method: 'POST',
         body: JSON.stringify(payload),
       });
+      console.log(`[Performance Metrics] Submit Code finished in ${Date.now() - startTime}ms`);
       
       setExecResult(response);
       setSubmissionResponse(response);
+      if (response && response.attemptCount != null) {
+        useTestStore.getState().updateQuestionAttemptCount(currentQuestion.id, response.attemptCount);
+      }
       fetchSubmissionsHistory();
 
-      setEvaluationStage('CALCULATING_SCORE');
-      await new Promise((r) => setTimeout(r, 400));
       setEvaluationStage('CONFIRMED');
 
       if (response && response.submissionId) {
@@ -1277,14 +1289,14 @@ function CodingWorkspaceInner() {
             <div className="flex items-center gap-2">
               <button
                 onClick={handleExitTest}
-                disabled={submittingExam}
+                disabled={submittingExam || isExited}
                 className="px-4 py-2 bg-[#0b0c10] border border-white/10 hover:bg-white/5 text-gray-300 rounded-xl text-xs font-bold transition-all disabled:opacity-50 select-none"
               >
                 Exit Test
               </button>
               <button
                 onClick={handleManualSubmitExam}
-                disabled={submittingExam}
+                disabled={submittingExam || isExited}
                 className="px-4 py-2 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white rounded-xl text-xs font-bold transition-all shadow-md shadow-emerald-500/10 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-1.5"
               >
                 {submittingExam && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
@@ -1464,7 +1476,7 @@ function CodingWorkspaceInner() {
                 fontFamily: 'Fira Code, Consolas, Monaco, monospace',
                 automaticLayout: true,
                 padding: { top: 12 },
-                readOnly: isViewMode,
+                readOnly: isViewMode || submittingExam || isExited,
                 lineNumbers: "on",
                 matchBrackets: "always",
                 quickSuggestions: { other: true, comments: true, strings: true },

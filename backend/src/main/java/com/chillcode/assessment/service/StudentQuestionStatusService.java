@@ -23,6 +23,9 @@ public class StudentQuestionStatusService {
     @Autowired
     private StudentQuestionStatusRepository studentQuestionStatusRepository;
 
+    @Autowired
+    private com.chillcode.assessment.repository.SubmissionRepository submissionRepository;
+
     /**
      * Resolves the admin ID deterministically from the entity chain.
      * 
@@ -87,7 +90,7 @@ public class StudentQuestionStatusService {
      * @param adminId    the resolved admin ID (must not be null)
      */
     @Transactional(propagation = Propagation.REQUIRES_NEW)
-    public void updateStatus(User student, Question question, Submission submission, Long adminId) {
+    public StudentQuestionStatus updateStatus(User student, Question question, Submission submission, Long adminId) {
         if (student == null || question == null || adminId == null) {
             throw new IllegalArgumentException(String.format(
                 "Cannot update StudentQuestionStatus with null parameters: studentId=%s, questionId=%s, adminId=%s",
@@ -121,6 +124,8 @@ public class StudentQuestionStatusService {
         
         if (submission != null) {
             status.setLastSubmissionId(submission.getId());
+            long actualSubCount = submissionRepository.countByStudentIdAndQuestionId(student.getId(), question.getId());
+            status.setAttemptCount((int) Math.max(1, actualSubCount));
 
             if ("ACCEPTED".equals(submission.getStatus()) || "PASS".equals(submission.getOverallResult())) {
                 status.setStatus("COMPLETED");
@@ -134,11 +139,12 @@ public class StudentQuestionStatusService {
             }
         }
 
-        studentQuestionStatusRepository.save(status);
+        StudentQuestionStatus saved = studentQuestionStatusRepository.save(status);
 
         System.out.println(String.format(
             "[StudentQuestionStatus] Saved: id=%d, status=%s, attemptCount=%d",
-            status.getId(), status.getStatus(), status.getAttemptCount()
+            saved.getId(), saved.getStatus(), saved.getAttemptCount()
         ));
+        return saved;
     }
 }

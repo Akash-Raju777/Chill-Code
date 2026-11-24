@@ -267,7 +267,7 @@ export async function apiCall(endpoint: string, options: ApiCallOptions = {}): P
       data = await response.text();
     }
 
-    if (method === 'GET' && !options.skipLocalCache) {
+    if (method === 'GET') {
       smartCache.set(cleanEndpoint, data);
     }
 
@@ -298,8 +298,8 @@ export async function apiCall(endpoint: string, options: ApiCallOptions = {}): P
     }
   }
 
-  // Deduplicate in-flight GET requests
-  if (method === 'GET' && inFlightRequests.has(inFlightKey)) {
+  // Deduplicate in-flight GET requests (unless explicitly bypassing cache)
+  if (method === 'GET' && !options.skipLocalCache && inFlightRequests.has(inFlightKey)) {
     return inFlightRequests.get(inFlightKey)!;
   }
 
@@ -340,10 +340,10 @@ export const toggleBadgeSetStatus = (id: number, status: string) => apiCall(`/ap
 export const fetchBadgeSetWinners = (id: number) => apiCall(`/api/admin/badge-sets/${id}/winners`);
 
 // Leaderboard APIs
-export const fetchSubjectLeaderboard = (subjectId: number) => apiCall(`/api/student/leaderboard/subject/${subjectId}`);
-export const fetchTopSubjectRankings = (subjectId: number, limit = 10) => apiCall(`/api/student/leaderboard/top/${subjectId}?limit=${limit}`);
-export const fetchOverallLeaderboard = (timeFilter = 'ALL', departmentFilter = 'ALL') => apiCall(`/api/student/leaderboard/overall?timeFilter=${timeFilter}&departmentFilter=${departmentFilter}`);
-export const fetchStudentLeaderboardSummary = () => apiCall('/api/student/leaderboard/summary');
+export const fetchSubjectLeaderboard = (subjectId: number, options?: ApiCallOptions) => apiCall(`/api/student/leaderboard/subject/${subjectId}`, options);
+export const fetchTopSubjectRankings = (subjectId: number, limit = 10, options?: ApiCallOptions) => apiCall(`/api/student/leaderboard/top/${subjectId}?limit=${limit}`, options);
+export const fetchOverallLeaderboard = (timeFilter = 'ALL', departmentFilter = 'ALL', options?: ApiCallOptions) => apiCall(`/api/student/leaderboard/overall?timeFilter=${timeFilter}&departmentFilter=${departmentFilter}`, options);
+export const fetchStudentLeaderboardSummary = (options?: ApiCallOptions) => apiCall('/api/student/leaderboard/summary', options);
 
 // Admin Analytics APIs
 export const fetchAdminAnalyticsOverview = () => apiCall('/api/admin/analytics/overview');

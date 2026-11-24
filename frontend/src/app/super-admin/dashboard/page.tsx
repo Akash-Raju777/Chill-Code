@@ -164,8 +164,8 @@ export default function SuperAdminDashboard() {
       else setLoading(true);
 
       const [statsData, chartsData] = await Promise.all([
-        apiCall('/api/super-admin/dashboard/stats'),
-        apiCall('/api/super-admin/dashboard/charts')
+        apiCall('/api/super-admin/dashboard/stats', { skipLocalCache: isRefresh }),
+        apiCall('/api/super-admin/dashboard/charts', { skipLocalCache: isRefresh })
       ]);
 
       setStats(statsData as DashboardStats);

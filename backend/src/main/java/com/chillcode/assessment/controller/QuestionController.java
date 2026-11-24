@@ -217,6 +217,7 @@ public class QuestionController {
         response.setJudge0Status(result.getJudge0Status());
         response.setTestCaseResults(result.getTestCaseResults());
         response.setSubmissionId(result.getSubmissionId());
+        response.setAttemptCount(result.getAttemptCount());
         return ResponseEntity.ok(response);
     }
 

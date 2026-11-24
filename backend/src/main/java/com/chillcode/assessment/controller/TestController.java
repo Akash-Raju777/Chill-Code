@@ -113,9 +113,10 @@ public class TestController {
     public ResponseEntity<com.chillcode.assessment.dto.StudentTestDto> exitTest(
             @PathVariable("id") Long id,
             @RequestParam(value = "timeTakenSeconds", required = false) Long timeTakenSeconds,
-            @RequestParam(value = "questionId", required = false) Long questionId) {
+            @RequestParam(value = "questionId", required = false) Long questionId,
+            @RequestBody(required = false) java.util.Map<String, java.util.Map<String, String>> questionCodes) {
         User student = getCurrentUser();
-        return ResponseEntity.ok(testService.exitTestDto(id, student.getId(), questionId, timeTakenSeconds));
+        return ResponseEntity.ok(testService.exitTestDto(id, student.getId(), questionId, timeTakenSeconds, questionCodes));
     }
 
     @PostMapping("/student/tests/{id}/warning")

@@ -34,6 +34,7 @@ public class SubmissionResultDto {
     private Integer passingMarks;
     private Double percentage;
     private String overallResult; // 'PASS' or 'FAIL'
+    private Integer attemptCount;
 }
 
 

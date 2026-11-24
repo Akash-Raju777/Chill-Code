@@ -2,7 +2,7 @@
 
 import React, { useEffect, useState } from 'react';
 import { apiCall, formatISTDate } from '../../../utils/api';
-import { Award, ShieldCheck, Calendar, Trophy, CheckCircle2, Loader2, Sparkles, BookOpen, Hash } from 'lucide-react';
+import { Award, ShieldCheck, Calendar, Trophy, CheckCircle2, Loader2, Sparkles, BookOpen, Hash, RefreshCw } from 'lucide-react';
 
 interface StudentAchievement {
   id: number;
@@ -34,21 +34,25 @@ export default function StudentAchievementsPage() {
   const [achievements, setAchievements] = useState<StudentAchievement[]>([]);
   const [languageBadges, setLanguageBadges] = useState<LanguageMasterBadge[]>([]);
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState('');
 
-  const loadAchievements = async () => {
-    setLoading(true);
+  const loadAchievements = async (isRefresh = false) => {
+    if (!isRefresh) setLoading(true);
+    if (isRefresh) setRefreshing(true);
     try {
       const [data, langData] = await Promise.all([
-        apiCall('/api/student/achievements'),
-        apiCall('/api/student/language-badges').catch(() => [])
+        apiCall('/api/student/achievements', { skipLocalCache: isRefresh }),
+        apiCall('/api/student/language-badges', { skipLocalCache: isRefresh }).catch(() => [])
       ]);
       setAchievements(data || []);
       setLanguageBadges(langData || []);
+      setError('');
     } catch (err: any) {
       setError(err.message || 'Failed to load student achievements');
     } finally {
-      setLoading(false);
+      if (!isRefresh) setLoading(false);
+      setRefreshing(false);
     }
   };
 
@@ -84,13 +88,23 @@ export default function StudentAchievementsPage() {
             </p>
           </div>
 
-          <div className="glass-panel p-4 rounded-xl border border-white/10 bg-white/5 flex items-center gap-4">
-            <div className="w-12 h-12 rounded-xl bg-amber-500/20 border border-amber-500/30 flex items-center justify-center text-amber-400">
-              <Award className="w-6 h-6" />
-            </div>
-            <div>
-              <div className="text-2xl font-black text-white">{achievements.length}</div>
-              <div className="text-[10px] text-gray-400 uppercase font-bold tracking-wider">Total Badges Earned</div>
+          <div className="flex items-center gap-3">
+            <button
+              onClick={() => loadAchievements(true)}
+              disabled={refreshing}
+              className="flex items-center gap-2 px-3.5 py-2.5 bg-white/5 hover:bg-white/10 border border-white/10 rounded-xl text-xs font-bold text-gray-300 hover:text-white transition-all disabled:opacity-50 select-none shadow-sm"
+            >
+              <RefreshCw className={`w-3.5 h-3.5 ${refreshing ? 'animate-spin text-purple-400' : ''}`} />
+              {refreshing ? 'Refreshing...' : 'Refresh'}
+            </button>
+            <div className="glass-panel p-4 rounded-xl border border-white/10 bg-white/5 flex items-center gap-4">
+              <div className="w-12 h-12 rounded-xl bg-amber-500/20 border border-amber-500/30 flex items-center justify-center text-amber-400">
+                <Award className="w-6 h-6" />
+              </div>
+              <div>
+                <div className="text-2xl font-black text-white">{achievements.length}</div>
+                <div className="text-[10px] text-gray-400 uppercase font-bold tracking-wider">Total Badges Earned</div>
+              </div>
             </div>
           </div>
         </div>

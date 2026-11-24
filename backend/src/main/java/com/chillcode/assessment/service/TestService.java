@@ -8,15 +8,14 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
-import java.util.ArrayList;
-import java.util.HashSet;
-import java.util.List;
-import java.util.Optional;
-import java.util.Set;
+import java.util.*;
+import java.util.concurrent.CompletableFuture;
 import java.util.stream.Collectors;
 
 @Service
 public class TestService {
+
+    private static final org.slf4j.Logger log = org.slf4j.LoggerFactory.getLogger(TestService.class);
 
     @Autowired
     private TestRepository testRepository;
@@ -41,6 +40,9 @@ public class TestService {
 
     @Autowired
     private SubmissionRepository submissionRepository;
+
+    @Autowired
+    private TestCaseRepository testCaseRepository;
 
     @Autowired
     private StudentQuestionStatusRepository studentQuestionStatusRepository;
@@ -535,32 +537,58 @@ public class TestService {
             java.util.Map<Long, List<Question>> questionsBySubjectMap) {
         if (st == null) return null;
         
-        Test test = st.getTest();
-        com.chillcode.assessment.entity.Subject subject = test != null ? test.getSubject() : null;
+        Test test = null;
+        try {
+            test = st.getTest();
+        } catch (Exception ignored) {}
 
         com.chillcode.assessment.dto.StudentTestDto.SubjectDetailsDto subjectDto = null;
-        if (subject != null) {
-            subjectDto = new com.chillcode.assessment.dto.StudentTestDto.SubjectDetailsDto(
-                subject.getId(),
-                subject.getName(),
-                subject.getColor()
-            );
+        if (test != null) {
+            try {
+                com.chillcode.assessment.entity.Subject subject = test.getSubject();
+                if (subject != null) {
+                    Long subId = subject.getId();
+                    String subName = null;
+                    String subColor = null;
+                    try {
+                        subName = subject.getName();
+                        subColor = subject.getColor();
+                    } catch (Exception proxyEx) {
+                        if (subId != null && subjectRepository != null) {
+                            com.chillcode.assessment.entity.Subject loaded = subjectRepository.findById(subId).orElse(null);
+                            if (loaded != null) {
+                                subName = loaded.getName();
+                                subColor = loaded.getColor();
+                            }
+                        }
+                    }
+                    if (subId != null) {
+                        subjectDto = new com.chillcode.assessment.dto.StudentTestDto.SubjectDetailsDto(
+                            subId,
+                            subName != null ? subName : "Subject",
+                            subColor
+                        );
+                    }
+                }
+            } catch (Exception ignored) {}
         }
 
         com.chillcode.assessment.dto.StudentTestDto.TestDetailsDto testDto = null;
         if (test != null) {
-            testDto = new com.chillcode.assessment.dto.StudentTestDto.TestDetailsDto(
-                test.getId(),
-                test.getTestCode() != null ? test.getTestCode() : "TEST-" + test.getId(),
-                test.getName(),
-                test.getDurationMinutes(),
-                test.getStartTime(),
-                test.getEndTime(),
-                test.getMaxMarks(),
-                test.getInstructions(),
-                test.getSecurityShieldEnabled() != null ? test.getSecurityShieldEnabled() : false,
-                subjectDto
-            );
+            try {
+                testDto = new com.chillcode.assessment.dto.StudentTestDto.TestDetailsDto(
+                    test.getId(),
+                    test.getTestCode() != null ? test.getTestCode() : "TEST-" + test.getId(),
+                    test.getName(),
+                    test.getDurationMinutes(),
+                    test.getStartTime(),
+                    test.getEndTime(),
+                    test.getMaxMarks(),
+                    test.getInstructions(),
+                    test.getSecurityShieldEnabled() != null ? test.getSecurityShieldEnabled() : false,
+                    subjectDto
+                );
+            } catch (Exception ignored) {}
         }
 
         com.chillcode.assessment.dto.StudentTestDto dto = new com.chillcode.assessment.dto.StudentTestDto(
@@ -575,37 +603,62 @@ public class TestService {
             st.getReattemptStatus()
         );
 
-        String displayTitle = test != null ? test.getName() : "";
-        if (test != null && test.getName().toLowerCase().contains("practice arena") && test.getSubject() != null && st.getStudent() != null) {
-            List<Question> questions = null;
-            if (questionsBySubjectMap != null) {
-                questions = questionsBySubjectMap.get(test.getSubject().getId());
-            } else {
-                questions = questionRepository.findBySubjectId(test.getSubject().getId());
+        String displayTitle = (test != null && test.getName() != null) ? test.getName() : "";
+        try {
+            if (test != null && test.getName() != null && test.getName().toLowerCase().contains("practice arena") && st.getStudent() != null) {
+                Long subId = null;
+                if (test.getSubject() != null) {
+                    subId = test.getSubject().getId();
+                }
+                if (subId != null) {
+                    List<Question> questions = null;
+                    if (questionsBySubjectMap != null) {
+                        questions = questionsBySubjectMap.get(subId);
+                    } else {
+                        questions = questionRepository.findBySubjectId(subId);
+                    }
+                    if (questions != null && !questions.isEmpty()) {
+                        java.util.Map<Long, StudentQuestionStatus> localSqsMap = sqsMap;
+                        if (localSqsMap == null) {
+                            List<StudentQuestionStatus> sqsList = studentQuestionStatusRepository.findByStudentId(st.getStudent().getId());
+                            localSqsMap = sqsList.stream()
+                                    .collect(Collectors.toMap(StudentQuestionStatus::getQuestionId, s -> s, (s1, s2) -> s1));
+                        }
+                        java.util.Set<String> titles = new java.util.LinkedHashSet<>();
+                        for (Question question : questions) {
+                            StudentQuestionStatus sqs = localSqsMap.get(question.getId());
+                            String qStatus = (sqs != null && "COMPLETED".equals(sqs.getStatus())) ? "PASS" : "FAIL";
+                            titles.add(question.getTitle() + "|" + qStatus);
+                        }
+                        if (!titles.isEmpty()) {
+                            displayTitle = String.join(", ", titles);
+                        }
+                    }
+                }
             }
-            if (questions != null && !questions.isEmpty()) {
-                java.util.Map<Long, StudentQuestionStatus> localSqsMap = sqsMap;
-                if (localSqsMap == null) {
-                    List<StudentQuestionStatus> sqsList = studentQuestionStatusRepository.findByStudentId(st.getStudent().getId());
-                    localSqsMap = sqsList.stream()
-                            .collect(Collectors.toMap(StudentQuestionStatus::getQuestionId, s -> s, (s1, s2) -> s1));
-                }
-                java.util.Set<String> titles = new java.util.LinkedHashSet<>();
-                for (Question question : questions) {
-                    StudentQuestionStatus sqs = localSqsMap.get(question.getId());
-                    String qStatus = (sqs != null && "COMPLETED".equals(sqs.getStatus())) ? "PASS" : "FAIL";
-                    titles.add(question.getTitle() + "|" + qStatus);
-                }
-                if (!titles.isEmpty()) {
-                    displayTitle = String.join(", ", titles);
-                }
-            }
-        }
+        } catch (Exception ignored) {}
         dto.setDisplayTitle(displayTitle);
-        if (st.getStudent() != null) {
-            dto.setStudentRegisterNumber(st.getStudent().getRegisterNumber());
-            dto.setStudentName(st.getStudent().getName());
-        }
+
+        try {
+            if (st.getStudent() != null) {
+                String regNo = null;
+                String name = null;
+                try {
+                    regNo = st.getStudent().getRegisterNumber();
+                    name = st.getStudent().getName();
+                } catch (Exception proxyEx) {
+                    if (st.getStudent().getId() != null) {
+                        User u = userRepository.findById(st.getStudent().getId()).orElse(null);
+                        if (u != null) {
+                            regNo = u.getRegisterNumber();
+                            name = u.getName();
+                        }
+                    }
+                }
+                dto.setStudentRegisterNumber(regNo);
+                dto.setStudentName(name);
+            }
+        } catch (Exception ignored) {}
         
         String rStatus = st.getReattemptStatus();
         if (rStatus != null && rStatus.contains(":")) {
@@ -720,16 +773,84 @@ public class TestService {
 
     @Transactional
     public com.chillcode.assessment.dto.StudentTestDto exitTestDto(Long testId, Long studentId, Long questionId, Long timeTakenSeconds) {
+        return exitTestDto(testId, studentId, questionId, timeTakenSeconds, null);
+    }
+
+    @Transactional
+    public com.chillcode.assessment.dto.StudentTestDto exitTestDto(Long testId, Long studentId, Long questionId, Long timeTakenSeconds, java.util.Map<String, java.util.Map<String, String>> questionCodes) {
         StudentTest st = studentTestRepository.findByStudentIdAndTestId(studentId, testId)
                 .orElseThrow(() -> new RuntimeException("Student test not found"));
-        
-        if ("STARTED".equals(st.getStatus())) {
-            // Treat an exit as an empty auto-submit to ensure attempts are consumed 
-            // and fail results are generated correctly.
-            return submitTestDto(testId, studentId, new java.util.HashMap<>(), true, timeTakenSeconds);
+
+        Long actualTimeTaken = (timeTakenSeconds != null && timeTakenSeconds > 0) ? timeTakenSeconds : 1L;
+        st.setTimeTakenSeconds(actualTimeTaken);
+        st.setSubmittedAt(LocalDateTime.now());
+        st.setStatus("PENDING");
+        st.setPassFailStatus("FAIL");
+        st.setAutoSubmitted(false);
+        StudentTest savedSt = studentTestRepository.save(st);
+
+        // Record exited attempt for questions
+        if (savedSt.getTest() != null && savedSt.getTest().getQuestions() != null) {
+            for (Question q : savedSt.getTest().getQuestions()) {
+                final Question finalQ = q;
+                StudentQuestionStatus sqs = studentQuestionStatusRepository
+                        .findByStudentIdAndQuestionId(studentId, q.getId())
+                        .orElseGet(() -> {
+                            StudentQuestionStatus n = new StudentQuestionStatus();
+                            n.setAdminId(studentQuestionStatusService.resolveAdminId(savedSt, finalQ));
+                            n.setStudentId(studentId);
+                            n.setQuestionId(finalQ.getId());
+                            n.setStatus("NOT_STARTED");
+                            n.setAttemptCount(0);
+                            return n;
+                        });
+
+                if (!"COMPLETED".equals(sqs.getStatus())) {
+                    sqs.setStatus("FAILED");
+                }
+                int prevAttempts = sqs.getAttemptCount() != null ? sqs.getAttemptCount() : 0;
+                sqs.setAttemptCount(prevAttempts + 1);
+                sqs.setLastAttemptAt(LocalDateTime.now());
+                studentQuestionStatusRepository.save(sqs);
+
+                // Create a submission record marking the exit so Results page displays it
+                String code = "// Exited test without submission";
+                String lang = "java";
+                if (questionCodes != null && questionCodes.containsKey(String.valueOf(q.getId()))) {
+                    java.util.Map<String, String> details = questionCodes.get(String.valueOf(q.getId()));
+                    if (details != null && details.get("code") != null && !details.get("code").trim().isEmpty()) {
+                        code = details.get("code");
+                    }
+                    if (details != null && details.get("language") != null) {
+                        lang = details.get("language");
+                    }
+                }
+
+                List<Submission> existing = submissionRepository.findByStudentTestIdAndQuestionId(savedSt.getId(), q.getId());
+                if (existing == null || existing.isEmpty()) {
+                    Submission sub = Submission.builder()
+                            .studentTest(savedSt)
+                            .question(q)
+                            .admin(savedSt.getAdmin() != null ? savedSt.getAdmin() : q.getAdmin())
+                            .language(lang)
+                            .code(code)
+                            .status("EXITED")
+                            .overallResult("FAIL")
+                            .score(0)
+                            .timeTakenSeconds(actualTimeTaken)
+                            .passedTests(0)
+                            .totalTests(testCaseRepository.countByQuestionId(q.getId()))
+                            .active(true)
+                            .createdAt(LocalDateTime.now())
+                            .build();
+                    submissionRepository.save(sub);
+                    sqs.setLastSubmissionId(sub.getId());
+                    studentQuestionStatusRepository.save(sqs);
+                }
+            }
         }
-        
-        return convertToStudentTestDto(st);
+
+        return convertToStudentTestDto(savedSt);
     }
 
     @Transactional
@@ -744,110 +865,216 @@ public class TestService {
 
     @Transactional
     public com.chillcode.assessment.dto.StudentTestDto submitTestDto(Long testId, Long studentId, java.util.Map<String, java.util.Map<String, String>> questionCodes, boolean isAutoSubmitted, Long timeTakenSeconds) {
-        StudentTest st = studentTestRepository.findByStudentIdAndTestId(studentId, testId)
-                .orElseGet(() -> studentTestRepository.findById(testId)
-                        .orElseThrow(() -> new RuntimeException("Student-Test mapping not found.")));
+        StudentTest st = studentTestRepository.findByStudentIdAndTestIdWithTestAndStudent(studentId, testId)
+                .orElseGet(() -> studentTestRepository.findByIdWithTestAndStudent(testId)
+                        .orElseGet(() -> studentTestRepository.findByStudentIdAndTestId(studentId, testId)
+                                .orElseGet(() -> studentTestRepository.findById(testId)
+                                        .orElseThrow(() -> new RuntimeException("Student-Test mapping not found.")))));
 
-        // Pre-save the exact frontend time taken so CodeExecutionService uses it for all submissions
-        if (timeTakenSeconds != null && timeTakenSeconds > 0) {
-            st.setTimeTakenSeconds(timeTakenSeconds);
-            st = studentTestRepository.save(st);
+        // Guard against duplicate submissions from double clicks or network retries
+        if ("SUBMITTED".equals(st.getStatus()) || "COMPLETED".equals(st.getStatus()) || "EVALUATED".equals(st.getStatus())) {
+            log.info("Test {} for student {} is already in status {}, returning existing result", testId, studentId, st.getStatus());
+            return convertToStudentTestDto(st);
         }
 
-        // Save final draft codes as submissions and evaluate them first
-        if (questionCodes != null) {
-            for (java.util.Map.Entry<String, java.util.Map<String, String>> entry : questionCodes.entrySet()) {
+        Long actualTimeTaken = (timeTakenSeconds != null && timeTakenSeconds > 0) ? timeTakenSeconds : 1L;
+        st.setTimeTakenSeconds(actualTimeTaken);
+        st.setSubmittedAt(LocalDateTime.now());
+        st.setAutoSubmitted(isAutoSubmitted);
+        st.setStatus("SUBMITTED");
+        st = studentTestRepository.save(st);
+
+        final StudentTest finalSt = st;
+        final Long studentTestId = st.getId();
+
+        Map<Long, com.chillcode.assessment.dto.SubmitRequest> requestsToEvaluate = new HashMap<>();
+
+        Set<Question> questionsToProcess = new HashSet<>();
+        if (st.getTest() != null && st.getTest().getQuestions() != null) {
+            try {
+                questionsToProcess.addAll(st.getTest().getQuestions());
+            } catch (Exception ignored) {}
+        }
+        if (questionCodes != null && !questionCodes.isEmpty()) {
+            for (String qIdStr : questionCodes.keySet()) {
                 try {
-                    Long questionId = Long.parseLong(entry.getKey());
-                    java.util.Map<String, String> details = entry.getValue();
-                    String code = details.get("code");
-                    String language = details.get("language");
-                    if (code == null || code.trim().isEmpty()) {
-                        code = "// No code submitted";
+                    Long qId = Long.parseLong(qIdStr);
+                    if (questionsToProcess.stream().noneMatch(q -> q.getId().equals(qId))) {
+                        questionRepository.findById(qId).ifPresent(questionsToProcess::add);
                     }
-                    
-                    if (code != null) {
-                        Question question = questionRepository.findById(questionId).orElse(null);
-                        if (question != null) {
-                            List<Submission> existing = submissionRepository.findByStudentTestIdAndQuestionId(st.getId(), questionId);
-                            boolean isDuplicate = false;
-                            if (existing != null && !existing.isEmpty()) {
-                                existing.sort((a, b) -> b.getId().compareTo(a.getId()));
-                                if (code.equals(existing.get(0).getCode())) {
-                                    isDuplicate = true;
-                                    if (timeTakenSeconds != null) {
-                                        com.chillcode.assessment.entity.Submission existingSub = existing.get(0);
-                                        existingSub.setTimeTakenSeconds(timeTakenSeconds);
-                                        submissionRepository.save(existingSub);
-                                    }
-                                }
-                            }
-                            
-                            if (!isDuplicate) {
-                                try {
-                                    com.chillcode.assessment.dto.SubmitRequest submitReq = new com.chillcode.assessment.dto.SubmitRequest();
-                                    submitReq.setQuestionId(questionId);
-                                    submitReq.setStudentTestId(st.getId());
-                                    submitReq.setCode(code);
-                                    submitReq.setLanguage(language != null ? language : "java");
-                                    submitReq.setRunOnly(false); // Evaluate and save submission!
-                                    submitReq.setTimeTakenSeconds(timeTakenSeconds);
-
-                                    // Run submission evaluation synchronously
-                                    codeExecutionService.submitCode(submitReq);
-                                } catch (Exception e) {
-                                    System.err.println("Failed to evaluate submission dynamically: " + e.getMessage());
-                                }
-                            }
-                        }
-                    }
-                } catch (Exception e) {
-                    System.err.println("Error saving draft submission: " + e.getMessage());
-                }
+                } catch (Exception ignored) {}
             }
         }
 
-        if (st.getStartedAt() != null && st.getTest() != null && st.getTest().getQuestions() != null
-                && !st.getTest().getQuestions().isEmpty()) {
-            
-            Set<Long> questionsSubmittedNow = new HashSet<>();
-            if (questionCodes != null) {
-                for (String qIdStr : questionCodes.keySet()) {
+        for (Question q : questionsToProcess) {
+            final Question finalQ = q;
+            String code = null;
+            String lang = "java";
+
+            if (questionCodes != null && questionCodes.containsKey(String.valueOf(q.getId()))) {
+                java.util.Map<String, String> details = questionCodes.get(String.valueOf(q.getId()));
+                if (details != null) {
+                    code = details.get("code");
+                    if (details.get("language") != null) lang = details.get("language");
+                }
+            }
+
+            if (code == null || code.trim().isEmpty()) {
+                code = "// No code submitted";
+            }
+
+            submissionRepository.deactivatePreviousSubmissions(studentTestId, q.getId());
+
+            int totalTc = testCaseRepository.countByQuestionId(q.getId());
+            Submission sub = Submission.builder()
+                    .studentTest(finalSt)
+                    .question(q)
+                    .admin(finalSt.getAdmin() != null ? finalSt.getAdmin() : q.getAdmin())
+                    .language(lang)
+                    .code(code)
+                    .status("PENDING")
+                    .overallResult("PENDING")
+                    .score(0)
+                    .timeTakenSeconds(actualTimeTaken)
+                    .passedTests(0)
+                    .totalTests(totalTc)
+                    .active(true)
+                    .createdAt(LocalDateTime.now())
+                    .build();
+            sub = submissionRepository.save(sub);
+
+            StudentQuestionStatus sqs = studentQuestionStatusRepository
+                    .findByStudentIdAndQuestionId(studentId, q.getId())
+                    .orElseGet(() -> {
+                        StudentQuestionStatus n = new StudentQuestionStatus();
+                        n.setAdminId(studentQuestionStatusService.resolveAdminId(finalSt, finalQ));
+                        n.setStudentId(studentId);
+                        n.setQuestionId(finalQ.getId());
+                        n.setStatus("NOT_STARTED");
+                        n.setAttemptCount(0);
+                        return n;
+                    });
+
+            long actualSubCount = submissionRepository.countByStudentIdAndQuestionId(studentId, q.getId());
+            sqs.setAttemptCount((int) Math.max(1, actualSubCount));
+            sqs.setLastAttemptAt(LocalDateTime.now());
+            sqs.setLastSubmissionId(sub.getId());
+            studentQuestionStatusRepository.save(sqs);
+
+            com.chillcode.assessment.dto.SubmitRequest submitReq = new com.chillcode.assessment.dto.SubmitRequest();
+            submitReq.setQuestionId(q.getId());
+            submitReq.setStudentTestId(studentTestId);
+            submitReq.setCode(code);
+            submitReq.setLanguage(lang);
+            submitReq.setRunOnly(false);
+            submitReq.setTimeTakenSeconds(actualTimeTaken);
+            requestsToEvaluate.put(sub.getId(), submitReq);
+        }
+
+        // Asynchronous evaluation in background
+        CompletableFuture.runAsync(() -> {
+            try {
+                for (Map.Entry<Long, com.chillcode.assessment.dto.SubmitRequest> entry : requestsToEvaluate.entrySet()) {
+                    Long submissionId = entry.getKey();
+                    com.chillcode.assessment.dto.SubmitRequest req = entry.getValue();
                     try {
-                        questionsSubmittedNow.add(Long.parseLong(qIdStr));
-                    } catch (NumberFormatException ignored) {}
-                }
-            }
-
-            for (Question q : st.getTest().getQuestions()) {
-                if (!questionsSubmittedNow.contains(q.getId())) {
-                    StudentQuestionStatus sqs = studentQuestionStatusRepository
-                            .findByStudentIdAndQuestionId(studentId, q.getId())
-                            .orElse(null);
-                    
-                    if (sqs != null && "IN_PROGRESS".equals(sqs.getStatus())) {
-                        // Create a placeholder submission per question so attemptCount increments.
-                        try {
-                            com.chillcode.assessment.dto.SubmitRequest blankReq = new com.chillcode.assessment.dto.SubmitRequest();
-                            blankReq.setQuestionId(q.getId());
-                            blankReq.setStudentTestId(st.getId());
-                            blankReq.setCode("// No code submitted");
-                            blankReq.setLanguage("java");
-                            blankReq.setRunOnly(false);
-                            blankReq.setTimeTakenSeconds(timeTakenSeconds);
-                            codeExecutionService.submitCode(blankReq);
-                        } catch (Exception e) {
-                            System.err.println("Failed to create blank submission for question " + q.getId() + ": " + e.getMessage());
-                        }
+                        codeExecutionService.evaluateExistingSubmission(submissionId, req);
+                    } catch (Exception ex) {
+                        System.err.println("Async evaluation error for sub " + submissionId + ": " + ex.getMessage());
                     }
                 }
+                finalizeStudentTestAfterEvaluation(studentTestId, actualTimeTaken, isAutoSubmitted);
+            } catch (Exception e) {
+                System.err.println("Async evaluation overall error: " + e.getMessage());
             }
-        }
-
-        // Now submit and finalize the test (calculates score and status)
-        st = submitTest(testId, studentId, isAutoSubmitted, timeTakenSeconds);
+        });
 
         return convertToStudentTestDto(st);
+    }
+
+    @Transactional
+    public void finalizeStudentTestAfterEvaluation(Long studentTestId, Long frontendTimeTakenSeconds, boolean isAutoSubmitted) {
+        StudentTest st = studentTestRepository.findByIdWithTestAndStudent(studentTestId)
+                .orElseGet(() -> studentTestRepository.findById(studentTestId).orElse(null));
+        if (st == null) return;
+
+        com.chillcode.assessment.entity.Test test = null;
+        try {
+            test = st.getTest();
+            if (test != null) {
+                test.getMaxMarks();
+            }
+        } catch (Exception e) {
+            if (st.getTest() != null && st.getTest().getId() != null) {
+                test = testRepository.findById(st.getTest().getId()).orElse(null);
+            }
+        }
+
+        List<Submission> activeSubmissions = submissionRepository.findByStudentTestId(st.getId()).stream()
+                .filter(sub -> sub.getActive() == null || Boolean.TRUE.equals(sub.getActive()))
+                .collect(Collectors.toList());
+
+        int totalPassingMarks = 0;
+        int totalEarnedScore = 0;
+        int totalTestCasesPassed = 0;
+        int totalTestCasesCount = 0;
+
+        for (Submission sub : activeSubmissions) {
+            if (sub.getPassingMarks() != null && sub.getPassingMarks() > 0) {
+                totalPassingMarks += sub.getPassingMarks();
+            }
+            if (sub.getScore() != null) {
+                totalEarnedScore += sub.getScore();
+            }
+            if (sub.getPassedTests() != null) {
+                totalTestCasesPassed += sub.getPassedTests();
+            }
+            if (sub.getTotalTests() != null) {
+                totalTestCasesCount += sub.getTotalTests();
+            }
+        }
+
+        if (totalPassingMarks == 0) {
+            int maxMarks = test != null && test.getMaxMarks() != null ? test.getMaxMarks() : 100;
+            totalPassingMarks = maxMarks / 2;
+        }
+
+        st.setScore(totalEarnedScore);
+        st.setTestCasesPassed(totalTestCasesPassed);
+        st.setTotalTestCases(totalTestCasesCount);
+
+        if (totalEarnedScore >= totalPassingMarks) {
+            st.setStatus("COMPLETED");
+            st.setPassFailStatus("PASS");
+        } else {
+            st.setStatus("PENDING");
+            st.setPassFailStatus("FAIL");
+            st.setWarningsCount(0);
+            st.setIsSuspended(false);
+        }
+
+        st.setAutoSubmitted(isAutoSubmitted);
+        st.setSubmittedAt(LocalDateTime.now());
+        if (frontendTimeTakenSeconds != null && frontendTimeTakenSeconds > 0) {
+            st.setTimeTakenSeconds(frontendTimeTakenSeconds);
+        }
+
+        StudentTest savedSt = studentTestRepository.save(st);
+
+        try {
+            Long subjectId = (test != null && test.getSubject() != null) ? test.getSubject().getId() : null;
+            if (subjectId != null) {
+                rankingService.updateSubjectRankings(subjectId);
+            }
+            if (st.getStudent() != null && test != null) {
+                badgeService.evaluateAndAwardBadges(st.getStudent().getId(), test.getId());
+            }
+            if (test != null) {
+                badgeSetService.allocateBadgesForTest(test.getId());
+            }
+        } catch (Exception e) {
+            System.err.println("Non-fatal error updating ranking/badges: " + e.getMessage());
+        }
     }
 
     @Transactional
@@ -937,7 +1164,6 @@ public class TestService {
             if (sqs != null) {
                 sqs.setStatus("NOT_STARTED");
                 sqs.setCompletedAt(null);
-                sqs.setAttemptCount(sqs.getAttemptCount() != null ? sqs.getAttemptCount() + 1 : 1);
                 studentQuestionStatusRepository.save(sqs);
             }
 
@@ -957,7 +1183,6 @@ public class TestService {
                 if ("PENDING_REATTEMPT".equals(status.getStatus())) {
                     status.setStatus("NOT_STARTED");
                     status.setCompletedAt(null);
-                    status.setAttemptCount(status.getAttemptCount() != null ? status.getAttemptCount() + 1 : 1);
                     studentQuestionStatusRepository.save(status);
                 }
             }

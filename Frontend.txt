@@ -6,3 +6,19 @@ Backend
 had little problems in Environment
 To add Environment dependency
 Ide api call crosscheck if it heavy to change ide (judge0)
+problem in Ide support dependency in specific language
+security patch
+api call retrive
+loading issues
+
+
+Database
+to check database
+to change database
+problems in retrive while login so check database for login problem
+
+Fix 
+exitv test time doesn't srop and code editor doesn't freeze
+page refresh goes to login page
+test not submitted it takes too time
+when submit code editor wants to freeze

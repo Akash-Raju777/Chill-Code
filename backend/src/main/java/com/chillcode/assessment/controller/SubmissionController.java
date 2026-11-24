@@ -155,12 +155,11 @@ public class SubmissionController {
                 map.put("subjectName", sub.getQuestion().getSubject().getName());
             }
             com.chillcode.assessment.entity.StudentQuestionStatus sqs = sqsMap.get(sub.getQuestion().getId());
-            int rawAttempts = sqs != null && sqs.getAttemptCount() != null ? sqs.getAttemptCount() : 1;
-            map.put("attempts", rawAttempts);
-
-            // Use the calculated chronological attempt index (0-based)
-            int attemptIndex = submissionAttemptIndex.getOrDefault(sub.getId(), 0);
-            map.put("attempts", attemptIndex);
+            List<Submission> subList = submissionsByQuestion.get(sub.getQuestion().getId());
+            int attemptsCount = (subList != null && !subList.isEmpty()) 
+                    ? subList.size() 
+                    : (sqs != null && sqs.getAttemptCount() != null ? sqs.getAttemptCount() : 1);
+            map.put("attempts", attemptsCount);
 
             if (sub.getStudentTest() != null) {
                 if (sub.getStudentTest().getTest() != null) {
@@ -309,6 +308,18 @@ public class SubmissionController {
             res.put("questionName", sub.getQuestion().getTitle());
             if (sub.getQuestion().getSubject() != null) {
                 res.put("subjectName", sub.getQuestion().getSubject().getName());
+            }
+            if (sub.getStudentTest() != null && sub.getStudentTest().getStudent() != null) {
+                com.chillcode.assessment.entity.StudentQuestionStatus sqs = studentQuestionStatusRepository
+                        .findByStudentIdAndQuestionId(sub.getStudentTest().getStudent().getId(), sub.getQuestion().getId())
+                        .orElse(null);
+                int rawAttempts = sqs != null && sqs.getAttemptCount() != null ? sqs.getAttemptCount() : 1;
+                List<Submission> subsForQ = submissionRepository.findByStudentIdAndQuestionIdOrderByCreatedAtDesc(
+                        sub.getStudentTest().getStudent().getId(), sub.getQuestion().getId());
+                if (subsForQ != null && !subsForQ.isEmpty()) {
+                    rawAttempts = Math.max(rawAttempts, subsForQ.size());
+                }
+                res.put("attempts", rawAttempts);
             }
         }
 

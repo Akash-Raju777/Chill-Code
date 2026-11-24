@@ -119,8 +119,8 @@ export default function TestsWorkspace() {
         setSubjects(subjectsData);
       } else {
         const [testsData, questionsData] = await Promise.all([
-          apiCall('/api/student/tests'),
-          apiCall('/api/student/questions'),
+          apiCall('/api/student/tests', { skipLocalCache: true }),
+          apiCall('/api/student/questions', { skipLocalCache: true }),
         ]);
         setStudentTests(testsData);
         setQuestionsList(applyPendingReattempts(questionsData));
@@ -295,30 +295,6 @@ export default function TestsWorkspace() {
         }
       }
 
-      // 1. Fetch detailed question first to ensure test cases & full details are available
-      let sessionQuestions = [selectedQuestion];
-      try {
-        const detailedQ = await apiCall(`/api/student/questions/${selectedQuestion.id}`);
-        if (detailedQ && detailedQ.id) {
-          sessionQuestions = [detailedQ];
-        }
-      } catch (err) {
-        console.warn("Failed to fetch detailed question during start, using shallow copy:", err);
-      }
-
-      // 2. INSTANT TEST SESSION START - Zero latency UI transition
-      startTestSession(
-        selectedTest.test.id,
-        selectedTest.id,
-        selectedQuestion.title,
-        sessionQuestions,
-        remainingSeconds,
-        totalSeconds, // Add total configured test duration
-        false, // isViewMode = false
-        selectedTest.test.securityShieldEnabled ?? false,
-        latestUser?.id
-      );
-
       // Check local code backup for this user & question
       if (latestUser?.id) {
         const backup = localStorage.getItem(`chillcode_code_backup_${latestUser.id}_${selectedQuestion.id}`);
@@ -327,11 +303,36 @@ export default function TestsWorkspace() {
         }
       }
 
-      // Close modal and navigate immediately
+      // 1. INSTANT TEST SESSION START - Zero latency UI transition
+      startTestSession(
+        selectedTest.test.id,
+        selectedTest.id,
+        selectedQuestion.title,
+        [selectedQuestion],
+        remainingSeconds,
+        totalSeconds, // Add total configured test duration
+        false, // isViewMode = false
+        selectedTest.test.securityShieldEnabled ?? false,
+        latestUser?.id
+      );
+
+      // Close modal and navigate immediately with zero delay
       setShowConfirmModal(false);
+      setStartingTest(false);
       router.push(`/student/tests/${selectedTest.test.id}?question=${selectedQuestion.id}`);
 
-      // 2. BACKGROUND ASYNC SYNC (Non-blocking)
+      // 2. BACKGROUND ASYNC SYNC (Non-blocking): fetch full question test cases & record backend start
+      if (!selectedQuestion.testCases || selectedQuestion.testCases.length === 0) {
+        apiCall(`/api/student/questions/${selectedQuestion.id}`).then((detailedQ) => {
+          if (detailedQ && detailedQ.id) {
+            const store = useTestStore.getState();
+            if (store.isSessionActive && store.questions.length > 0 && store.questions[0].id === detailedQ.id) {
+              useTestStore.setState({ questions: [detailedQ] });
+            }
+          }
+        }).catch(err => console.warn("Background detailed question fetch:", err));
+      }
+
       apiCall(`/api/student/tests/${selectedTest.test.id}/start?questionId=${selectedQuestion.id}`, {
         method: 'POST',
       }).then((updatedSt) => {

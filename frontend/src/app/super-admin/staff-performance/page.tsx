@@ -91,7 +91,7 @@ export default function StaffPerformancePage() {
       if (isRefresh) setRefreshing(true);
       else setLoading(true);
 
-      const res = await apiCall('/api/super-admin/staff-performance');
+      const res = await apiCall('/api/super-admin/staff-performance', { skipLocalCache: isRefresh });
       setData(res as ApiResponse);
 
       // Keep selectedStaff up-to-date if already viewing one
