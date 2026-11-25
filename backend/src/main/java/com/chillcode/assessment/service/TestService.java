@@ -77,29 +77,37 @@ public class TestService {
     public List<Test> getAllTests() {
         Long adminId = com.chillcode.assessment.security.SecurityUtils.getCurrentAdminId();
         if (adminId == null) return java.util.Collections.emptyList();
-        List<Test> tests = testRepository.findByAdminId(adminId);
-        for (Test t : tests) {
-            String foundQCode = null;
-            if (t.getQuestions() != null) {
-                for (Question q : t.getQuestions()) {
-                    if (q.getQuestionCode() != null && !q.getQuestionCode().trim().isEmpty() && !q.getQuestionCode().trim().startsWith("TEST-")) {
-                        foundQCode = q.getQuestionCode().trim().toUpperCase();
-                        break;
+        List<Test> tests = testRepository.findByAdminIdWithSubjectAndStaff(adminId);
+        Map<Long, String> questionCodeByTestId = new HashMap<>();
+        try {
+            for (Object[] row : testRepository.findTestIdAndQuestionCodes()) {
+                if (row != null && row.length >= 2 && row[0] != null && row[1] != null) {
+                    String qCode = row[1].toString().trim().toUpperCase();
+                    if (!qCode.isEmpty() && !qCode.startsWith("TEST-")) {
+                        questionCodeByTestId.putIfAbsent(((Number) row[0]).longValue(), qCode);
                     }
                 }
             }
+        } catch (Exception ignored) {}
+
+        List<Test> toSave = new ArrayList<>();
+        for (Test t : tests) {
+            String foundQCode = questionCodeByTestId.get(t.getId());
             if (foundQCode != null) {
                 if (!foundQCode.equals(t.getTestCode())) {
                     t.setTestCode(foundQCode);
-                    testRepository.save(t);
+                    toSave.add(t);
                 }
             } else if (t.getTestCode() == null || t.getTestCode().trim().isEmpty() || t.getTestCode().startsWith("TEST-")) {
-                String prefix = (t.getSubject() != null && t.getSubject().getName() != null) ? 
+                String prefix = (t.getSubject() != null && t.getSubject().getName() != null) ?
                         t.getSubject().getName().replaceAll("[^a-zA-Z]", "").toUpperCase() : "TEST";
                 if (prefix.length() > 6) prefix = prefix.substring(0, 6);
                 t.setTestCode(prefix + "-" + String.format("%03d", t.getId()));
-                testRepository.save(t);
+                toSave.add(t);
             }
+        }
+        if (!toSave.isEmpty()) {
+            testRepository.saveAll(toSave);
         }
         return tests;
     }
@@ -660,7 +668,23 @@ public class TestService {
                 dto.setReattemptStatus(parts[0]);
                 try {
                     Long qId = Long.parseLong(parts[1]);
-                    questionRepository.findById(qId).ifPresent(q -> dto.setReattemptQuestionTitle(q.getTitle()));
+                    String matchedTitle = null;
+                    if (questionsBySubjectMap != null) {
+                        for (List<Question> qList : questionsBySubjectMap.values()) {
+                            for (Question q : qList) {
+                                if (qId.equals(q.getId())) {
+                                    matchedTitle = q.getTitle();
+                                    break;
+                                }
+                            }
+                            if (matchedTitle != null) break;
+                        }
+                    }
+                    if (matchedTitle != null) {
+                        dto.setReattemptQuestionTitle(matchedTitle);
+                    } else {
+                        questionRepository.findById(qId).ifPresent(q -> dto.setReattemptQuestionTitle(q.getTitle()));
+                    }
                 } catch (Exception ignored) {}
             }
         }
@@ -685,13 +709,18 @@ public class TestService {
             userRepository.save(student);
 
             List<StudentTest> studentTests = studentTestRepository.findByStudentId(studentId);
+            List<StudentTest> unsuspended = new java.util.ArrayList<>();
             for (StudentTest st : studentTests) {
                 if (Boolean.TRUE.equals(st.getIsSuspended()) || "SUSPENDED".equals(st.getStatus())) {
                     st.setIsSuspended(false);
                     st.setWarningsCount(0);
                     st.setStatus("STARTED");
-                    studentTestRepository.save(st);
-
+                    unsuspended.add(st);
+                }
+            }
+            if (!unsuspended.isEmpty()) {
+                studentTestRepository.saveAll(unsuspended);
+                for (StudentTest st : unsuspended) {
                     List<Warning> warnings = warningRepository.findByStudentTestId(st.getId());
                     if (warnings != null && !warnings.isEmpty()) {
                         warningRepository.deleteAll(warnings);
@@ -700,14 +729,20 @@ public class TestService {
             }
         }
         
-        List<StudentTest> existingStudentTests = studentTestRepository.findByStudentId(studentId);
+        Long adminId = com.chillcode.assessment.security.SecurityUtils.getCurrentAdminId();
+        List<com.chillcode.assessment.entity.Test> allTests = adminId != null
+                ? testRepository.findByAdminIdWithSubjectAndStaff(adminId)
+                : testRepository.findAllWithSubjectAndStaff();
+
+        List<StudentTest> existingStudentTests = studentTestRepository.findByStudentIdWithTestAndSubject(studentId);
         java.util.Set<Long> assignedTestIds = existingStudentTests.stream()
                 .map(st -> st.getTest().getId())
                 .collect(Collectors.toSet());
 
-        Long adminId = com.chillcode.assessment.security.SecurityUtils.getCurrentAdminId();
-        List<com.chillcode.assessment.entity.Test> allTests = adminId != null ? testRepository.findByAdminId(adminId) : testRepository.findAll();
+        // Batch-create missing assignments (saveAll = one flush instead of one
+        // round trip per test; first-load with ~180 tests used to take ~67s).
         boolean savedAny = false;
+        List<StudentTest> newAssignments = new java.util.ArrayList<>();
         for (com.chillcode.assessment.entity.Test test : allTests) {
             if (!assignedTestIds.contains(test.getId())) {
                 com.chillcode.assessment.entity.StudentTest st = com.chillcode.assessment.entity.StudentTest.builder()
@@ -719,14 +754,21 @@ public class TestService {
                         .isSuspended(false)
                         .admin(test.getAdmin() != null ? test.getAdmin() : (student != null ? student.getAdmin() : null))
                         .build();
-                studentTestRepository.save(st);
-                savedAny = true;
+                newAssignments.add(st);
             }
+        }
+        if (!newAssignments.isEmpty()) {
+            studentTestRepository.saveAll(newAssignments);
+            savedAny = true;
         }
 
         // Auto-unsuspend practice tests / tests with security shield disabled
-        List<StudentTest> studentTests = savedAny ? studentTestRepository.findByStudentId(studentId) : existingStudentTests;
+        List<StudentTest> studentTests = savedAny
+                ? studentTestRepository.findByStudentIdWithTestAndSubject(studentId)
+                : existingStudentTests;
+        List<StudentTest> autoUnsuspended = new java.util.ArrayList<>();
         for (StudentTest st : studentTests) {
+            st.setStudent(student);
             if (Boolean.FALSE.equals(st.getTest().getSecurityShieldEnabled())) {
                 if (Boolean.TRUE.equals(st.getIsSuspended()) || "SUSPENDED".equals(st.getStatus())) {
                     st.setIsSuspended(false);
@@ -734,27 +776,45 @@ public class TestService {
                     if ("SUSPENDED".equals(st.getStatus())) {
                         st.setStatus("STARTED");
                     }
-                    studentTestRepository.save(st);
-
-                    List<Warning> warnings = warningRepository.findByStudentTestId(st.getId());
-                    if (warnings != null && !warnings.isEmpty()) {
-                        warningRepository.deleteAll(warnings);
-                    }
+                    autoUnsuspended.add(st);
+                }
+            }
+        }
+        if (!autoUnsuspended.isEmpty()) {
+            studentTestRepository.saveAll(autoUnsuspended);
+            for (StudentTest st : autoUnsuspended) {
+                List<Warning> warnings = warningRepository.findByStudentTestId(st.getId());
+                if (warnings != null && !warnings.isEmpty()) {
+                    warningRepository.deleteAll(warnings);
                 }
             }
         }
 
-        List<StudentQuestionStatus> sqsList = studentQuestionStatusRepository.findByStudentId(studentId);
-        java.util.Map<Long, StudentQuestionStatus> sqsMap = sqsList.stream()
-                .collect(Collectors.toMap(StudentQuestionStatus::getQuestionId, s -> s, (s1, s2) -> s1));
+        boolean needsPracticeArenaQuestions = studentTests.stream().anyMatch(st ->
+                st.getTest() != null && st.getTest().getName() != null
+                        && st.getTest().getName().toLowerCase().contains("practice arena"));
+        boolean needsReattemptQuestionTitles = studentTests.stream().anyMatch(st ->
+                st.getReattemptStatus() != null && st.getReattemptStatus().contains(":"));
 
-        List<Question> allQuestions = questionRepository.findAll();
-        java.util.Map<Long, List<Question>> questionsBySubjectMap = allQuestions.stream()
-                .filter(q -> q.getSubject() != null)
-                .collect(Collectors.groupingBy(q -> q.getSubject().getId()));
+        java.util.Map<Long, StudentQuestionStatus> sqsMap = java.util.Collections.emptyMap();
+        java.util.Map<Long, List<Question>> questionsBySubjectMap = java.util.Collections.emptyMap();
+        if (needsPracticeArenaQuestions || needsReattemptQuestionTitles) {
+            List<StudentQuestionStatus> sqsList = studentQuestionStatusRepository.findByStudentId(studentId);
+            sqsMap = sqsList.stream()
+                    .collect(Collectors.toMap(StudentQuestionStatus::getQuestionId, s -> s, (s1, s2) -> s1));
 
-        return studentTestRepository.findByStudentId(studentId).stream()
-                .map(st -> convertToStudentTestDto(st, sqsMap, questionsBySubjectMap))
+            List<Question> scopedQuestions = adminId != null
+                    ? questionRepository.findByAdminId(adminId)
+                    : questionRepository.findAll();
+            questionsBySubjectMap = scopedQuestions.stream()
+                    .filter(q -> q.getSubject() != null)
+                    .collect(Collectors.groupingBy(q -> q.getSubject().getId()));
+        }
+
+        final java.util.Map<Long, StudentQuestionStatus> finalSqsMap = sqsMap;
+        final java.util.Map<Long, List<Question>> finalQuestionsBySubjectMap = questionsBySubjectMap;
+        return studentTests.stream()
+                .map(st -> convertToStudentTestDto(st, finalSqsMap, finalQuestionsBySubjectMap))
                 .collect(Collectors.toList());
     }
 

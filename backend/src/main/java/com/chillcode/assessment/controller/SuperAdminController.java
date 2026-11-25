@@ -54,6 +54,9 @@ public class SuperAdminController {
     private com.chillcode.assessment.repository.NotificationRepository notificationRepository;
 
     @Autowired
+    private com.chillcode.assessment.security.UserDetailsServiceImpl userDetailsService;
+
+    @Autowired
     private com.chillcode.assessment.repository.StudentQuestionStatusRepository studentQuestionStatusRepository;
 
     private boolean isAttendedStatus(String status) {
@@ -445,28 +448,38 @@ public class SuperAdminController {
 
     @GetMapping("/students")
     public ResponseEntity<List<Map<String, Object>>> getAllStudents() {
+        // 3 bulk queries instead of findAll() + per-student stream scans + lazy
+        // test/subject N+1 (was the source of the 63s response time).
         List<User> students = userRepository.findByRole(Role.STUDENT);
-        List<StudentTest> studentTests = studentTestRepository.findAll();
-        List<StudentBadge> badges = studentBadgeRepository.findAll();
+        List<StudentTest> studentTests = studentTestRepository.findAllWithStudentsTestsAndSubjects();
 
-        Set<String> deletedTestNames = activityLogRepository.findAll().stream()
-                .filter(log -> log.getAction() != null && log.getAction().toUpperCase().contains("DELETE_TEST"))
-                .map(ActivityLog::getDetails)
-                .filter(Objects::nonNull)
-                .collect(Collectors.toSet());
+        // Group once: studentId -> their tests (avoids O(students × tests) re-scan)
+        Map<Long, List<StudentTest>> testsByStudent = new HashMap<>();
+        for (StudentTest st : studentTests) {
+            if (st.getStudent() == null) continue;
+            testsByStudent.computeIfAbsent(st.getStudent().getId(), k -> new ArrayList<>()).add(st);
+        }
+
+        // Badge counts in one grouped query: studentId -> count
+        Map<Long, Long> badgeCountsByStudent = new HashMap<>();
+        for (Object[] row : studentBadgeRepository.countBadgesGroupedByStudentId()) {
+            if (row[0] != null && row[1] != null) {
+                badgeCountsByStudent.put((Long) row[0], ((Number) row[1]).longValue());
+            }
+        }
+
+        Set<String> deletedTestNames = activityLogRepository.findDeletedTestNames();
 
         List<Map<String, Object>> result = new ArrayList<>();
         for (User s : students) {
-            List<StudentTest> userTests = studentTests.stream()
-                    .filter(st -> st.getStudent() != null && st.getStudent().getId().equals(s.getId()))
-                    .collect(Collectors.toList());
+            List<StudentTest> userTests = testsByStudent.getOrDefault(s.getId(), Collections.emptyList());
 
             // De-duplicate userTests by test identity
             Map<String, StudentTest> distinctTests = new HashMap<>();
             for (StudentTest st : userTests) {
                 if (st.getTest() == null || st.getTest().getName() == null) continue;
                 if (deletedTestNames.contains(st.getTest().getName())) continue;
-                String key = st.getTest().getName().trim().toLowerCase() + ":::" + 
+                String key = st.getTest().getName().trim().toLowerCase() + ":::" +
                              (st.getTest().getSubject() != null ? st.getTest().getSubject().getName().toLowerCase() : "general");
                 StudentTest cur = distinctTests.get(key);
                 if (cur == null || (!isAttendedStatus(cur.getStatus()) && isAttendedStatus(st.getStatus()))) {
@@ -483,8 +496,7 @@ public class SuperAdminController {
                     .mapToInt(st -> st.getScore() != null ? st.getScore() : 0).sum();
             double avgMarks = attended > 0 ? (double) totalMarks / attended : 0.0;
 
-            long badgeCount = badges.stream()
-                    .filter(b -> b.getStudent() != null && b.getStudent().getId().equals(s.getId())).count();
+            long badgeCount = badgeCountsByStudent.getOrDefault(s.getId(), 0L);
 
             Map<String, Object> item = new HashMap<>();
             item.put("id", s.getId());
@@ -641,6 +653,11 @@ public class SuperAdminController {
             return ResponseEntity.badRequest().body("Invalid status: " + statusStr);
         }
         userRepository.save(student);
+        // Status changes (suspend/inactive) must take effect immediately — evict
+        // the per-request auth cache so the JWT filter sees the new status now.
+        userDetailsService.evict(student.getUsername());
+        if (student.getEmail() != null) userDetailsService.evict(student.getEmail());
+        if (student.getRegisterNumber() != null) userDetailsService.evict(student.getRegisterNumber());
         return ResponseEntity.ok("Student status updated to " + statusStr);
     }
 

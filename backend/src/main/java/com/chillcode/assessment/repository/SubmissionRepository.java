@@ -34,6 +34,22 @@ public interface SubmissionRepository extends JpaRepository<Submission, Long> {
     @org.springframework.data.jpa.repository.Query("SELECT s FROM Submission s LEFT JOIN FETCH s.question q LEFT JOIN FETCH q.subject LEFT JOIN FETCH s.studentTest st LEFT JOIN FETCH st.test WHERE st.student.id = :studentId ORDER BY s.createdAt DESC")
     List<Submission> findAllByStudentIdOrderByCreatedAtDesc(@org.springframework.data.repository.query.Param("studentId") Long studentId);
 
+    /**
+     * Lightweight projection for building per-question summary maps.
+     * Avoids hydrating full Submission entities (code/stdout/stderr TEXT columns
+     * + 4 JOIN FETCHes) when callers only need score/overallResult/status.
+     */
+    @org.springframework.data.jpa.repository.Query("SELECT s.question.id, s.score, s.overallResult, s.active, s.status, s.createdAt FROM Submission s WHERE s.question IS NOT NULL AND s.studentTest.student.id = :studentId ORDER BY s.createdAt DESC")
+    java.util.List<Object[]> findSubmissionSummariesForStudent(@org.springframework.data.repository.query.Param("studentId") Long studentId);
+
+    /**
+     * Subject-scoped submissions with all associations used by ranking
+     * aggregation pre-fetched. Replaces submissionRepository.findAll() +
+     * in-memory subject filtering (which loaded every submission in the DB).
+     */
+    @org.springframework.data.jpa.repository.Query("SELECT s FROM Submission s JOIN FETCH s.question q JOIN FETCH q.subject subj JOIN FETCH s.studentTest st JOIN FETCH st.student WHERE subj.id = :subjectId AND ((s.score IS NOT NULL AND s.score > 0) OR UPPER(s.status) = 'ACCEPTED')")
+    java.util.List<Submission> findAllBySubjectIdWithGraph(@org.springframework.data.repository.query.Param("subjectId") Long subjectId);
+
     // Check if an active EXITED submission already exists for this student+question (within last N seconds) for idempotency
     @org.springframework.data.jpa.repository.Query("SELECT COUNT(s) FROM Submission s WHERE s.studentTest.student.id = :studentId AND s.question.id = :questionId AND s.status = 'EXITED' AND (s.active IS NULL OR s.active = true) AND s.createdAt >= :since")
     long countRecentExitedByStudentAndQuestion(@org.springframework.data.repository.query.Param("studentId") Long studentId, @org.springframework.data.repository.query.Param("questionId") Long questionId, @org.springframework.data.repository.query.Param("since") java.time.LocalDateTime since);
@@ -58,4 +74,10 @@ public interface SubmissionRepository extends JpaRepository<Submission, Long> {
 
     @org.springframework.data.jpa.repository.Query("SELECT COUNT(s) FROM Submission s JOIN s.studentTest st JOIN st.test t WHERE LOWER(s.language) = LOWER(:lang) AND s.status = 'ACCEPTED' AND t.admin.id = :adminId")
     long countAcceptedSubmissionsByLanguageAndAdminId(@org.springframework.data.repository.query.Param("lang") String lang, @org.springframework.data.repository.query.Param("adminId") Long adminId);
+
+    @org.springframework.data.jpa.repository.Query("SELECT LOWER(s.language), COUNT(s) FROM Submission s JOIN s.studentTest st JOIN st.test t WHERE t.admin.id = :adminId GROUP BY LOWER(s.language)")
+    List<Object[]> countSubmissionsGroupedByLanguageAndAdminId(@org.springframework.data.repository.query.Param("adminId") Long adminId);
+
+    @org.springframework.data.jpa.repository.Query("SELECT LOWER(s.language), COUNT(s) FROM Submission s JOIN s.studentTest st JOIN st.test t WHERE s.status = 'ACCEPTED' AND t.admin.id = :adminId GROUP BY LOWER(s.language)")
+    List<Object[]> countAcceptedSubmissionsGroupedByLanguageAndAdminId(@org.springframework.data.repository.query.Param("adminId") Long adminId);
 }

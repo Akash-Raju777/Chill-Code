@@ -9,6 +9,7 @@ import org.springframework.stereotype.Service;
 
 import java.time.LocalDateTime;
 import java.util.*;
+import java.util.stream.Collectors;
 
 @Service
 public class AdminService {
@@ -72,11 +73,27 @@ public class AdminService {
             monthlyTests.add(data);
         }
 
-        // Student participation chart using actual data
+        // Student participation chart using single batch query across top 5 non-empty tests
         List<Map<String, Object>> studentParticipation = new ArrayList<>();
+        Set<Long> testsWithStudentTests = new HashSet<>();
+        for (Object[] row : studentTestRepository.countStudentTestsGroupedByTestId()) {
+            if (row != null && row.length >= 2 && row[0] != null && ((Number) row[1]).longValue() > 0) {
+                testsWithStudentTests.add(((Number) row[0]).longValue());
+            }
+        }
+        List<Long> candidateTestIds = testsList.stream()
+                .map(com.chillcode.assessment.entity.Test::getId)
+                .filter(testsWithStudentTests::contains)
+                .limit(5)
+                .collect(Collectors.toList());
+        Map<Long, List<StudentTest>> stByTestId = candidateTestIds.isEmpty()
+                ? Collections.emptyMap()
+                : studentTestRepository.findByTestIdInWithStudentAndTest(candidateTestIds).stream()
+                        .filter(st -> st.getTest() != null)
+                        .collect(Collectors.groupingBy(st -> st.getTest().getId()));
         for (com.chillcode.assessment.entity.Test t : testsList) {
             if (studentParticipation.size() >= 5) break;
-            List<StudentTest> sts = studentTestRepository.findByTestId(t.getId());
+            List<StudentTest> sts = stByTestId.get(t.getId());
             if (sts != null && !sts.isEmpty()) {
                 long assigned = sts.stream()
                         .filter(st -> st.getStudent() != null && 
@@ -97,12 +114,24 @@ public class AdminService {
             }
         }
 
-        // Language wise performance chart calculated dynamically from database counts
+        // Language wise performance chart calculated dynamically from grouped queries (2 queries instead of 10)
+        Map<String, Long> totalByLang = new HashMap<>();
+        for (Object[] row : submissionRepository.countSubmissionsGroupedByLanguageAndAdminId(adminId)) {
+            if (row != null && row.length >= 2 && row[0] != null && row[1] != null) {
+                totalByLang.put(row[0].toString().toLowerCase(), ((Number) row[1]).longValue());
+            }
+        }
+        Map<String, Long> acceptedByLang = new HashMap<>();
+        for (Object[] row : submissionRepository.countAcceptedSubmissionsGroupedByLanguageAndAdminId(adminId)) {
+            if (row != null && row.length >= 2 && row[0] != null && row[1] != null) {
+                acceptedByLang.put(row[0].toString().toLowerCase(), ((Number) row[1]).longValue());
+            }
+        }
         List<Map<String, Object>> languagePerformance = new ArrayList<>();
         String[] langs = {"java", "python", "cpp", "c", "javascript"};
         for (String lang : langs) {
-            long total = submissionRepository.countSubmissionsByLanguageAndAdminId(lang, adminId);
-            long accepted = submissionRepository.countAcceptedSubmissionsByLanguageAndAdminId(lang, adminId);
+            long total = totalByLang.getOrDefault(lang, 0L);
+            long accepted = acceptedByLang.getOrDefault(lang, 0L);
             double avg = total > 0 ? (accepted * 100.0 / total) : 0.0;
             Map<String, Object> data = new HashMap<>();
             data.put("language", lang.toUpperCase());

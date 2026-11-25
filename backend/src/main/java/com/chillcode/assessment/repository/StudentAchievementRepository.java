@@ -20,4 +20,13 @@ public interface StudentAchievementRepository extends JpaRepository<StudentAchie
 
     @org.springframework.data.jpa.repository.Query("SELECT sa FROM StudentAchievement sa JOIN FETCH sa.test JOIN FETCH sa.student WHERE sa.test.id IN :testIds ORDER BY sa.awardedAt DESC")
     List<StudentAchievement> findByTestIdInWithTestOrderByAwardedAtDesc(@org.springframework.data.repository.query.Param("testIds") java.util.Collection<Long> testIds);
+
+    @org.springframework.data.jpa.repository.Query("SELECT sa FROM StudentAchievement sa LEFT JOIN FETCH sa.student LEFT JOIN FETCH sa.test WHERE sa.student.id IN :studentIds")
+    List<StudentAchievement> findByStudentIdInWithTest(@org.springframework.data.repository.query.Param("studentIds") java.util.Collection<Long> studentIds);
+
+    @org.springframework.data.jpa.repository.Query("SELECT sa.student.id, t.id FROM StudentAchievement sa LEFT JOIN sa.test t")
+    List<Object[]> findAllStudentAndTestIds();
+
+    @org.springframework.data.jpa.repository.Query("SELECT sa FROM StudentAchievement sa LEFT JOIN FETCH sa.student")
+    List<StudentAchievement> findAllWithStudent();
 }

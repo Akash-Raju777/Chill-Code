@@ -37,6 +37,9 @@ public class AdminController {
     @Autowired
     private com.chillcode.assessment.repository.StudentQuestionStatusRepository studentQuestionStatusRepository;
 
+    @Autowired
+    private com.chillcode.assessment.security.UserDetailsServiceImpl userDetailsService;
+
     @jakarta.persistence.PersistenceContext
     private jakarta.persistence.EntityManager entityManager;
 
@@ -136,6 +139,10 @@ public class AdminController {
             }
 
             User savedUser = userRepository.save(existingUser);
+            // Status/password changes must bypass the auth cache immediately
+            userDetailsService.evict(savedUser.getUsername());
+            if (savedUser.getEmail() != null) userDetailsService.evict(savedUser.getEmail());
+            if (savedUser.getRegisterNumber() != null) userDetailsService.evict(savedUser.getRegisterNumber());
             return ResponseEntity.ok(savedUser);
         }).orElse(ResponseEntity.notFound().build());
     }
@@ -157,6 +164,9 @@ public class AdminController {
         }
         student.setSuspensionEndTime(null);
         userRepository.save(student);
+        userDetailsService.evict(student.getUsername());
+        if (student.getEmail() != null) userDetailsService.evict(student.getEmail());
+        if (student.getRegisterNumber() != null) userDetailsService.evict(student.getRegisterNumber());
 
         // Delete all warnings permanently from database for this student
         entityManager.createQuery("DELETE FROM Warning w WHERE w.studentTest.student.id = :stuId")

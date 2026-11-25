@@ -88,8 +88,10 @@ public class RankingService {
 
         String targetLang = getLanguageCodeForSubject(subject.getName());
 
-        // Get all direct submissions for questions under this subject that match target language
-        List<com.chillcode.assessment.entity.Submission> subjectSubmissions = submissionRepository.findAll().stream()
+        // Get submissions for questions under this subject (SQL-filtered; language
+        // synonym matching stays in Java). Replaces submissionRepository.findAll()
+        // which materialized every submission in the database.
+        List<com.chillcode.assessment.entity.Submission> subjectSubmissions = submissionRepository.findAllBySubjectIdWithGraph(subjectId).stream()
                 .filter(sub -> sub.getQuestion() != null 
                         && sub.getQuestion().getSubject() != null 
                         && sub.getQuestion().getSubject().getId().equals(subjectId)
@@ -204,15 +206,24 @@ public class RankingService {
             ranking.setLastSubmissionTime(stats.lastSubmissionTime);
             ranking.setStatus("ACTIVE");
 
-            updatedRankings.add(subjectRankingRepository.save(ranking));
+            updatedRankings.add(ranking);
             rank++;
         }
 
+        // Batch persist instead of save() per row (one round trip to remote DB)
+        if (!updatedRankings.isEmpty()) {
+            subjectRankingRepository.saveAll(updatedRankings);
+        }
+
         // Delete stale ranking entries for unattempted students
+        List<SubjectRanking> stale = new ArrayList<>();
         for (SubjectRanking oldRanking : existingRankings) {
             if (!activeStudentIds.contains(oldRanking.getStudent().getId())) {
-                subjectRankingRepository.delete(oldRanking);
+                stale.add(oldRanking);
             }
+        }
+        if (!stale.isEmpty()) {
+            subjectRankingRepository.deleteAll(stale);
         }
 
         // Dynamically trigger badge allocation for all tests under this subject
@@ -231,10 +242,18 @@ public class RankingService {
     @Transactional
     public List<SubjectRankingDto> getSubjectLeaderboard(Long subjectId) {
         updateSubjectRankings(subjectId);
-        List<Long> validTestIds = testRepository.findTestIdsWithQuestions();
-        List<SubjectRanking> rankings = subjectRankingRepository.findBySubjectIdOrderByRankPositionAsc(subjectId);
-        
-        List<SubjectRankingDto> dtos = rankings.stream().map(r -> mapToDto(r, validTestIds)).collect(Collectors.toList());
+        java.util.Set<Long> validTestIdSet = new java.util.HashSet<>(testRepository.findTestIdsWithQuestions());
+        List<SubjectRanking> rankings = subjectRankingRepository.findBySubjectIdWithStudentAndSubject(subjectId);
+
+        // Batch-load badge data for ALL ranked students up-front (3 queries total)
+        // instead of 3 queries PER student inside mapToDto (N+1).
+        java.util.Set<Long> studentIds = new java.util.HashSet<>();
+        for (SubjectRanking r : rankings) {
+            if (r.getStudent() != null) studentIds.add(r.getStudent().getId());
+        }
+        Map<Long, Integer> badgeCounts = buildSubjectBadgeCounts(studentIds, subjectId, validTestIdSet);
+
+        List<SubjectRankingDto> dtos = rankings.stream().map(r -> mapToDto(r, badgeCounts)).collect(Collectors.toList());
         
         dtos.sort((a, b) -> {
             int badgeComp = Integer.compare(b.getTotalBadges(), a.getTotalBadges());
@@ -275,7 +294,59 @@ public class RankingService {
         return getSubjectLeaderboard(subjectId).stream().limit(limit).collect(Collectors.toList());
     }
 
-    private SubjectRankingDto mapToDto(SubjectRanking ranking, List<Long> validTestIds) {
+    /**
+     * Computes per-student badge counts for a subject using 3 batch queries
+     * (achievements, manual badges, language badges) instead of 3 queries per
+     * student. Preserves the exact filter semantics of the previous per-student
+     * code, including that language badges are counted but NOT added to the
+     * total (matches original behavior).
+     */
+    private Map<Long, Integer> buildSubjectBadgeCounts(java.util.Set<Long> studentIds, Long subjectId, java.util.Set<Long> validTestIds) {
+        Map<Long, Integer> counts = new HashMap<>();
+        if (studentIds.isEmpty()) return counts;
+
+        String subjectName = null;
+        try {
+            subjectName = subjectRepository.findById(subjectId).map(Subject::getName).orElse(null);
+        } catch (Exception ignored) {}
+        if (subjectName == null) return counts;
+
+        try {
+            String targetSubject = subjectName;
+            Map<Long, List<com.chillcode.assessment.entity.StudentAchievement>> achByStudent =
+                    studentAchievementRepository.findByStudentIdInWithTest(studentIds).stream()
+                            .filter(sa -> sa.getStudent() != null)
+                            .collect(Collectors.groupingBy(sa -> sa.getStudent().getId()));
+
+            Map<Long, List<com.chillcode.assessment.entity.StudentBadge>> badgeByStudent =
+                    studentBadgeRepository.findByStudentIdInWithSourceTestAndSubject(studentIds).stream()
+                            .filter(sb -> sb.getStudent() != null)
+                            .collect(Collectors.groupingBy(sb -> sb.getStudent().getId()));
+
+            for (Long studentId : studentIds) {
+                try {
+                    long achievementsCount = achByStudent.getOrDefault(studentId, java.util.Collections.emptyList()).stream()
+                            .filter(sa -> "ACTIVE".equalsIgnoreCase(sa.getStatus()) && sa.getSubjectName() != null && sa.getSubjectName().equalsIgnoreCase(targetSubject))
+                            .filter(sa -> sa.getTest() == null || validTestIds.contains(sa.getTest().getId()))
+                            .count();
+
+                    long manualBadgesCount = badgeByStudent.getOrDefault(studentId, java.util.Collections.emptyList()).stream()
+                            .filter(sb -> "ACTIVE".equalsIgnoreCase(sb.getStatus()) && sb.getSourceTest() != null && sb.getSourceTest().getSubject() != null && sb.getSourceTest().getSubject().getName().equalsIgnoreCase(targetSubject))
+                            .filter(sb -> sb.getSourceTest() == null || validTestIds.contains(sb.getSourceTest().getId()))
+                            .count();
+
+                    counts.put(studentId, (int) (achievementsCount + manualBadgesCount));
+                } catch (Exception ignored) {
+                    counts.put(studentId, 0);
+                }
+            }
+        } catch (Exception e) {
+            // batch load failed — leave defaults (0) for all students
+        }
+        return counts;
+    }
+
+    private SubjectRankingDto mapToDto(SubjectRanking ranking, Map<Long, Integer> badgeCounts) {
         String icon = null;
         if (ranking.getRankPosition() == 1) icon = "🥇";
         else if (ranking.getRankPosition() == 2) icon = "🥈";
@@ -289,24 +360,7 @@ public class RankingService {
         int totalBadgesForSubject = 0;
         try {
             Long studentId = ranking.getStudent().getId();
-            String subjectName = ranking.getSubject().getName();
-
-            long achievementsCount = studentAchievementRepository.findByStudentIdOrderByAwardedAtDesc(studentId).stream()
-                    .filter(sa -> "ACTIVE".equalsIgnoreCase(sa.getStatus()) && sa.getSubjectName() != null && sa.getSubjectName().equalsIgnoreCase(subjectName))
-                    .filter(sa -> sa.getTest() == null || validTestIds.contains(sa.getTest().getId()))
-                    .count();
-
-            long manualBadgesCount = studentBadgeRepository.findByStudentId(studentId).stream()
-                    .filter(sb -> "ACTIVE".equalsIgnoreCase(sb.getStatus()) && sb.getSourceTest() != null && sb.getSourceTest().getSubject() != null && sb.getSourceTest().getSubject().getName().equalsIgnoreCase(subjectName))
-                    .filter(sb -> sb.getSourceTest() == null || validTestIds.contains(sb.getSourceTest().getId()))
-                    .count();
-
-            long languageBadgesCount = languageMasterBadgeRepository.findByStudentIdOrderByAwardedDateDesc(studentId).stream()
-                    .filter(lmb -> lmb.getSubject() != null && lmb.getSubject().equalsIgnoreCase(subjectName))
-                    .filter(lmb -> lmb.getTest() == null || validTestIds.contains(lmb.getTest().getId()))
-                    .count();
-
-            totalBadgesForSubject = (int) (achievementsCount + manualBadgesCount);
+            totalBadgesForSubject = badgeCounts.getOrDefault(studentId, 0);
         } catch (Exception ignored) {}
 
         return SubjectRankingDto.builder()

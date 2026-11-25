@@ -27,6 +27,13 @@ public class QuestionService {
 
     private static final Logger log = LoggerFactory.getLogger(QuestionService.class);
 
+    /**
+     * Lightweight stand-in for Submission when building per-question maps.
+     * Only score/overallResult are consumed by convertToDto — avoids hydrating
+     * full Submission rows (code/stdout/stderr TEXT columns) for every question.
+     */
+    private record SubmissionSummary(Integer score, String overallResult) {}
+
     @Autowired
     private QuestionRepository questionRepository;
 
@@ -154,23 +161,18 @@ public class QuestionService {
         com.chillcode.assessment.entity.User student = getCurrentUserEntity();
         Long adminId = com.chillcode.assessment.security.SecurityUtils.getCurrentAdminId();
         if (adminId == null) return java.util.Collections.emptyList();
-        
-        java.util.Map<Long, StudentQuestionStatus> statusMap = getStatusMapForStudent(student);
-        java.util.Set<Long> solvedSet = getSolvedQuestionIdsForStudent(student);
-        java.util.Map<Long, Long> submissionCountMap = getSubmissionCountMapForStudent(student);
 
-        java.util.Map<Long, com.chillcode.assessment.entity.Submission> latestSubmissionMap = new java.util.HashMap<>();
-        if (student != null) {
-            List<com.chillcode.assessment.entity.Submission> allSubs = submissionRepository.findAllByStudentIdOrderByCreatedAtDesc(student.getId());
-            for (com.chillcode.assessment.entity.Submission sub : allSubs) {
-                if (sub.getQuestion() != null) {
-                    latestSubmissionMap.putIfAbsent(sub.getQuestion().getId(), sub);
-                }
-            }
-        }
+        java.util.Set<Long> solvedSet = new java.util.HashSet<>();
+        java.util.Map<Long, Long> submissionCountMap = new java.util.HashMap<>();
+        java.util.Map<Long, SubmissionSummary> latestSubmissionMap = new java.util.HashMap<>();
+        java.util.Map<Long, StudentQuestionStatus> statusMap = buildStatusAndSolvedForStudent(student, solvedSet);
+        populateSubmissionMapsForStudent(student, solvedSet, submissionCountMap, latestSubmissionMap);
 
+        QuestionBadgeContext badgeContext = buildQuestionBadgeContext();
+
+        final java.util.Map<Long, StudentQuestionStatus> finalStatusMap = statusMap;
         return questionRepository.findByAdminId(adminId).stream()
-                .map(q -> convertToDto(q, statusMap, java.util.Collections.emptyList(), solvedSet, latestSubmissionMap, submissionCountMap))
+                .map(q -> convertToDto(q, finalStatusMap, java.util.Collections.emptyList(), solvedSet, latestSubmissionMap, submissionCountMap, badgeContext))
                 .collect(Collectors.toList());
     }
 
@@ -178,28 +180,23 @@ public class QuestionService {
     public List<QuestionDto> getQuestionsBySubject(Long subjectId) {
         log.info("Repository Call: Load questions for subject ID: {} from database", subjectId);
         com.chillcode.assessment.entity.User student = getCurrentUserEntity();
-        java.util.Map<Long, StudentQuestionStatus> statusMap = getStatusMapForStudent(student);
-        java.util.Set<Long> solvedSet = getSolvedQuestionIdsForStudent(student);
-        java.util.Map<Long, Long> submissionCountMap = getSubmissionCountMapForStudent(student);
+        java.util.Set<Long> solvedSet = new java.util.HashSet<>();
+        java.util.Map<Long, Long> submissionCountMap = new java.util.HashMap<>();
+        java.util.Map<Long, SubmissionSummary> latestSubmissionMap = new java.util.HashMap<>();
+        java.util.Map<Long, StudentQuestionStatus> statusMap = buildStatusAndSolvedForStudent(student, solvedSet);
+        populateSubmissionMapsForStudent(student, solvedSet, submissionCountMap, latestSubmissionMap);
+
         List<TestCase> subjectTestCases = testCaseRepository.findByQuestionSubjectId(subjectId);
         java.util.Map<Long, List<TestCase>> testCasesMap = subjectTestCases.stream()
                 .collect(Collectors.groupingBy(tc -> tc.getQuestion().getId()));
 
-        java.util.Map<Long, com.chillcode.assessment.entity.Submission> latestSubmissionMap = new java.util.HashMap<>();
-        if (student != null) {
-            List<com.chillcode.assessment.entity.Submission> allSubs = submissionRepository.findAllByStudentIdOrderByCreatedAtDesc(student.getId());
-            for (com.chillcode.assessment.entity.Submission sub : allSubs) {
-                if (sub.getQuestion() != null) {
-                    latestSubmissionMap.putIfAbsent(sub.getQuestion().getId(), sub);
-                }
-            }
-        }
-
         Long adminId = com.chillcode.assessment.security.SecurityUtils.getCurrentAdminId();
         if (adminId == null) return java.util.Collections.emptyList();
 
+        QuestionBadgeContext badgeContext = buildQuestionBadgeContext();
+
         return questionRepository.findBySubjectIdAndAdminId(subjectId, adminId).stream()
-                .map(q -> convertToDto(q, statusMap, testCasesMap.getOrDefault(q.getId(), java.util.Collections.emptyList()), solvedSet, latestSubmissionMap, submissionCountMap))
+                .map(q -> convertToDto(q, statusMap, testCasesMap.getOrDefault(q.getId(), java.util.Collections.emptyList()), solvedSet, latestSubmissionMap, submissionCountMap, badgeContext))
                 .collect(Collectors.toList());
     }
 
@@ -213,12 +210,14 @@ public class QuestionService {
         java.util.Map<Long, StudentQuestionStatus> statusMap = getStatusMapForStudent(student);
         java.util.Map<Long, Long> submissionCountMap = getSubmissionCountMapForStudent(student);
 
-        java.util.Map<Long, com.chillcode.assessment.entity.Submission> latestSubmissionMap = new java.util.HashMap<>();
+        java.util.Map<Long, SubmissionSummary> latestSubmissionMap = new java.util.HashMap<>();
         if (student != null) {
-            List<com.chillcode.assessment.entity.Submission> allSubs = submissionRepository.findAllByStudentIdOrderByCreatedAtDesc(student.getId());
-            for (com.chillcode.assessment.entity.Submission sub : allSubs) {
-                if (sub.getQuestion() != null) {
-                    latestSubmissionMap.putIfAbsent(sub.getQuestion().getId(), sub);
+            for (Object[] row : submissionRepository.findSubmissionSummariesForStudent(student.getId())) {
+                if (row != null && row.length >= 2 && row[0] != null) {
+                    Long qId = ((Number) row[0]).longValue();
+                    Integer score = row[1] != null ? ((Number) row[1]).intValue() : null;
+                    String overallResult = row.length > 2 && row[2] != null ? (String) row[2] : null;
+                    latestSubmissionMap.putIfAbsent(qId, new SubmissionSummary(score, overallResult));
                 }
             }
         }
@@ -728,7 +727,66 @@ public class QuestionService {
             dto.setStatus(hasAcceptedSubmission ? "COMPLETED" : "NOT_STARTED");
             dto.setAttemptCount(0);
         }
-        populateBadgeInfo(question, dto);
+        return dto;
+    }
+
+    private QuestionDto convertToDto(Question question, java.util.Map<Long, StudentQuestionStatus> statusMap, List<TestCase> testCases, java.util.Set<Long> solvedQuestionIds, boolean populateBadge) {
+        QuestionDto dto = buildQuestionBaseDto(question, statusMap, testCases, solvedQuestionIds);
+        if (populateBadge) {
+            populateBadgeInfo(question, dto);
+        }
+        return dto;
+    }
+
+    private QuestionDto buildQuestionBaseDto(Question question, java.util.Map<Long, StudentQuestionStatus> statusMap, List<TestCase> testCases, java.util.Set<Long> solvedQuestionIds) {
+        List<TestCaseDto> tcDtos = testCases != null ? testCases.stream()
+                .map(tc -> TestCaseDto.builder()
+                        .id(tc.getId())
+                        .inputData(tc.getInputData())
+                        .expectedOutput(tc.getExpectedOutput())
+                        .isHidden(tc.getIsHidden())
+                        .marks(tc.getMarks() != null ? tc.getMarks() : 5)
+                        .build())
+                .collect(Collectors.toList()) : java.util.Collections.emptyList();
+
+        QuestionDto dto = QuestionDto.builder()
+                .id(question.getId())
+                .subjectId(question.getSubject().getId())
+                .title(question.getTitle())
+                .difficulty(question.getDifficulty())
+                .problemStatement(question.getProblemStatement())
+                .constraints(question.getConstraints())
+                .inputFormat(question.getInputFormat())
+                .outputFormat(question.getOutputFormat())
+                .questionCode(question.getQuestionCode())
+                .timer(question.getTimer())
+                .allowedLanguages(question.getAllowedLanguages())
+                .tags(question.getTags())
+                .totalMarks(question.getTotalMarks() != null ? question.getTotalMarks() : 20)
+                .passingMarks(question.getPassingMarks() != null ? question.getPassingMarks() : 10)
+                .negativeMarks(question.getNegativeMarks() != null ? question.getNegativeMarks() : 0.0)
+                .partialMarksEnabled(question.getPartialMarksEnabled() != null ? question.getPartialMarksEnabled() : true)
+                .enableAshHint(question.getEnableAshHint() != null ? question.getEnableAshHint() : true)
+                .testCases(tcDtos)
+                .build();
+
+        StudentQuestionStatus status = statusMap.get(question.getId());
+        boolean hasAcceptedSubmission = solvedQuestionIds != null && solvedQuestionIds.contains(question.getId());
+
+        if (status != null) {
+            boolean isCompleted = hasAcceptedSubmission || "COMPLETED".equals(status.getStatus());
+            if ("PENDING_REATTEMPT".equals(status.getStatus())) {
+                dto.setStatus("PENDING_REATTEMPT");
+            } else {
+                dto.setStatus(isCompleted ? "COMPLETED" : status.getStatus());
+            }
+            int rawAttempts = status.getAttemptCount() != null ? status.getAttemptCount() : 0;
+            dto.setAttemptCount(rawAttempts);
+            dto.setLastAttemptAt(status.getLastAttemptAt() != null ? status.getLastAttemptAt().toString() : null);
+        } else {
+            dto.setStatus(hasAcceptedSubmission ? "COMPLETED" : "NOT_STARTED");
+            dto.setAttemptCount(0);
+        }
         return dto;
     }
 
@@ -741,16 +799,6 @@ public class QuestionService {
                 List<com.chillcode.assessment.entity.BadgeSet> badgeSets = badgeSetRepository.findByTestId(questionTest.getId());
                 if (badgeSets != null && !badgeSets.isEmpty()) {
                     com.chillcode.assessment.entity.BadgeSet bs = badgeSets.get(0);
-                    dto.setBadgeSetId(bs.getId());
-                    dto.setEnableBadgeManagement("ACTIVE".equalsIgnoreCase(bs.getStatus()));
-                    dto.setBadgeSetName(bs.getName());
-                    dto.setBadgeWinnersCount(bs.getNumberOfWinners());
-                    dto.setEnableLanguageBadge(bs.getEnableLanguageBadge());
-                    dto.setLanguageName(bs.getLanguageName());
-                    dto.setLanguageBadgeName(bs.getLanguageBadgeName());
-                    dto.setLanguageBadgeIcon(bs.getLanguageBadgeIcon());
-                    dto.setLanguageAwardRank(bs.getLanguageAwardRank());
-
                     List<BadgeDefinitionDto> defDtos = badgeDefinitionRepository.findByBadgeSetIdAndStatus(bs.getId(), "ACTIVE").stream()
                             .sorted(java.util.Comparator.comparingInt(com.chillcode.assessment.entity.BadgeDefinition::getRankPosition))
                             .map(bd -> BadgeDefinitionDto.builder()
@@ -764,11 +812,131 @@ public class QuestionService {
                                     .status(bd.getStatus())
                                     .build())
                             .collect(Collectors.toList());
-                    dto.setBadgeDefs(defDtos);
+                    applyBadgeSetToDto(dto, bs, defDtos);
                 }
             }
         } catch (Exception e) {
             log.warn("Error populating badge info for question ID {}: {}", question.getId(), e.getMessage());
+        }
+    }
+
+    private void applyBadgeSetToDto(QuestionDto dto, com.chillcode.assessment.entity.BadgeSet bs, List<BadgeDefinitionDto> defDtos) {
+        dto.setBadgeSetId(bs.getId());
+        dto.setEnableBadgeManagement("ACTIVE".equalsIgnoreCase(bs.getStatus()));
+        dto.setBadgeSetName(bs.getName());
+        dto.setBadgeWinnersCount(bs.getNumberOfWinners());
+        dto.setEnableLanguageBadge(bs.getEnableLanguageBadge());
+        dto.setLanguageName(bs.getLanguageName());
+        dto.setLanguageBadgeName(bs.getLanguageBadgeName());
+        dto.setLanguageBadgeIcon(bs.getLanguageBadgeIcon());
+        dto.setLanguageAwardRank(bs.getLanguageAwardRank());
+        dto.setBadgeDefs(defDtos != null ? defDtos : java.util.Collections.emptyList());
+    }
+
+    private static final class QuestionBadgeContext {
+        final java.util.Map<Long, Long> questionToTestId = new java.util.HashMap<>();
+        final java.util.Map<Long, com.chillcode.assessment.entity.BadgeSet> badgeSetByTestId = new java.util.HashMap<>();
+        final java.util.Map<Long, List<BadgeDefinitionDto>> defsByBadgeSetId = new java.util.HashMap<>();
+    }
+
+    private QuestionBadgeContext buildQuestionBadgeContext() {
+        QuestionBadgeContext ctx = new QuestionBadgeContext();
+        try {
+            @SuppressWarnings("unchecked")
+            List<Object[]> tqRows = entityManager.createNativeQuery(
+                    "SELECT question_id, test_id FROM test_questions").getResultList();
+            if (tqRows != null) {
+                for (Object[] r : tqRows) {
+                    if (r != null && r.length >= 2 && r[0] != null && r[1] != null) {
+                        ctx.questionToTestId.putIfAbsent(((Number) r[0]).longValue(), ((Number) r[1]).longValue());
+                    }
+                }
+            }
+            for (Object[] row : badgeSetRepository.findAllTestIdsAndBadgeSets()) {
+                if (row != null && row.length >= 2 && row[0] != null && row[1] instanceof com.chillcode.assessment.entity.BadgeSet) {
+                    ctx.badgeSetByTestId.putIfAbsent(((Number) row[0]).longValue(), (com.chillcode.assessment.entity.BadgeSet) row[1]);
+                }
+            }
+            java.util.Map<Long, List<com.chillcode.assessment.entity.BadgeDefinition>> rawDefs = new java.util.HashMap<>();
+            for (Object[] row : badgeDefinitionRepository.findByStatusWithBadgeSetId("ACTIVE")) {
+                if (row != null && row.length >= 2 && row[0] != null && row[1] instanceof com.chillcode.assessment.entity.BadgeDefinition) {
+                    Long bsId = ((Number) row[0]).longValue();
+                    rawDefs.computeIfAbsent(bsId, k -> new java.util.ArrayList<>())
+                            .add((com.chillcode.assessment.entity.BadgeDefinition) row[1]);
+                }
+            }
+            for (java.util.Map.Entry<Long, List<com.chillcode.assessment.entity.BadgeDefinition>> entry : rawDefs.entrySet()) {
+                Long bsId = entry.getKey();
+                List<BadgeDefinitionDto> sortedDtos = entry.getValue().stream()
+                        .sorted(java.util.Comparator.comparingInt(com.chillcode.assessment.entity.BadgeDefinition::getRankPosition))
+                        .map(bd -> BadgeDefinitionDto.builder()
+                                .id(bd.getId())
+                                .badgeSetId(bsId)
+                                .rankPosition(bd.getRankPosition())
+                                .badgeName(bd.getBadgeName())
+                                .badgeIcon(bd.getBadgeIcon())
+                                .badgeColor(bd.getBadgeColor())
+                                .badgeOrder(bd.getBadgeOrder())
+                                .status(bd.getStatus())
+                                .build())
+                        .collect(Collectors.toList());
+                ctx.defsByBadgeSetId.put(bsId, sortedDtos);
+            }
+        } catch (Exception e) {
+            log.warn("Error building QuestionBadgeContext: {}", e.getMessage());
+        }
+        return ctx;
+    }
+
+    private java.util.Map<Long, StudentQuestionStatus> buildStatusAndSolvedForStudent(
+            com.chillcode.assessment.entity.User student,
+            java.util.Set<Long> solvedSet) {
+        if (student == null || student.getRole() != com.chillcode.assessment.entity.Role.STUDENT) {
+            return java.util.Collections.emptyMap();
+        }
+        try {
+            List<StudentQuestionStatus> statuses = studentQuestionStatusRepository.findByStudentId(student.getId());
+            java.util.Map<Long, StudentQuestionStatus> statusMap = new java.util.HashMap<>();
+            for (StudentQuestionStatus sqs : statuses) {
+                statusMap.putIfAbsent(sqs.getQuestionId(), sqs);
+                if ("COMPLETED".equals(sqs.getStatus())) {
+                    solvedSet.add(sqs.getQuestionId());
+                }
+            }
+            return statusMap;
+        } catch (Exception e) {
+            log.warn("Failed to build status map for student: {}", e.getMessage());
+            return java.util.Collections.emptyMap();
+        }
+    }
+
+    private void populateSubmissionMapsForStudent(
+            com.chillcode.assessment.entity.User student,
+            java.util.Set<Long> solvedSet,
+            java.util.Map<Long, Long> submissionCountMap,
+            java.util.Map<Long, SubmissionSummary> latestSubmissionMap) {
+        if (student == null) return;
+        try {
+            // Projection instead of full entity hydration: only questionId/score/
+            // overallResult/active/status/createdAt are consumed below.
+            List<Object[]> rows = submissionRepository.findSubmissionSummariesForStudent(student.getId());
+            for (Object[] row : rows) {
+                if (row == null || row.length < 5 || row[0] == null) continue;
+                Long qId = ((Number) row[0]).longValue();
+                Integer score = row[1] != null ? ((Number) row[1]).intValue() : null;
+                String overallResult = row[2] != null ? (String) row[2] : null;
+                Boolean active = row[3] != null ? (Boolean) row[3] : null;
+                String status = row[4] != null ? (String) row[4] : null;
+
+                latestSubmissionMap.putIfAbsent(qId, new SubmissionSummary(score, overallResult));
+                submissionCountMap.merge(qId, 1L, Long::sum);
+                boolean isActive = active == null || Boolean.TRUE.equals(active);
+                if (isActive && ("ACCEPTED".equals(status) || "PASS".equals(overallResult))) {
+                    solvedSet.add(qId);
+                }
+            }
+        } catch (Exception e) {
+            log.warn("Failed to build submission maps for student: {}", e.getMessage());
         }
     }
 
@@ -821,13 +989,29 @@ public class QuestionService {
         return java.util.Collections.emptyMap();
     }
 
-    private QuestionDto convertToDto(Question question, java.util.Map<Long, StudentQuestionStatus> statusMap, List<TestCase> testCases, java.util.Set<Long> solvedQuestionIds, java.util.Map<Long, com.chillcode.assessment.entity.Submission> latestSubmissionMap, java.util.Map<Long, Long> submissionCountMap) {
-        QuestionDto dto = convertToDto(question, statusMap, testCases, solvedQuestionIds);
+    private QuestionDto convertToDto(Question question, java.util.Map<Long, StudentQuestionStatus> statusMap, List<TestCase> testCases, java.util.Set<Long> solvedQuestionIds, java.util.Map<Long, SubmissionSummary> latestSubmissionMap, java.util.Map<Long, Long> submissionCountMap) {
+        return convertToDto(question, statusMap, testCases, solvedQuestionIds, latestSubmissionMap, submissionCountMap, null);
+    }
+
+    private QuestionDto convertToDto(Question question, java.util.Map<Long, StudentQuestionStatus> statusMap, List<TestCase> testCases, java.util.Set<Long> solvedQuestionIds, java.util.Map<Long, SubmissionSummary> latestSubmissionMap, java.util.Map<Long, Long> submissionCountMap, QuestionBadgeContext badgeContext) {
+        QuestionDto dto = badgeContext != null
+                ? buildQuestionBaseDto(question, statusMap, testCases, solvedQuestionIds)
+                : convertToDto(question, statusMap, testCases, solvedQuestionIds, true);
+        if (badgeContext != null && question != null && question.getId() != null) {
+            Long testId = badgeContext.questionToTestId.get(question.getId());
+            if (testId != null) {
+                dto.setTestId(testId);
+                com.chillcode.assessment.entity.BadgeSet bs = badgeContext.badgeSetByTestId.get(testId);
+                if (bs != null) {
+                    applyBadgeSetToDto(dto, bs, badgeContext.defsByBadgeSetId.get(bs.getId()));
+                }
+            }
+        }
         if (latestSubmissionMap != null && latestSubmissionMap.containsKey(question.getId())) {
-            com.chillcode.assessment.entity.Submission sub = latestSubmissionMap.get(question.getId());
+            SubmissionSummary sub = latestSubmissionMap.get(question.getId());
             if (sub != null) {
-                dto.setScore(sub.getScore());
-                dto.setOverallResult(sub.getOverallResult());
+                dto.setScore(sub.score());
+                dto.setOverallResult(sub.overallResult());
             }
         }
         if (submissionCountMap != null) {
@@ -842,7 +1026,7 @@ public class QuestionService {
         return dto;
     }
 
-    private QuestionDto convertToDto(Question question, java.util.Map<Long, StudentQuestionStatus> statusMap, List<TestCase> testCases, java.util.Set<Long> solvedQuestionIds, java.util.Map<Long, com.chillcode.assessment.entity.Submission> latestSubmissionMap) {
+    private QuestionDto convertToDto(Question question, java.util.Map<Long, StudentQuestionStatus> statusMap, List<TestCase> testCases, java.util.Set<Long> solvedQuestionIds, java.util.Map<Long, SubmissionSummary> latestSubmissionMap) {
         return convertToDto(question, statusMap, testCases, solvedQuestionIds, latestSubmissionMap, null);
     }
 

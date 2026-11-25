@@ -23,6 +23,9 @@ public class StaffController {
     @Autowired
     private PasswordEncoder passwordEncoder;
 
+    @Autowired
+    private com.chillcode.assessment.security.UserDetailsServiceImpl userDetailsService;
+
     @GetMapping
     public ResponseEntity<List<Map<String, Object>>> getAllStaff() {
         List<User> staff = userRepository.findByRole(Role.ADMIN);
@@ -109,6 +112,8 @@ public class StaffController {
             }
         }
         userRepository.save(staff);
+        userDetailsService.evict(staff.getUsername());
+        if (staff.getEmail() != null) userDetailsService.evict(staff.getEmail());
         return ResponseEntity.ok(staff);
     }
 
@@ -123,11 +128,17 @@ public class StaffController {
             return ResponseEntity.badRequest().body("Invalid status value.");
         }
         userRepository.save(staff);
+        userDetailsService.evict(staff.getUsername());
+        if (staff.getEmail() != null) userDetailsService.evict(staff.getEmail());
         return ResponseEntity.ok("Staff status updated to " + newStatus);
     }
 
     @DeleteMapping("/{id}")
     public ResponseEntity<Void> deleteStaff(@PathVariable Long id) {
+        userRepository.findById(id).ifPresent(st -> {
+            userDetailsService.evict(st.getUsername());
+            if (st.getEmail() != null) userDetailsService.evict(st.getEmail());
+        });
         userRepository.deleteById(id);
         return ResponseEntity.ok().build();
     }

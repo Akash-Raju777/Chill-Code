@@ -64,6 +64,12 @@ public class StartupValidator implements ApplicationRunner {
             stmt.execute("ALTER TABLE tests ADD COLUMN IF NOT EXISTS assigned_staff_id BIGINT");
             stmt.execute("ALTER TABLE subjects ADD COLUMN IF NOT EXISTS assigned_staff_id BIGINT");
             System.out.println("[StartupValidator] Database columns check: OK (tests.assigned_staff_id & subjects.assigned_staff_id verified)");
+
+            // activity_logs only has its primary key; user activity lookups and
+            // deleted-test scans filter on user_id/timestamp and action.
+            stmt.execute("CREATE INDEX IF NOT EXISTS idx_activity_logs_user_timestamp ON activity_logs (user_id, timestamp DESC)");
+            stmt.execute("CREATE INDEX IF NOT EXISTS idx_activity_logs_action ON activity_logs (action)");
+            System.out.println("[StartupValidator] Database indexes check: OK (activity_logs indexes verified)");
         } catch (Exception e) {
             System.err.println("[StartupValidator] Warning: Schema initialization check warning: " + e.getMessage());
         }

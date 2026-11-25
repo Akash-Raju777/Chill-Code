@@ -37,6 +37,7 @@ const NON_CACHEABLE_PATTERNS = [
   '/api/auth/refresh',
   '/api/auth/reset-password',
   '/api/auth/health',
+  '/api/auth/me', // Auth session verification must always be live — never serve a cached identity/role
   '/api/health',
   '/api/student/profile', // Kept LIVE for real-time 5s account security heartbeat (Rule 3)
 ];
@@ -72,6 +73,18 @@ const ROUTE_CACHE_PROFILES: Array<{ prefix: string; config: CacheConfig }> = [
   {
     prefix: '/api/student/tests',
     config: { freshDurationMs: 25_000, staleDurationMs: 300_000, tag: 'student-tests' },
+  },
+  {
+    prefix: '/api/student/questions',
+    config: { freshDurationMs: 20_000, staleDurationMs: 300_000, tag: 'student-questions' },
+  },
+  {
+    prefix: '/api/student/subjects',
+    config: { freshDurationMs: 120_000, staleDurationMs: 600_000, tag: 'student-subjects' },
+  },
+  {
+    prefix: '/api/student/notifications',
+    config: { freshDurationMs: 30_000, staleDurationMs: 300_000, tag: 'student-notifications' },
   },
 
   // Admin Management & Dashboards
@@ -141,6 +154,7 @@ class SmartCacheManager {
   private memoryCache = new Map<string, CacheEntry>();
   private readonly storagePrefix = 'chill_cache_';
   private listeners = new Map<string, Set<(data: any) => void>>();
+  private tagListeners = new Map<string, Set<() => void>>();
 
   /**
    * Resolves the current user scope: e.g. "STUDENT:3" or "ADMIN:2".
@@ -300,35 +314,125 @@ class SmartCacheManager {
 
   /**
    * Invalidates cached entries by tag or pattern.
+   * Uses mark-stale semantics (SWR): entries remain readable instantly but are
+   * considered STALE so the next read serves them immediately AND triggers a
+   * background revalidation. This avoids blank/loading screens after mutations
+   * while still guaranteeing fresh data arrives shortly.
+   * Hard deletion is reserved for clearAll() (logout/account switch).
    */
   public invalidateTag(tag: string): void {
-    const keysToDelete: string[] = [];
+    const now = Date.now();
+    const touchedKeys: string[] = [];
+
     for (const [key, entry] of this.memoryCache.entries()) {
       if (entry.tag === tag) {
-        keysToDelete.push(key);
+        entry.freshUntil = now;
+        if (entry.staleUntil <= now) entry.staleUntil = now + 60_000;
+        this.memoryCache.set(key, entry);
+        touchedKeys.push(key);
+        this.persistEntry(key, entry);
       }
     }
-    keysToDelete.forEach((k) => this.deleteKey(k));
 
     if (typeof window !== 'undefined') {
-      const storageKeys: string[] = [];
       for (let i = 0; i < sessionStorage.length; i++) {
         const k = sessionStorage.key(i);
         if (k && k.startsWith(this.storagePrefix)) {
-          storageKeys.push(k);
+          try {
+            const raw = sessionStorage.getItem(k);
+            if (raw) {
+              const entry = JSON.parse(raw);
+              if (entry && entry.tag === tag) {
+                entry.freshUntil = now;
+                if (entry.staleUntil <= now) entry.staleUntil = now + 60_000;
+                sessionStorage.setItem(k, JSON.stringify(entry));
+              }
+            }
+          } catch (_) {}
         }
       }
-      for (const k of storageKeys) {
-        try {
-          const raw = sessionStorage.getItem(k);
-          if (raw) {
-            const entry = JSON.parse(raw);
-            if (entry.tag === tag) {
-              sessionStorage.removeItem(k);
-            }
+    }
+
+    this.notifyTagListeners(tag);
+  }
+
+  /** Subscribe to invalidation events for a tag (returns unsubscribe). */
+  public onTagInvalidated(tag: string, cb: () => void): () => void {
+    let subs = this.tagListeners.get(tag);
+    if (!subs) {
+      subs = new Set();
+      this.tagListeners.set(tag, subs);
+    }
+    subs.add(cb);
+    return () => {
+      subs?.delete(cb);
+      if (subs?.size === 0) this.tagListeners.delete(tag);
+    };
+  }
+
+  private notifyTagListeners(tag: string): void {
+    const subs = this.tagListeners.get(tag);
+    if (!subs) return;
+    subs.forEach((cb) => {
+      try { cb(); } catch (_) {}
+    });
+  }
+
+  private persistEntry(key: string, entry: CacheEntry): void {
+    if (typeof window !== 'undefined') {
+      try {
+        sessionStorage.setItem(`${this.storagePrefix}${key}`, JSON.stringify(entry));
+      } catch (_) {}
+    }
+  }
+
+  /**
+   * Surgically patch a cached GET payload with a confirmed backend update.
+   * Used for optimistic-but-confirmed UI updates (e.g. question status after submit).
+   * Returns true if a cache entry existed and was updated.
+   */
+  public patch<T = any>(endpoint: string, updater: (current: T) => T): boolean {
+    const key = this.getCacheKey(endpoint);
+    let entry = this.memoryCache.get(key);
+
+    if (!entry && typeof window !== 'undefined') {
+      try {
+        const raw = sessionStorage.getItem(`${this.storagePrefix}${key}`);
+        if (raw) {
+          const parsed = JSON.parse(raw);
+          if (parsed && parsed.userScope === this.getUserScope()) {
+            entry = parsed as CacheEntry;
+            this.memoryCache.set(key, entry);
           }
-        } catch (_) {}
+        }
+      } catch (_) {}
+    }
+
+    if (!entry || entry.userScope !== this.getUserScope()) return false;
+
+    try {
+      const nextData = updater(entry.data);
+      const now = Date.now();
+      const config = this.getConfig(endpoint);
+      const nextEntry: CacheEntry = {
+        ...entry,
+        data: nextData,
+        timestamp: now,
+        freshUntil: now + config.freshDurationMs,
+        staleUntil: now + config.staleDurationMs,
+      };
+      this.memoryCache.set(key, nextEntry);
+      this.persistEntry(key, nextEntry);
+
+      const subs = this.listeners.get(key);
+      if (subs) {
+        subs.forEach((cb) => {
+          try { cb(nextData); } catch (_) {}
+        });
       }
+      return true;
+    } catch (_) {
+      return false;
     }
   }
 
@@ -338,12 +442,15 @@ class SmartCacheManager {
   public invalidateOnMutation(endpoint: string, method: string): void {
     const clean = endpoint.startsWith('/') ? endpoint : `/${endpoint}`;
 
-    // Student Submissions / Tests
-    if (clean.includes('/student/submissions') || clean.includes('/student/tests') || clean.includes('/submit')) {
+    // Student Submissions / Tests / Questions
+    if (clean.includes('/student/submissions') || clean.includes('/student/tests') || clean.includes('/submit') || clean.includes('/student/question/')) {
       this.invalidateTag('student-dashboard');
       this.invalidateTag('student-submissions');
       this.invalidateTag('student-tests');
+      this.invalidateTag('student-questions');
       this.invalidateTag('student-leaderboard');
+      this.invalidateTag('student-achievements');
+      this.invalidateTag('student-badges');
       this.invalidateTag('admin-dashboard');
       this.invalidateTag('admin-results');
       return;

@@ -2,6 +2,7 @@
 
 import React, { useEffect, useState } from 'react';
 import { apiCall, smartCache } from '../../../utils/api';
+import { onSyncEvent } from '../../../utils/syncEvents';
 import { useAuthStore } from '../../../store/authStore';
 import { Timer, Award, Bell, CheckSquare, Loader2, Sparkles, BookOpen, User as UserIcon, RefreshCw } from 'lucide-react';
 
@@ -70,9 +71,17 @@ export default function StudentDashboard() {
     window.addEventListener('focus', handleFocus);
     document.addEventListener('visibilitychange', handleVisibility);
 
+    // Instant refresh after a confirmed submission/test-exit elsewhere in the app
+    const unsub1 = onSyncEvent('submission:confirmed', () => fetchDashboardData(true));
+    const unsub2 = onSyncEvent('test:submitted', () => fetchDashboardData(true));
+    const unsub3 = onSyncEvent('dashboard:invalidated', () => fetchDashboardData(true));
+
     return () => {
       window.removeEventListener('focus', handleFocus);
       document.removeEventListener('visibilitychange', handleVisibility);
+      unsub1();
+      unsub2();
+      unsub3();
     };
   }, []);
 

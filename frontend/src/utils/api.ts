@@ -1,6 +1,7 @@
 import { useAuthStore } from '../store/authStore';
 import { useBackendStore } from '../store/backendStore';
 import { smartCache } from './cacheManager';
+import { notifySync } from './syncEvents';
 
 export class ApiError extends Error {
   status?: number;
@@ -110,11 +111,6 @@ export async function apiCall(endpoint: string, options: ApiCallOptions = {}): P
   const method = (options.method || 'GET').toUpperCase();
   const cleanEndpoint = endpoint.startsWith('/') ? endpoint : `/${endpoint}`;
   const fullUrl = `${BASE_URL}${cleanEndpoint}`;
-
-  // Flush and invalidate cache on mutations
-  if (method !== 'GET') {
-    smartCache.invalidateOnMutation(cleanEndpoint, method);
-  }
 
   const normalizedEndpoint = smartCache.normalizeEndpoint(cleanEndpoint);
   const inFlightKey = `${smartCache.getUserScope()}:${method}:${normalizedEndpoint}`;
@@ -269,6 +265,16 @@ export async function apiCall(endpoint: string, options: ApiCallOptions = {}): P
 
     if (method === 'GET') {
       smartCache.set(cleanEndpoint, data);
+    } else {
+      // Invalidate related caches ONLY after a confirmed successful mutation.
+      // Failed mutations must never wipe still-valid cached data.
+      try {
+        smartCache.invalidateOnMutation(cleanEndpoint, method);
+      } catch (_) {}
+      // Broadcast a sync event so mounted pages can react without refetching everything
+      try {
+        notifySync(cleanEndpoint, method, data);
+      } catch (_) {}
     }
 
     return data;
@@ -281,13 +287,10 @@ export async function apiCall(endpoint: string, options: ApiCallOptions = {}): P
       return cached.data;
     }
     if (cached.status === 'STALE') {
-      // Stale-While-Revalidate: Return cached data immediately, revalidate silently in background
+      // Stale-While-Revalidate: Return cached data immediately, revalidate silently in background.
+      // executeRequest already persists the fresh GET response into smartCache.
       if (!inFlightRequests.has(inFlightKey)) {
         const bgPromise = executeRequest()
-          .then((fresh) => {
-            smartCache.set(cleanEndpoint, fresh);
-            return fresh;
-          })
           .catch(() => {})
           .finally(() => {
             inFlightRequests.delete(inFlightKey);
@@ -298,16 +301,18 @@ export async function apiCall(endpoint: string, options: ApiCallOptions = {}): P
     }
   }
 
-  // Deduplicate in-flight GET requests (unless explicitly bypassing cache)
-  if (method === 'GET' && !options.skipLocalCache && inFlightRequests.has(inFlightKey)) {
-    return inFlightRequests.get(inFlightKey)!;
-  }
-
+  // Deduplicate concurrent GET requests for the same endpoint.
+  // Applies even with skipLocalCache: two simultaneous identical reads must
+  // share one network round-trip (skip only skips the cache READ, not dedup).
   if (method === 'GET') {
+    const dedupKey = inFlightKey;
+    if (inFlightRequests.has(dedupKey)) {
+      return inFlightRequests.get(dedupKey)!;
+    }
     const promise = executeRequest().finally(() => {
-      inFlightRequests.delete(inFlightKey);
+      inFlightRequests.delete(dedupKey);
     });
-    inFlightRequests.set(inFlightKey, promise);
+    inFlightRequests.set(dedupKey, promise);
     return promise;
   }
 

@@ -78,12 +78,13 @@ public class StudentService {
             }
         }
 
-        // Fetch student tests with eagerness for tests and questions
-        List<StudentTest> myTests = studentTestRepository.findByStudentIdWithTestAndQuestions(studentId);
+        // Fetch student tests lightweight (no heavy questions join) + valid test IDs
+        List<StudentTest> myTests = studentTestRepository.findByStudentIdWithTestAndSubject(studentId);
+        Set<Long> validTestIdSet = new HashSet<>(testRepository.findTestIdsWithQuestions());
 
         // Filter out tests that have 0 questions (e.g. after question deletion)
         List<StudentTest> validMyTests = myTests.stream()
-                .filter(st -> st.getTest() != null && st.getTest().getQuestions() != null && !st.getTest().getQuestions().isEmpty())
+                .filter(st -> st.getTest() != null && validTestIdSet.contains(st.getTest().getId()))
                 .collect(Collectors.toList());
 
         // Group questions by Subject using optimized native query
@@ -120,20 +121,22 @@ public class StudentService {
         long totalQuestionsCount = sumTotalQuestions > 0 ? sumTotalQuestions : (adminId != null ? questionRepository.countByAdminId(adminId) : questionRepository.count());
         long completedQuestionsCount = sumCompletedQuestions;
 
-        // Fetch completed question IDs to exclude them from pending/unattended
-        List<Long> completedQIdsFromSqs = studentQuestionStatusRepository.findByStudentIdAndStatus(studentId, "COMPLETED")
-                .stream().map(com.chillcode.assessment.entity.StudentQuestionStatus::getQuestionId).collect(Collectors.toList());
+        // Fetch all statuses once and derive completed + pending question IDs in memory
+        List<com.chillcode.assessment.entity.StudentQuestionStatus> allStudentStatuses = studentQuestionStatusRepository.findByStudentId(studentId);
         List<Long> completedQIdsFromSub = submissionRepository.findSolvedQuestionIdsByStudentId(studentId);
-        
+
         Set<Long> completedQIds = new HashSet<>();
-        if (completedQIdsFromSqs != null) completedQIds.addAll(completedQIdsFromSqs);
+        for (com.chillcode.assessment.entity.StudentQuestionStatus sqs : allStudentStatuses) {
+            if ("COMPLETED".equals(sqs.getStatus())) {
+                completedQIds.add(sqs.getQuestionId());
+            }
+        }
         if (completedQIdsFromSub != null) completedQIds.addAll(completedQIdsFromSub);
         if (completedQuestionsCount < completedQIds.size()) {
             completedQuestionsCount = completedQIds.size();
         }
 
         // Pending = questions attempted but not yet completed
-        List<com.chillcode.assessment.entity.StudentQuestionStatus> allStudentStatuses = studentQuestionStatusRepository.findByStudentId(studentId);
         Set<Long> pendingQIds = new HashSet<>();
         for (com.chillcode.assessment.entity.StudentQuestionStatus sqs : allStudentStatuses) {
             if (!completedQIds.contains(sqs.getQuestionId())) {
@@ -166,7 +169,6 @@ public class StudentService {
             int manualBadgesCount = (int) studentBadgeRepository.findByStudentId(studentId).stream()
                     .filter(sb -> "ACTIVE".equalsIgnoreCase(sb.getStatus()))
                     .count();
-            int languageBadgesCount = languageMasterBadgeRepository.findByStudentIdOrderByAwardedDateDesc(studentId).size();
             totalBadges = achievementsCount + manualBadgesCount;
         } catch (Exception ignored) {}
 
@@ -201,7 +203,7 @@ public class StudentService {
     }
 
     public List<Notification> getNotificationsForUser(Long userId) {
-        return notificationRepository.findByUserIdOrderByCreatedAtDesc(userId);
+        return notificationRepository.findTop50ByUserIdOrderByCreatedAtDesc(userId);
     }
 
     @Transactional

@@ -38,4 +38,13 @@ public interface TestRepository extends JpaRepository<Test, Long> {
 
     @org.springframework.data.jpa.repository.Query("SELECT COUNT(t) FROM Test t WHERE t.questions IS NOT EMPTY AND t.startTime < :now AND t.endTime > :now AND t.admin.id = :adminId")
     long countActiveAvailableTestsByAdminId(@org.springframework.data.repository.query.Param("adminId") Long adminId, @org.springframework.data.repository.query.Param("now") java.time.LocalDateTime now);
+
+    @org.springframework.data.jpa.repository.Query("SELECT t FROM Test t LEFT JOIN FETCH t.subject LEFT JOIN FETCH t.admin LEFT JOIN FETCH t.assignedStaff WHERE t.admin.id = :adminId")
+    List<Test> findByAdminIdWithSubjectAndStaff(@org.springframework.data.repository.query.Param("adminId") Long adminId);
+
+    @org.springframework.data.jpa.repository.Query("SELECT DISTINCT t FROM Test t LEFT JOIN FETCH t.subject LEFT JOIN FETCH t.admin LEFT JOIN FETCH t.assignedStaff")
+    List<Test> findAllWithSubjectAndStaff();
+
+    @org.springframework.data.jpa.repository.Query(value = "SELECT tq.test_id, q.question_code FROM test_questions tq JOIN questions q ON tq.question_id = q.id WHERE q.question_code IS NOT NULL AND TRIM(q.question_code) != ''", nativeQuery = true)
+    List<Object[]> findTestIdAndQuestionCodes();
 }

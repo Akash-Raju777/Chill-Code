@@ -12,10 +12,29 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.*;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.stream.Collectors;
 
 @Service
 public class OverallLeaderboardService {
+
+    /**
+     * Short-TTL memo for the computed leaderboard. The student summary endpoint
+     * and the overall endpoint both materialize the SAME ranked list; without a
+     * memo every poll recomputed a multi-second aggregate over all student
+     * tests. 20s TTL: rankings stay fresh for interactive use while repeated
+     * calls (polling, summary+overall pairs) become near-free.
+     */
+    private static final long LEADERBOARD_CACHE_TTL_MS = 20_000L;
+    private static final class LbCacheEntry {
+        final List<OverallLeaderboardEntry> data;
+        final long expiresAt;
+        LbCacheEntry(List<OverallLeaderboardEntry> data, long expiresAt) {
+            this.data = data;
+            this.expiresAt = expiresAt;
+        }
+    }
+    private final Map<String, LbCacheEntry> leaderboardCache = new ConcurrentHashMap<>();
 
     @Autowired
     private UserRepository userRepository;
@@ -39,11 +58,16 @@ public class OverallLeaderboardService {
     public List<OverallLeaderboardEntry> getOverallLeaderboard(String timeFilter, String departmentFilter) {
         try {
             Long adminId = com.chillcode.assessment.security.SecurityUtils.getCurrentAdminId();
+            String cacheKey = adminId + "|" + timeFilter + "|" + departmentFilter;
+            long now = System.currentTimeMillis();
+            LbCacheEntry cached = leaderboardCache.get(cacheKey);
+            if (cached != null && now < cached.expiresAt) {
+                return cached.data;
+            }
+
             List<User> students = adminId != null ?
                     userRepository.findByRoleAndAdminId(Role.STUDENT, adminId) :
-                    userRepository.findAll().stream()
-                            .filter(u -> u.getRole() == Role.STUDENT)
-                            .collect(Collectors.toList());
+                    userRepository.findByRole(Role.STUDENT);
 
             if (departmentFilter != null && !departmentFilter.trim().isEmpty() && !"ALL".equalsIgnoreCase(departmentFilter)) {
                 students = students.stream()
@@ -57,13 +81,40 @@ public class OverallLeaderboardService {
                     studentTestRepository.findAllWithStudents();
 
             List<Long> validTestIds = testRepository.findTestIdsWithQuestions();
+            Set<Long> validTestIdSet = new HashSet<>(validTestIds);
+
+            // Group StudentTests by studentId once in O(N) instead of filtering inside the loop
+            Map<Long, List<StudentTest>> testsByStudentId = allStudentTests.stream()
+                    .filter(st -> st.getStudent() != null && st.getTest() != null && validTestIdSet.contains(st.getTest().getId()))
+                    .collect(Collectors.groupingBy(st -> st.getStudent().getId()));
+
+            // Batch-load all achievement and badge counts in 2 lightweight queries (eliminates 3*N queries)
+            Map<Long, Integer> achievementsCountByStudent = new HashMap<>();
+            try {
+                for (Object[] row : studentAchievementRepository.findAllStudentAndTestIds()) {
+                    Long stId = row[0] != null ? ((Number) row[0]).longValue() : null;
+                    Long tId = row[1] != null ? ((Number) row[1]).longValue() : null;
+                    if (stId != null && (tId == null || validTestIdSet.contains(tId))) {
+                        achievementsCountByStudent.merge(stId, 1, Integer::sum);
+                    }
+                }
+            } catch (Exception ignored) {}
+
+            Map<Long, Integer> manualBadgesCountByStudent = new HashMap<>();
+            try {
+                for (Object[] row : studentBadgeRepository.findAllStudentAndSourceTestIds()) {
+                    Long stId = row[0] != null ? ((Number) row[0]).longValue() : null;
+                    Long tId = row[1] != null ? ((Number) row[1]).longValue() : null;
+                    if (stId != null && (tId == null || validTestIdSet.contains(tId))) {
+                        manualBadgesCountByStudent.merge(stId, 1, Integer::sum);
+                    }
+                }
+            } catch (Exception ignored) {}
 
             List<OverallLeaderboardEntry> entries = new ArrayList<>();
 
             for (User student : students) {
-                List<StudentTest> myTests = allStudentTests.stream()
-                        .filter(st -> st.getStudent() != null && st.getStudent().getId().equals(student.getId()) && st.getTest() != null && validTestIds.contains(st.getTest().getId()))
-                        .collect(Collectors.toList());
+                List<StudentTest> myTests = testsByStudentId.getOrDefault(student.getId(), Collections.emptyList());
 
                 int totalMarks = myTests.stream().mapToInt(st -> st.getScore() != null ? st.getScore() : 0).sum();
                 
@@ -102,19 +153,8 @@ public class OverallLeaderboardService {
                     continue; // Do not include students who have never attempted a test
                 }
 
-                int totalBadges = 0;
-                try {
-                    int achievementsCount = (int) studentAchievementRepository.findByStudentIdOrderByAwardedAtDesc(student.getId()).stream()
-                            .filter(sa -> sa.getTest() == null || validTestIds.contains(sa.getTest().getId()))
-                            .count();
-                    int manualBadgesCount = (int) studentBadgeRepository.findByStudentId(student.getId()).stream()
-                            .filter(sb -> sb.getSourceTest() == null || validTestIds.contains(sb.getSourceTest().getId()))
-                            .count();
-                    int languageBadgesCount = (int) languageMasterBadgeRepository.findByStudentIdOrderByAwardedDateDesc(student.getId()).stream()
-                            .filter(lmb -> lmb.getTest() == null || validTestIds.contains(lmb.getTest().getId()))
-                            .count();
-                    totalBadges = achievementsCount + manualBadgesCount;
-                } catch (Exception ignored) {}
+                int totalBadges = achievementsCountByStudent.getOrDefault(student.getId(), 0)
+                        + manualBadgesCountByStudent.getOrDefault(student.getId(), 0);
 
                 double avgScore = myTests.isEmpty() ? 0.0 :
                         myTests.stream().mapToInt(st -> st.getScore() != null ? st.getScore() : 0).average().orElse(0.0);
@@ -181,6 +221,12 @@ public class OverallLeaderboardService {
             int rank = 1;
             for (OverallLeaderboardEntry entry : entries) {
                 entry.rankPosition = rank++;
+            }
+
+            // Publish to memo cache before returning
+            leaderboardCache.put(cacheKey, new LbCacheEntry(entries, System.currentTimeMillis() + LEADERBOARD_CACHE_TTL_MS));
+            if (leaderboardCache.size() > 50) {
+                leaderboardCache.entrySet().removeIf(e -> System.currentTimeMillis() >= e.getValue().expiresAt);
             }
 
             return entries;

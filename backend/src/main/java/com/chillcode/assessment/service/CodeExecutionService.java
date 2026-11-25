@@ -2053,10 +2053,23 @@ public class CodeExecutionService {
         Submission savedSub = submissionRepository.save(sub);
 
         if (result.getTestCaseResults() != null) {
+            // Batch-load all referenced test cases in ONE query instead of
+            // findById() per result (N+1 over remote Supabase per submission).
+            Set<Long> tcIds = new HashSet<>();
+            for (TestCaseResultDto tcRes : result.getTestCaseResults()) {
+                if (tcRes.getTestCaseId() != null) tcIds.add(tcRes.getTestCaseId());
+            }
+            Map<Long, TestCase> tcById = new HashMap<>();
+            if (!tcIds.isEmpty()) {
+                for (TestCase tc : testCaseRepository.findAllById(tcIds)) {
+                    tcById.put(tc.getId(), tc);
+                }
+            }
+
             List<SubmissionTestCase> subTcList = new ArrayList<>();
             for (TestCaseResultDto tcRes : result.getTestCaseResults()) {
                 if (tcRes.getTestCaseId() != null) {
-                    TestCase tc = testCaseRepository.findById(tcRes.getTestCaseId()).orElse(null);
+                    TestCase tc = tcById.get(tcRes.getTestCaseId());
                     if (tc != null) {
                         String msg = tcRes.getMessage();
                         if (msg != null && msg.length() > 1000) {

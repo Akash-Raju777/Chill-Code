@@ -2,6 +2,7 @@
 
 import React, { useEffect, useState } from 'react';
 import { apiCall, formatISTDate, formatISTDateTime, smartCache } from '../../../utils/api';
+import { onSyncEvent } from '../../../utils/syncEvents';
 import { useRouter } from 'next/navigation';
 import { useAuthStore } from '../../../store/authStore';
 import { useTestStore } from '../../../store/testStore';
@@ -104,6 +105,9 @@ export default function TestsWorkspace() {
   const [refreshing, setRefreshing] = useState(false);
   const fetchingRef = React.useRef(false);
   const pendingReattemptQuestionIdsRef = React.useRef<Set<number>>(new Set());
+  // Mirror of questionsList readable from timer closures (effect deps are [])
+  const questionsListRef = React.useRef<any[]>(questionsList);
+  questionsListRef.current = questionsList;
 
   const { startTestSession } = useTestStore();
   const { resetWarnings } = useSecurityStore();
@@ -121,17 +125,21 @@ export default function TestsWorkspace() {
     });
   };
 
-  const fetchTests = async (isInitial = true) => {
+  const fetchTests = async (isInitial = true, forceRefresh = false) => {
     if (fetchingRef.current) return;
     fetchingRef.current = true;
     if (isInitial && questionsList.length === 0) setLoading(true);
     else setRefreshing(true);
     setError('');
     try {
+      // Normal reads go through SWR: fresh cache returns instantly with no network;
+      // stale cache returns instantly + background revalidate. Only the manual
+      // Refresh button (forceRefresh) bypasses the cache for a hard refetch.
+      const cacheOpts = forceRefresh ? { skipLocalCache: true } : {};
       const [testsData, questionsData, subjectsData] = await Promise.all([
-        apiCall('/api/student/tests', { skipLocalCache: true }),
-        apiCall('/api/student/questions', { skipLocalCache: true }),
-        apiCall('/api/student/subjects', { skipLocalCache: !isInitial }),
+        apiCall('/api/student/tests', cacheOpts),
+        apiCall('/api/student/questions', cacheOpts),
+        apiCall('/api/student/subjects', cacheOpts),
       ]);
       setStudentTests(testsData || []);
       setQuestionsList(applyPendingReattempts(questionsData || []));
@@ -153,11 +161,13 @@ export default function TestsWorkspace() {
   useEffect(() => {
     fetchTestsRef.current(false);
 
-    // Fast polling: 2.5s if any question has a pending reattempt request, 5s otherwise
+    // Adaptive polling. With SWR reads these polls are cheap: fresh cache
+    // returns instantly with zero network; only stale entries revalidate.
+    // 2.5s while waiting on a reattempt approval, 8s otherwise.
     let intervalTimer: NodeJS.Timeout;
     const scheduleNextPoll = () => {
-      const hasPendingReattempt = questionsList.some((q) => q.status === 'PENDING_REATTEMPT');
-      const delay = hasPendingReattempt ? 2500 : 5000;
+      const hasPendingReattempt = questionsListRef.current.some((q) => q.status === 'PENDING_REATTEMPT');
+      const delay = hasPendingReattempt ? 2500 : 8000;
       intervalTimer = setTimeout(async () => {
         await fetchTestsRef.current(false);
         scheduleNextPoll();
@@ -166,15 +176,26 @@ export default function TestsWorkspace() {
 
     scheduleNextPoll();
 
-    // Auto-refresh questions list when the student returns to/focuses this browser tab
+    // Auto-refresh when the student returns to/focuses this browser tab
     const handleFocus = () => {
       fetchTestsRef.current(false);
     };
     window.addEventListener('focus', handleFocus);
 
+    // Instant reaction to a confirmed submission (exam page emits after backend ack).
+    // Re-reads state immediately instead of waiting for the next poll tick.
+    const unsubSync = onSyncEvent('submission:confirmed', () => {
+      fetchTestsRef.current(false);
+    });
+    const unsubTests = onSyncEvent('tests:updated', () => {
+      fetchTestsRef.current(false);
+    });
+
     return () => {
       clearTimeout(intervalTimer);
       window.removeEventListener('focus', handleFocus);
+      unsubSync();
+      unsubTests();
     };
   }, []);
 

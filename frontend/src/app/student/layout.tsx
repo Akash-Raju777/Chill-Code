@@ -45,7 +45,9 @@ export default function StudentLayout({ children }: { children: React.ReactNode 
   const isSecurityActive = isSessionActive && !isViewMode && user?.status === 'ACTIVE';
   const setUser = useAuthStore((s) => s.setUser);
 
-  // Authorize student role and verify session with backend
+  // Authorize student role. Single verification path: initializeAuth() performs
+  // the one-time backend session check; subsequent mounts trust the in-memory
+  // session (revocation is still caught by apiCall's 401 handling on any request).
   useEffect(() => {
     setMounted(true);
 
@@ -66,24 +68,7 @@ export default function StudentLayout({ children }: { children: React.ReactNode 
         return;
       }
 
-      try {
-        const verified = await apiCall('/api/auth/me');
-        if (!verified || verified.role !== 'STUDENT') {
-          router.replace(getAuthorizedDashboard(verified?.role));
-          return;
-        }
-        useAuthStore.getState().setUser(verified);
-        setAuthorized(true);
-      } catch (err: any) {
-        // ONLY log out if backend explicitly returns 401 Unauthorized or 403 Forbidden
-        if (err?.isAuthError || err?.status === 401 || err?.status === 403) {
-          useAuthStore.getState().logout();
-          router.replace('/login');
-        } else {
-          // Backend may be sleeping or cold start: DO NOT destroy valid session!
-          setAuthorized(true);
-        }
-      }
+      setAuthorized(true);
     };
 
     verifyStudent();
@@ -192,7 +177,6 @@ export default function StudentLayout({ children }: { children: React.ReactNode 
             <Link
               href="/student/dashboard"
               prefetch={true}
-              onMouseEnter={() => router.prefetch('/student/dashboard')}
               onClick={(e) => {
                 if (pathname === '/student/dashboard') {
                   e.preventDefault();
@@ -212,7 +196,6 @@ export default function StudentLayout({ children }: { children: React.ReactNode 
             <Link
               href="/student/tests"
               prefetch={true}
-              onMouseEnter={() => router.prefetch('/student/tests')}
               onClick={(e) => {
                 if (pathname.startsWith('/student/tests')) {
                   e.preventDefault();
@@ -232,7 +215,6 @@ export default function StudentLayout({ children }: { children: React.ReactNode 
             <Link
               href="/student/results"
               prefetch={true}
-              onMouseEnter={() => router.prefetch('/student/results')}
               onClick={(e) => {
                 if (pathname === '/student/results') {
                   e.preventDefault();
@@ -252,7 +234,6 @@ export default function StudentLayout({ children }: { children: React.ReactNode 
             <Link
               href="/student/achievements"
               prefetch={true}
-              onMouseEnter={() => router.prefetch('/student/achievements')}
               onClick={(e) => {
                 if (pathname === '/student/achievements') {
                   e.preventDefault();
@@ -272,7 +253,6 @@ export default function StudentLayout({ children }: { children: React.ReactNode 
             <Link
               href="/student/leaderboard"
               prefetch={true}
-              onMouseEnter={() => router.prefetch('/student/leaderboard')}
               onClick={(e) => {
                 if (pathname === '/student/leaderboard') {
                   e.preventDefault();
@@ -292,7 +272,6 @@ export default function StudentLayout({ children }: { children: React.ReactNode 
             <Link
               href="/student/notifications"
               prefetch={true}
-              onMouseEnter={() => router.prefetch('/student/notifications')}
               onClick={(e) => {
                 if (pathname === '/student/notifications') {
                   e.preventDefault();

@@ -12,4 +12,7 @@ public interface BadgeRuleRepository extends JpaRepository<BadgeRule, Long> {
     List<BadgeRule> findByCategoryAndStatus(String category, String status);
     List<BadgeRule> findByTargetLanguageAndStatus(String targetLanguage, String status);
     List<BadgeRule> findByTargetSubjectIdAndStatus(Long targetSubjectId, String status);
+
+    @org.springframework.data.jpa.repository.Query("SELECT r FROM BadgeRule r LEFT JOIN FETCH r.targetSubject")
+    List<BadgeRule> findAllWithTargetSubject();
 }

@@ -27,7 +27,6 @@ import BackendStatusBanner from '@/components/BackendStatusBanner';
 import ToastContainer from '@/components/ToastContainer';
 import BrandedLoader from '@/components/BrandedLoader';
 
-import { apiCall } from '@/utils/api';
 import { getAuthorizedDashboard } from '@/store/authStore';
 
 export default function SuperAdminLayout({ children }: { children: React.ReactNode }) {
@@ -61,24 +60,7 @@ export default function SuperAdminLayout({ children }: { children: React.ReactNo
         return;
       }
 
-      try {
-        const verified = await apiCall('/api/auth/me');
-        if (!verified || verified.role !== 'SUPER_ADMIN') {
-          router.replace(getAuthorizedDashboard(verified?.role));
-          return;
-        }
-        useAuthStore.getState().setUser(verified);
-        setAuthorized(true);
-      } catch (err: any) {
-        // ONLY log out if backend explicitly returns 401 Unauthorized or 403 Forbidden
-        if (err?.isAuthError || err?.status === 401 || err?.status === 403) {
-          useAuthStore.getState().logout();
-          router.replace('/login');
-        } else {
-          // Backend may be sleeping or cold start: DO NOT destroy valid session!
-          setAuthorized(true);
-        }
-      }
+      setAuthorized(true);
     };
 
     verifySuperAdmin();
@@ -143,7 +125,6 @@ export default function SuperAdminLayout({ children }: { children: React.ReactNo
                 key={item.name}
                 href={item.path}
                 prefetch={true}
-                onMouseEnter={() => router.prefetch(item.path)}
                 onClick={(e) => {
                   if (isActive) {
                     e.preventDefault();

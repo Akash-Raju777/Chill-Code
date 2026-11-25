@@ -3,6 +3,7 @@
 import React, { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { apiCall, formatISTDateTime, smartCache } from '../../../utils/api';
+import { onSyncEvent } from '../../../utils/syncEvents';
 import { 
   ClipboardCheck, 
   Loader2, 
@@ -101,9 +102,12 @@ export default function StudentResults() {
     if (showLoading && submissions.length === 0) setLoading(true);
     if (isRefresh) setRefreshing(true);
     try {
+      // SWR for normal reads (instant from cache + background revalidate);
+      // hard network bypass only for the manual Refresh button.
+      const subOpts = isRefresh ? { skipLocalCache: true } : {};
       const [submissionsData, earnedList] = await Promise.all([
-        apiCall('/api/student/submissions', { skipLocalCache: true }).catch(() => []),
-        apiCall('/api/student/badges/earned', { skipLocalCache: isRefresh }).catch(() => []),
+        apiCall('/api/student/submissions', subOpts).catch(() => []),
+        apiCall('/api/student/badges/earned', isRefresh ? { skipLocalCache: true } : {}).catch(() => []),
       ]);
 
       let freshList: SubmissionResult[] = Array.isArray(submissionsData) ? [...submissionsData] : [];
@@ -180,9 +184,21 @@ export default function StudentResults() {
 
   useEffect(() => {
     fetchSubmissions(false, false);
+
+    // Instant reaction when the exam page confirms a submission/exit — no need
+    // to wait for the next poll tick to surface the finalized record.
+    const unsub1 = onSyncEvent('submission:confirmed', () => fetchSubmissions(false, false));
+    const unsub2 = onSyncEvent('test:submitted', () => fetchSubmissions(false, false));
+    const unsub3 = onSyncEvent('result:updated', () => fetchSubmissions(false, false));
+    return () => {
+      unsub1();
+      unsub2();
+      unsub3();
+    };
   }, []);
 
-  // Real-time automatic polling when any submission is in PENDING/EVALUATING state or a stub is active
+  // Real-time automatic polling when any submission is in PENDING/EVALUATING state or a stub is active.
+  // 1.5s cadence (was 750ms): still feels live for judge results while halving request volume.
   const hasActivePending = submissions.some(s => s.status === 'PENDING' || (s as any).status === 'EVALUATING' || s.id < 0);
   useEffect(() => {
     const hasPendingStub = typeof window !== 'undefined' && !!sessionStorage.getItem('chill_pending_evaluation');
@@ -190,18 +206,21 @@ export default function StudentResults() {
 
     const interval = setInterval(() => {
       fetchSubmissions(false, true);
-    }, 750);
+    }, 1500);
 
     return () => clearInterval(interval);
   }, [hasActivePending]);
 
   if (loading) {
+    // Skeleton instead of a blocking full-page spinner: rows reserve space so
+    // the list doesn't jump when data arrives.
     return (
-      <div className="min-h-[60vh] flex items-center justify-center">
-        <div className="text-center space-y-4">
-          <Loader2 className="w-8 h-8 animate-spin text-[#7c3aed] mx-auto" />
-          <p className="text-gray-400 font-sans text-xs">Loading academic results & submissions...</p>
-        </div>
+      <div className="min-h-[60vh] space-y-4 p-2">
+        <div className="h-8 w-56 rounded-lg bg-white/5 animate-pulse" />
+        <div className="h-4 w-80 rounded bg-white/5 animate-pulse" />
+        {[0, 1, 2].map((i) => (
+          <div key={i} className="h-28 rounded-2xl bg-white/5 animate-pulse" />
+        ))}
       </div>
     );
   }

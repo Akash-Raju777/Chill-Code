@@ -16,4 +16,10 @@ public interface LanguageMasterBadgeRepository extends JpaRepository<LanguageMas
     List<LanguageMasterBadge> findByTestCode(@org.springframework.data.repository.query.Param("testCode") String testCode);
     
     void deleteByTestId(Long testId);
+
+    @org.springframework.data.jpa.repository.Query("SELECT lmb FROM LanguageMasterBadge lmb LEFT JOIN FETCH lmb.student")
+    List<LanguageMasterBadge> findAllWithStudent();
+
+    @org.springframework.data.jpa.repository.Query("SELECT lmb FROM LanguageMasterBadge lmb LEFT JOIN FETCH lmb.student LEFT JOIN FETCH lmb.test WHERE lmb.student.id IN :studentIds")
+    List<LanguageMasterBadge> findByStudentIdInWithTest(@org.springframework.data.repository.query.Param("studentIds") java.util.Collection<Long> studentIds);
 }

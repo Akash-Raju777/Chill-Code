@@ -180,7 +180,7 @@ function getStoredAuth(): { user: User | null; token: string | null } {
 
 let initPromise: Promise<boolean> | null = null;
 
-export const useAuthStore = create<AuthState>((set) => {
+export const useAuthStore = create<AuthState>((set, get) => {
   const initial = getStoredAuth();
   const initiallyAuthed = !!(initial.token && !isJwtExpired(initial.token));
 
@@ -191,9 +191,17 @@ export const useAuthStore = create<AuthState>((set) => {
     isInitialized: false,
     authStatus: 'INITIALIZING',
 
-    initializeAuth: async () => {
+    initializeAuth: async (): Promise<boolean> => {
       if (typeof window === 'undefined') {
         return false;
+      }
+
+      // Fast path: already verified this tab — never re-hit /api/auth/me on
+      // every layout mount / client navigation. Session revocation is still
+      // caught by apiCall's 401 handling on any subsequent request.
+      const current = get();
+      if (current.isInitialized) {
+        return current.isAuthenticated;
       }
 
       if (initPromise) return initPromise;

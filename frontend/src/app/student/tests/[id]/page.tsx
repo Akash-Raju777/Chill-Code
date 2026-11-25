@@ -148,6 +148,38 @@ function CodingWorkspaceInner() {
   const frozenElapsedSecondsRef = useRef<number | null>(null);
   const actualStartTimeMsRef = useRef<number | null>(null);
 
+  // Debounced localStorage code backup: Monaco fires onChange on every keystroke,
+  // and a synchronous localStorage write per keystroke stalls the editor thread.
+  const codeBackupTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const pendingBackupRef = useRef<{ key: string; value: string } | null>(null);
+
+  const flushCodeBackup = () => {
+    if (codeBackupTimerRef.current) {
+      clearTimeout(codeBackupTimerRef.current);
+      codeBackupTimerRef.current = null;
+    }
+    const pending = pendingBackupRef.current;
+    if (pending) {
+      try { localStorage.setItem(pending.key, pending.value); } catch (_) {}
+      pendingBackupRef.current = null;
+    }
+  };
+
+  const scheduleCodeBackup = (key: string, value: string) => {
+    pendingBackupRef.current = { key, value };
+    if (codeBackupTimerRef.current) clearTimeout(codeBackupTimerRef.current);
+    codeBackupTimerRef.current = setTimeout(flushCodeBackup, 400);
+  };
+
+  // Flush any pending backup before the tab closes or the component unmounts
+  useEffect(() => {
+    window.addEventListener('beforeunload', flushCodeBackup);
+    return () => {
+      window.removeEventListener('beforeunload', flushCodeBackup);
+      flushCodeBackup();
+    };
+  }, []);
+
   const isSecurityStatusActive = user?.status === 'ACTIVE';
 
   const setUser = useAuthStore((s) => s.setUser);
@@ -566,7 +598,9 @@ function CodingWorkspaceInner() {
       }
 
       try {
-        smartCache.deleteKey(smartCache.getCacheKey('/api/student/questions'));
+        // Mark-stale (not delete) so Practice/Results can render instantly from
+        // existing cache while a background revalidation fetches fresh state.
+        smartCache.invalidateTag('student-questions');
         smartCache.invalidateTag('student-tests');
         smartCache.invalidateTag('student-submissions');
         smartCache.invalidateTag('student-dashboard');
@@ -668,7 +702,9 @@ function CodingWorkspaceInner() {
           }
 
           try {
-            smartCache.deleteKey(smartCache.getCacheKey('/api/student/questions'));
+            // Mark-stale (not delete): keep last-known list readable so the
+            // Practice page never blanks out while fresh data revalidates.
+            smartCache.invalidateTag('student-questions');
             smartCache.invalidateTag('student-tests');
             smartCache.invalidateTag('student-submissions');
             smartCache.invalidateTag('student-dashboard');
@@ -772,9 +808,10 @@ function CodingWorkspaceInner() {
           console.warn('Exit request error:', err);
         }
 
-        // Purge cached questions & test lists so Practice page never flashes stale IN_PROGRESS state
+        // Mark-stale cached questions & test lists so Practice renders last-known
+        // state instantly and revalidates in background (never a blank spinner)
         try {
-          smartCache.deleteKey(smartCache.getCacheKey('/api/student/questions'));
+          smartCache.invalidateTag('student-questions');
           smartCache.invalidateTag('student-tests');
           smartCache.invalidateTag('student-submissions');
           smartCache.invalidateTag('student-dashboard');
@@ -947,6 +984,26 @@ function CodingWorkspaceInner() {
         useTestStore.getState().updateQuestionAttemptCount(currentQuestion.id, response.attemptCount);
       }
       fetchSubmissionsHistory();
+
+      // Confirmed by backend — surgically patch the Practice page's cached question
+      // list so status/attemptCount are correct the instant the user navigates back
+      // (no waiting for a refetch, no stale COMPLETED/PENDING badges).
+      try {
+        const isPass = response?.overallResult === 'PASS' || response?.status === 'ACCEPTED';
+        smartCache.patch<any[]>('/api/student/questions', (list) =>
+          (list || []).map((q) =>
+            q.id === currentQuestion.id
+              ? {
+                  ...q,
+                  status: isPass ? 'COMPLETED' : 'PENDING',
+                  overallResult: response?.overallResult ?? q.overallResult,
+                  attemptCount: response?.attemptCount ?? q.attemptCount,
+                  lastAttemptAt: new Date().toISOString(),
+                }
+              : q
+          )
+        );
+      } catch (_) {}
 
       setEvaluationStage('CONFIRMED');
 
@@ -1634,7 +1691,7 @@ function CodingWorkspaceInner() {
                 if (!isViewMode) {
                   updateCode(currentQuestion.id, val || '');
                   if (user?.id) {
-                    localStorage.setItem(`chillcode_code_backup_${user.id}_${currentQuestion.id}`, val || '');
+                    scheduleCodeBackup(`chillcode_code_backup_${user.id}_${currentQuestion.id}`, val || '');
                   }
                 }
               }}

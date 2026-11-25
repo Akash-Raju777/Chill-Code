@@ -105,12 +105,27 @@ public class BadgeService {
         badgeRepository.save(badge);
     }
 
+    @Transactional(readOnly = true)
     public List<BadgeDto> getAllBadges() {
         Long adminId = com.chillcode.assessment.security.SecurityUtils.getCurrentAdminId();
         List<com.chillcode.assessment.entity.Badge> badges = (adminId != null)
                 ? badgeRepository.findByAdminId(adminId)
                 : badgeRepository.findAll();
-        return badges.stream().map(this::mapBadgeToDto).collect(Collectors.toList());
+
+        Map<Long, List<BadgeRule>> rulesByBadgeId = badgeRuleRepository.findAllWithTargetSubject().stream()
+                .filter(r -> r.getBadge() != null)
+                .collect(Collectors.groupingBy(r -> r.getBadge().getId()));
+
+        Map<Long, Integer> earnedCountByBadgeId = new HashMap<>();
+        for (Object[] row : studentBadgeRepository.countBadgesGroupedByBadgeId()) {
+            if (row != null && row.length >= 2 && row[0] != null && row[1] != null) {
+                earnedCountByBadgeId.put(((Number) row[0]).longValue(), ((Number) row[1]).intValue());
+            }
+        }
+
+        return badges.stream()
+                .map(b -> mapBadgeToDto(b, rulesByBadgeId.getOrDefault(b.getId(), Collections.emptyList()), earnedCountByBadgeId.getOrDefault(b.getId(), 0)))
+                .collect(Collectors.toList());
     }
 
     public BadgeDto getBadgeById(Long id) {
@@ -395,7 +410,15 @@ public class BadgeService {
     }
 
     private BadgeDto mapBadgeToDto(Badge badge) {
-        List<BadgeRuleDto> ruleDtos = badgeRuleRepository.findByBadgeId(badge.getId()).stream()
+        return mapBadgeToDto(
+                badge,
+                badgeRuleRepository.findByBadgeId(badge.getId()),
+                studentBadgeRepository.findByBadgeId(badge.getId()).size()
+        );
+    }
+
+    private BadgeDto mapBadgeToDto(Badge badge, List<BadgeRule> rules, int earnedCount) {
+        List<BadgeRuleDto> ruleDtos = rules.stream()
                 .map(r -> BadgeRuleDto.builder()
                         .id(r.getId())
                         .badgeId(badge.getId())
@@ -411,8 +434,6 @@ public class BadgeService {
                         .build())
                 .collect(Collectors.toList());
 
-        int count = studentBadgeRepository.findByBadgeId(badge.getId()).size();
-
         return BadgeDto.builder()
                 .id(badge.getId())
                 .name(badge.getName())
@@ -423,7 +444,7 @@ public class BadgeService {
                 .createdAt(badge.getCreatedAt())
                 .updatedAt(badge.getUpdatedAt())
                 .rules(ruleDtos)
-                .earnedCount(count)
+                .earnedCount(earnedCount)
                 .build();
     }
 

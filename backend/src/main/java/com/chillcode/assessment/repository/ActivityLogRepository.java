@@ -11,4 +11,7 @@ public interface ActivityLogRepository extends JpaRepository<ActivityLog, Long> 
 
     @org.springframework.data.jpa.repository.Query("SELECT DISTINCT al.details FROM ActivityLog al WHERE UPPER(al.action) LIKE '%DELETE_TEST%' AND al.details IS NOT NULL")
     java.util.Set<String> findDeletedTestNames();
+
+    @org.springframework.data.jpa.repository.Query("SELECT COUNT(al) FROM ActivityLog al WHERE UPPER(al.action) LIKE '%DELETE_TEST%'")
+    long countDeletedTests();
 }

@@ -59,23 +59,31 @@ export default function AdminLeaderboardPage() {
     loadLeaderboard();
   }, [activeTab, selectedSubjectId, departmentFilter]);
 
-  // Real-time polling
+  // Real-time polling — SWR reads make these cheap: fresh cache returns
+  // instantly with no network; only stale entries revalidate in background.
   useEffect(() => {
     const interval = setInterval(() => {
       loadInitialData(false);
       loadLeaderboard(false);
-    }, 5000);
+    }, 10000);
     return () => clearInterval(interval);
   }, [activeTab, selectedSubjectId, departmentFilter]);
 
   const loadInitialData = async (showLoading = true) => {
     if (showLoading) setLoading(true);
     try {
-      const subjData = await apiCall('/api/subjects');
+      // Parallel: subjects list and analytics stats are independent — running
+      // them sequentially doubled the page's time-to-interactive.
+      const [subjData, stats] = await Promise.all([
+        apiCall('/api/subjects'),
+        fetchAdminAnalyticsOverview(),
+      ]);
       setSubjects(subjData || []);
-      if (subjData && subjData.length > 0) setSelectedSubjectId(subjData[0].id);
-
-      const stats = await fetchAdminAnalyticsOverview();
+      // Only seed the default selection once — never clobber the user's choice
+      // on subsequent polls. (Initial state is '' so check for empty explicitly.)
+      setSelectedSubjectId((prev) => (prev === '' || prev == null)
+        ? (subjData && subjData.length > 0 ? subjData[0].id : '')
+        : prev);
       setAnalyticsStats(stats);
     } catch (err: any) {
       console.error(err);

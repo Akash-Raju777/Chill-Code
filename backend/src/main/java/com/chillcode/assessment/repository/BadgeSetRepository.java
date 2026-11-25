@@ -12,4 +12,7 @@ public interface BadgeSetRepository extends JpaRepository<BadgeSet, Long> {
     List<BadgeSet> findByTestCode(String testCode);
     List<BadgeSet> findByStatus(String status);
     Optional<BadgeSet> findByTestIdAndStatus(Long testId, String status);
+
+    @org.springframework.data.jpa.repository.Query("SELECT bs.test.id, bs FROM BadgeSet bs WHERE bs.test IS NOT NULL")
+    List<Object[]> findAllTestIdsAndBadgeSets();
 }

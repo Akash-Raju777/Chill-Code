@@ -75,17 +75,21 @@ export default function TestManagement() {
       setLoading(true);
     }
     try {
-      const testsData = await apiCall('/api/admin/tests', { skipLocalCache: isRefresh });
-      setTests(testsData);
+      // Parallel: tests, subjects, and staff are independent — sequential
+      // awaits tripled the load time for this page.
+      const opts = { skipLocalCache: isRefresh };
+      const [testsData, subs, staffData] = await Promise.all([
+        apiCall('/api/admin/tests', opts),
+        apiCall('/api/admin/subjects', opts),
+        apiCall('/api/admin/staff', opts).catch(() => []),
+      ]);
 
-      const subs = await apiCall('/api/admin/subjects', { skipLocalCache: isRefresh });
+      setTests(testsData);
       setSubjects(subs);
       if (subs.length > 0 && !selectedSubjectId) {
         setSelectedSubjectId(subs[0].id);
       }
 
-      // Fetch staff members
-      const staffData = await apiCall('/api/admin/staff', { skipLocalCache: isRefresh }).catch(() => []);
       if (staffData && Array.isArray(staffData)) {
         setStaffList(staffData);
         if (staffData.length > 0 && !selectedStaffId) {

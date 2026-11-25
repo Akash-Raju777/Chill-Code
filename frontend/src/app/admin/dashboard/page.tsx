@@ -73,7 +73,7 @@ export default function AdminDashboard() {
   const processedActionKeysRef = useRef<Set<string>>(new Set());
   const forgivenStudentKeysRef = useRef<Set<string>>(new Set());
 
-  const fetchMetrics = async (isInitial = false) => {
+  const fetchMetrics = async (isInitial = false, forceRefresh = false) => {
     if (fetchingRef.current) return;
     fetchingRef.current = true;
     if (isInitial && !data) {
@@ -82,9 +82,12 @@ export default function AdminDashboard() {
       setRefreshing(true);
     }
     try {
+      // SWR for automatic polls: fresh cache (20s) returns instantly with zero
+      // network; only the manual Refresh button bypasses the cache.
+      const opts = forceRefresh ? { skipLocalCache: true } : {};
       const [response, reattempts] = await Promise.all([
-        apiCall('/api/admin/dashboard', { skipLocalCache: true }),
-        apiCall('/api/admin/tests/reattempt-requests', { skipLocalCache: true })
+        apiCall('/api/admin/dashboard', opts),
+        apiCall('/api/admin/tests/reattempt-requests', opts)
       ]);
 
       // Filter out activities of forgiven students
@@ -289,9 +292,11 @@ export default function AdminDashboard() {
 
   useEffect(() => {
     fetchMetricsRef.current(false);
+    // SWR-backed poll: 5s cadence, but network only fires when the 20s fresh
+    // window has expired (was: 2 hard network requests every 2 seconds).
     const interval = setInterval(() => {
       fetchMetricsRef.current(false);
-    }, 2000);
+    }, 5000);
     return () => clearInterval(interval);
   }, []);
 
@@ -382,7 +387,7 @@ export default function AdminDashboard() {
           <p className="text-sm text-gray-500">Realtime activity tracking and statistics</p>
         </div>
         <button 
-          onClick={() => fetchMetrics()} 
+          onClick={() => fetchMetrics(false, true)} 
           disabled={refreshing}
           className="flex items-center gap-2 px-4 py-2 border border-white/10 rounded-xl text-sm font-semibold hover:bg-white/5 transition-all text-white disabled:opacity-50 select-none cursor-pointer"
         >
