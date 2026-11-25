@@ -90,6 +90,7 @@ public class SubmissionController {
     }
 
     @GetMapping("/submissions")
+    @org.springframework.transaction.annotation.Transactional(readOnly = true)
     public ResponseEntity<List<java.util.Map<String, Object>>> getMySubmissions() {
         com.chillcode.assessment.entity.User student = getCurrentUser();
         List<Submission> submissions = submissionRepository.findAllByStudentIdOrderByCreatedAtDesc(student.getId());
@@ -151,9 +152,13 @@ public class SubmissionController {
             
             map.put("questionId", sub.getQuestion().getId());
             map.put("questionName", sub.getQuestion().getTitle());
-            if (sub.getQuestion().getSubject() != null) {
-                map.put("subjectName", sub.getQuestion().getSubject().getName());
-            }
+            String subjectName = "Coding";
+            try {
+                if (sub.getQuestion().getSubject() != null && sub.getQuestion().getSubject().getName() != null) {
+                    subjectName = sub.getQuestion().getSubject().getName();
+                }
+            } catch (Exception ignored) {}
+            map.put("subjectName", subjectName);
             com.chillcode.assessment.entity.StudentQuestionStatus sqs = sqsMap.get(sub.getQuestion().getId());
             List<Submission> subList = submissionsByQuestion.get(sub.getQuestion().getId());
             int attemptsCount = (subList != null && !subList.isEmpty()) 
@@ -237,6 +242,7 @@ public class SubmissionController {
     }
 
     @GetMapping("/submissions/{id}")
+    @org.springframework.transaction.annotation.Transactional(readOnly = true)
     public ResponseEntity<java.util.Map<String, Object>> getSubmissionById(@PathVariable Long id) {
         Submission sub = submissionRepository.findById(id)
                 .orElseThrow(() -> new RuntimeException("Submission not found"));
@@ -306,9 +312,13 @@ public class SubmissionController {
         if (sub.getQuestion() != null) {
             res.put("questionId", sub.getQuestion().getId());
             res.put("questionName", sub.getQuestion().getTitle());
-            if (sub.getQuestion().getSubject() != null) {
-                res.put("subjectName", sub.getQuestion().getSubject().getName());
-            }
+            String subjectName = "Coding";
+            try {
+                if (sub.getQuestion().getSubject() != null && sub.getQuestion().getSubject().getName() != null) {
+                    subjectName = sub.getQuestion().getSubject().getName();
+                }
+            } catch (Exception ignored) {}
+            res.put("subjectName", subjectName);
             if (sub.getStudentTest() != null && sub.getStudentTest().getStudent() != null) {
                 com.chillcode.assessment.entity.StudentQuestionStatus sqs = studentQuestionStatusRepository
                         .findByStudentIdAndQuestionId(sub.getStudentTest().getStudent().getId(), sub.getQuestion().getId())

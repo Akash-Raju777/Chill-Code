@@ -34,6 +34,10 @@ public interface SubmissionRepository extends JpaRepository<Submission, Long> {
     @org.springframework.data.jpa.repository.Query("SELECT s FROM Submission s LEFT JOIN FETCH s.question q LEFT JOIN FETCH q.subject LEFT JOIN FETCH s.studentTest st LEFT JOIN FETCH st.test WHERE st.student.id = :studentId ORDER BY s.createdAt DESC")
     List<Submission> findAllByStudentIdOrderByCreatedAtDesc(@org.springframework.data.repository.query.Param("studentId") Long studentId);
 
+    // Check if an active EXITED submission already exists for this student+question (within last N seconds) for idempotency
+    @org.springframework.data.jpa.repository.Query("SELECT COUNT(s) FROM Submission s WHERE s.studentTest.student.id = :studentId AND s.question.id = :questionId AND s.status = 'EXITED' AND (s.active IS NULL OR s.active = true) AND s.createdAt >= :since")
+    long countRecentExitedByStudentAndQuestion(@org.springframework.data.repository.query.Param("studentId") Long studentId, @org.springframework.data.repository.query.Param("questionId") Long questionId, @org.springframework.data.repository.query.Param("since") java.time.LocalDateTime since);
+
     @org.springframework.data.jpa.repository.Query("SELECT s FROM Submission s LEFT JOIN FETCH s.question q WHERE s.studentTest.student.id = :studentId ORDER BY s.createdAt DESC")
     List<Submission> findTop5ByStudentIdOrderByCreatedAtDesc(@org.springframework.data.repository.query.Param("studentId") Long studentId, org.springframework.data.domain.Pageable pageable);
 

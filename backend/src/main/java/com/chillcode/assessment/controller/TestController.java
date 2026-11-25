@@ -104,9 +104,11 @@ public class TestController {
             @PathVariable("id") Long id,
             @RequestParam(value = "isAutoSubmitted", required = false, defaultValue = "false") boolean isAutoSubmitted,
             @RequestParam(value = "timeTakenSeconds", required = false) Long timeTakenSeconds,
+            @RequestParam(value = "questionId", required = false) Long questionId,
+            @RequestParam(value = "requestId", required = false) String requestId,
             @RequestBody(required = false) java.util.Map<String, java.util.Map<String, String>> questionCodes) {
         User student = getCurrentUser();
-        return ResponseEntity.ok(testService.submitTestDto(id, student.getId(), questionCodes, isAutoSubmitted, timeTakenSeconds));
+        return ResponseEntity.ok(testService.submitTestDto(id, student.getId(), questionCodes, isAutoSubmitted, timeTakenSeconds, questionId, requestId));
     }
 
     @PostMapping("/student/tests/{id}/exit")

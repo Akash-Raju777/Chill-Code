@@ -5,7 +5,8 @@ import {
   fetchSubjectLeaderboard, 
   fetchOverallLeaderboard, 
   fetchStudentLeaderboardSummary, 
-  apiCall 
+  apiCall,
+  smartCache 
 } from '../../../utils/api';
 import { 
   Trophy, 
@@ -29,12 +30,30 @@ interface Subject {
 
 export default function StudentLeaderboardPage() {
   const [activeTab, setActiveTab] = useState<'OVERALL' | 'SUBJECT'>('OVERALL');
-  const [subjects, setSubjects] = useState<Subject[]>([]);
+  const [subjects, setSubjects] = useState<Subject[]>(() => {
+    try {
+      const c = smartCache.get('/api/subjects');
+      return Array.isArray(c.data) ? c.data : [];
+    } catch (_) { return []; }
+  });
   const [selectedSubjectId, setSelectedSubjectId] = useState<number | ''>('');
   
-  const [summary, setSummary] = useState<any>(null);
-  const [leaderboardData, setLeaderboardData] = useState<any[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [summary, setSummary] = useState<any>(() => {
+    try {
+      const c = smartCache.get('/api/student/leaderboard/summary');
+      return c.data || null;
+    } catch (_) { return null; }
+  });
+  const [leaderboardData, setLeaderboardData] = useState<any[]>(() => {
+    try {
+      const c = smartCache.get('/api/student/leaderboard/overall');
+      return Array.isArray(c.data) ? c.data : [];
+    } catch (_) { return []; }
+  });
+  const [loading, setLoading] = useState<boolean>(() => {
+    const c = smartCache.get('/api/student/leaderboard/overall');
+    return !c || !Array.isArray(c.data);
+  });
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState('');
 
@@ -44,7 +63,7 @@ export default function StudentLeaderboardPage() {
   const [searchQuery, setSearchQuery] = useState('');
 
   const loadInitialData = async (isRefresh = false) => {
-    if (!isRefresh) setLoading(true);
+    if (!isRefresh && leaderboardData.length === 0) setLoading(true);
     if (isRefresh) setRefreshing(true);
     try {
       const [subjData, sumData] = await Promise.all([

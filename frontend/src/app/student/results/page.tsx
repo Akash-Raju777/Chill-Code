@@ -2,7 +2,7 @@
 
 import React, { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { apiCall, formatISTDateTime } from '../../../utils/api';
+import { apiCall, formatISTDateTime, smartCache } from '../../../utils/api';
 import { 
   ClipboardCheck, 
   Loader2, 
@@ -57,23 +57,106 @@ const formatDuration = (seconds?: number, startedAt?: string, submittedAt?: stri
 
 export default function StudentResults() {
   const router = useRouter();
-  const [submissions, setSubmissions] = useState<SubmissionResult[]>([]);
-  const [loading, setLoading] = useState(true);
+
+  // Instant SWR initial state: read cached submissions & pending evaluation immediately
+  const [submissions, setSubmissions] = useState<SubmissionResult[]>(() => {
+    let list: SubmissionResult[] = [];
+    try {
+      const cached = smartCache.get('/api/student/submissions');
+      if (cached && Array.isArray(cached.data)) {
+        list = [...cached.data];
+      }
+    } catch (_) {}
+
+    // Check if there is an active evaluation/exit pending from the test workspace
+    try {
+      if (typeof window !== 'undefined') {
+        const pendingRaw = sessionStorage.getItem('chill_pending_evaluation');
+        if (pendingRaw) {
+          const pendingItem = JSON.parse(pendingRaw);
+          if (pendingItem && pendingItem.questionName) {
+            list = [pendingItem, ...list.filter(s => s.id !== pendingItem.id)];
+          }
+        }
+      }
+    } catch (_) {}
+    return list;
+  });
+
+  const [loading, setLoading] = useState<boolean>(() => {
+    if (typeof window !== 'undefined') {
+      const pendingRaw = sessionStorage.getItem('chill_pending_evaluation');
+      if (pendingRaw) return false;
+    }
+    const cached = smartCache.get('/api/student/submissions');
+    return !cached || !Array.isArray(cached.data);
+  });
+
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState('');
 
   const [unlockedBadgeModal, setUnlockedBadgeModal] = useState<any>(null);
 
   const fetchSubmissions = async (showLoading = true, isRefresh = false) => {
-    if (showLoading) setLoading(true);
+    if (showLoading && submissions.length === 0) setLoading(true);
     if (isRefresh) setRefreshing(true);
     try {
       const [submissionsData, earnedList] = await Promise.all([
-        apiCall('/api/student/submissions', { skipLocalCache: isRefresh }).catch(() => []),
+        apiCall('/api/student/submissions', { skipLocalCache: true }).catch(() => []),
         apiCall('/api/student/badges/earned', { skipLocalCache: isRefresh }).catch(() => []),
       ]);
 
-      setSubmissions(submissionsData || []);
+      let freshList: SubmissionResult[] = Array.isArray(submissionsData) ? [...submissionsData] : [];
+
+      // Check if chill_pending_evaluation is now represented in freshList (prevents duplicate cards)
+      try {
+        if (typeof window !== 'undefined') {
+          const pendingRaw = sessionStorage.getItem('chill_pending_evaluation');
+          if (pendingRaw) {
+            const pendingItem = JSON.parse(pendingRaw);
+            const isExitedStub = pendingItem.status === 'EXITED';
+            const expectedAttempts = pendingItem.attempts ?? 1;
+            const pendingAgeMs = Date.now() - (pendingItem.createdAt ? new Date(pendingItem.createdAt).getTime() : 0);
+
+            let shouldRemoveStub = pendingAgeMs > 30000;
+            if (!shouldRemoveStub && pendingItem.submissionId) {
+              // Exact match by real DB submissionId — replace stub with real DB record (PENDING or finalized)
+              shouldRemoveStub = freshList.some(s => s.id === pendingItem.submissionId);
+            } else if (!shouldRemoveStub) {
+              if (isExitedStub) {
+                shouldRemoveStub = freshList.some(s =>
+                  s.questionId === pendingItem.questionId &&
+                  s.status === 'EXITED' &&
+                  (s.attempts ?? 1) >= expectedAttempts
+                );
+              } else {
+                shouldRemoveStub = freshList.some(s =>
+                  s.questionId === pendingItem.questionId &&
+                  (s.status === 'PENDING' || (s as any).status === 'EVALUATING' || (s.attempts ?? 1) >= expectedAttempts)
+                );
+              }
+            }
+
+            if (shouldRemoveStub) {
+              sessionStorage.removeItem('chill_pending_evaluation');
+            } else {
+              // Not yet visible in backend list: keep stub pinned once at top without duplicating
+              freshList = [pendingItem, ...freshList.filter(s => s.id !== pendingItem.id)];
+            }
+          }
+        }
+      } catch (_) {}
+
+      // Safety deduplication by submission id
+      const seenIds = new Set<number>();
+      freshList = freshList.filter((item) => {
+        if (item.id == null) return true;
+        if (seenIds.has(item.id)) return false;
+        seenIds.add(item.id);
+        return true;
+      });
+
+      setSubmissions(freshList);
 
       // Check for recently unlocked badges (within last 5 minutes)
       if (earnedList && earnedList.length > 0) {
@@ -90,26 +173,27 @@ export default function StudentResults() {
     } catch (err: any) {
       setError(err.message || 'Failed to load submission results.');
     } finally {
-      if (showLoading) setLoading(false);
+      setLoading(false);
       setRefreshing(false);
     }
   };
 
   useEffect(() => {
-    fetchSubmissions(true, false);
+    fetchSubmissions(false, false);
   }, []);
 
-  // Real-time automatic polling when any submission is in PENDING/EVALUATING state
+  // Real-time automatic polling when any submission is in PENDING/EVALUATING state or a stub is active
+  const hasActivePending = submissions.some(s => s.status === 'PENDING' || (s as any).status === 'EVALUATING' || s.id < 0);
   useEffect(() => {
-    const hasPending = submissions.some(s => s.status === 'PENDING' || (s as any).status === 'EVALUATING');
-    if (!hasPending) return;
+    const hasPendingStub = typeof window !== 'undefined' && !!sessionStorage.getItem('chill_pending_evaluation');
+    if (!hasActivePending && !hasPendingStub) return;
 
     const interval = setInterval(() => {
       fetchSubmissions(false, true);
-    }, 1500);
+    }, 750);
 
     return () => clearInterval(interval);
-  }, [submissions]);
+  }, [hasActivePending]);
 
   if (loading) {
     return (

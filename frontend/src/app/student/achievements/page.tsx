@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useEffect, useState } from 'react';
-import { apiCall, formatISTDate } from '../../../utils/api';
+import { apiCall, formatISTDate, smartCache } from '../../../utils/api';
 import { Award, ShieldCheck, Calendar, Trophy, CheckCircle2, Loader2, Sparkles, BookOpen, Hash, RefreshCw } from 'lucide-react';
 
 interface StudentAchievement {
@@ -31,14 +31,27 @@ interface LanguageMasterBadge {
 }
 
 export default function StudentAchievementsPage() {
-  const [achievements, setAchievements] = useState<StudentAchievement[]>([]);
-  const [languageBadges, setLanguageBadges] = useState<LanguageMasterBadge[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [achievements, setAchievements] = useState<StudentAchievement[]>(() => {
+    try {
+      const c = smartCache.get('/api/student/achievements');
+      return Array.isArray(c.data) ? c.data : [];
+    } catch (_) { return []; }
+  });
+  const [languageBadges, setLanguageBadges] = useState<LanguageMasterBadge[]>(() => {
+    try {
+      const c = smartCache.get('/api/student/language-badges');
+      return Array.isArray(c.data) ? c.data : [];
+    } catch (_) { return []; }
+  });
+  const [loading, setLoading] = useState<boolean>(() => {
+    const c = smartCache.get('/api/student/achievements');
+    return !c || !Array.isArray(c.data);
+  });
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState('');
 
   const loadAchievements = async (isRefresh = false) => {
-    if (!isRefresh) setLoading(true);
+    if (!isRefresh && achievements.length === 0) setLoading(true);
     if (isRefresh) setRefreshing(true);
     try {
       const [data, langData] = await Promise.all([
@@ -51,7 +64,7 @@ export default function StudentAchievementsPage() {
     } catch (err: any) {
       setError(err.message || 'Failed to load student achievements');
     } finally {
-      if (!isRefresh) setLoading(false);
+      setLoading(false);
       setRefreshing(false);
     }
   };

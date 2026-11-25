@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useEffect, useState } from 'react';
-import { apiCall, formatISTDate, formatISTDateTime } from '../../../utils/api';
+import { apiCall, formatISTDate, formatISTDateTime, smartCache } from '../../../utils/api';
 import { useRouter } from 'next/navigation';
 import { useAuthStore } from '../../../store/authStore';
 import { useTestStore } from '../../../store/testStore';
@@ -53,11 +53,31 @@ interface StudentTest {
 export default function TestsWorkspace() {
   const router = useRouter();
   const { user } = useAuthStore();
-  const [studentTests, setStudentTests] = useState<StudentTest[]>([]);
-  const [questionsList, setQuestionsList] = useState<any[]>([]);
-  const [subjects, setSubjects] = useState<any[]>([]);
+
+  // Instant SWR initial state: read cached practice tests, questions, and subjects immediately
+  const [studentTests, setStudentTests] = useState<StudentTest[]>(() => {
+    try {
+      const c = smartCache.get('/api/student/tests');
+      return Array.isArray(c.data) ? c.data : [];
+    } catch (_) { return []; }
+  });
+  const [questionsList, setQuestionsList] = useState<any[]>(() => {
+    try {
+      const c = smartCache.get('/api/student/questions');
+      return Array.isArray(c.data) ? c.data : [];
+    } catch (_) { return []; }
+  });
+  const [subjects, setSubjects] = useState<any[]>(() => {
+    try {
+      const c = smartCache.get('/api/student/subjects');
+      return Array.isArray(c.data) ? c.data : [];
+    } catch (_) { return []; }
+  });
   const [solvedQuestionIds, setSolvedQuestionIds] = useState<string[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState<boolean>(() => {
+    const cq = smartCache.get('/api/student/questions');
+    return !cq || !Array.isArray(cq.data) || cq.data.length === 0;
+  });
   const [error, setError] = useState('');
   const [selectedTest, setSelectedTest] = useState<StudentTest | null>(null);
   const [selectedQuestion, setSelectedQuestion] = useState<any>(null);
@@ -104,31 +124,22 @@ export default function TestsWorkspace() {
   const fetchTests = async (isInitial = true) => {
     if (fetchingRef.current) return;
     fetchingRef.current = true;
-    if (isInitial) setLoading(true);
+    if (isInitial && questionsList.length === 0) setLoading(true);
     else setRefreshing(true);
     setError('');
     try {
-      if (isInitial) {
-        const [testsData, questionsData, subjectsData] = await Promise.all([
-          apiCall('/api/student/tests'),
-          apiCall('/api/student/questions'),
-          apiCall('/api/student/subjects'),
-        ]);
-        setStudentTests(testsData);
-        setQuestionsList(applyPendingReattempts(questionsData));
-        setSubjects(subjectsData);
-      } else {
-        const [testsData, questionsData] = await Promise.all([
-          apiCall('/api/student/tests', { skipLocalCache: true }),
-          apiCall('/api/student/questions', { skipLocalCache: true }),
-        ]);
-        setStudentTests(testsData);
-        setQuestionsList(applyPendingReattempts(questionsData));
-      }
+      const [testsData, questionsData, subjectsData] = await Promise.all([
+        apiCall('/api/student/tests', { skipLocalCache: true }),
+        apiCall('/api/student/questions', { skipLocalCache: true }),
+        apiCall('/api/student/subjects', { skipLocalCache: !isInitial }),
+      ]);
+      setStudentTests(testsData || []);
+      setQuestionsList(applyPendingReattempts(questionsData || []));
+      if (subjectsData) setSubjects(subjectsData);
     } catch (err: any) {
       setError(err.message || 'Failed to fetch practice challenges.');
     } finally {
-      if (isInitial) setLoading(false);
+      setLoading(false);
       setRefreshing(false);
       fetchingRef.current = false;
     }
@@ -140,11 +151,20 @@ export default function TestsWorkspace() {
   });
 
   useEffect(() => {
-    fetchTestsRef.current(true);
+    fetchTestsRef.current(false);
 
-    const interval = setInterval(() => {
-      fetchTestsRef.current(false);
-    }, 10000);
+    // Fast polling: 2.5s if any question has a pending reattempt request, 5s otherwise
+    let intervalTimer: NodeJS.Timeout;
+    const scheduleNextPoll = () => {
+      const hasPendingReattempt = questionsList.some((q) => q.status === 'PENDING_REATTEMPT');
+      const delay = hasPendingReattempt ? 2500 : 5000;
+      intervalTimer = setTimeout(async () => {
+        await fetchTestsRef.current(false);
+        scheduleNextPoll();
+      }, delay);
+    };
+
+    scheduleNextPoll();
 
     // Auto-refresh questions list when the student returns to/focuses this browser tab
     const handleFocus = () => {
@@ -153,7 +173,7 @@ export default function TestsWorkspace() {
     window.addEventListener('focus', handleFocus);
 
     return () => {
-      clearInterval(interval);
+      clearTimeout(intervalTimer);
       window.removeEventListener('focus', handleFocus);
     };
   }, []);
@@ -172,6 +192,10 @@ export default function TestsWorkspace() {
   };
 
   const handleStartQuestionAttempt = (q: any) => {
+    if (['PENDING', 'FAILED', 'SUSPENDED', 'PENDING_REATTEMPT'].includes(q.status)) {
+      toast.info('This attempt has already ended. Please request another attempt.');
+      return;
+    }
     const associatedTest = getAssociatedTest(q.subjectId, q.id);
     if (associatedTest) {
       if ((associatedTest.status === 'SUBMITTED' || associatedTest.status === 'EVALUATED') && q.status === 'COMPLETED') {
@@ -380,24 +404,19 @@ export default function TestsWorkspace() {
   });
 
   const completedQuestions = filteredQuestions.filter((q) => {
-    const hasPassed = (q.score !== undefined && q.score !== null ? q.score : 0) >= (q.passingMarks || 10);
-    const isPassStatus = q.overallResult === 'PASS' || q.status === 'COMPLETED';
-    return hasPassed && isPassStatus;
+    return q.status === 'COMPLETED';
   });
 
   const notAttendedQuestions = filteredQuestions.filter((q) => {
-    const isSolved = (q.score !== undefined && q.score !== null ? q.score : 0) >= (q.passingMarks || 10) && (q.overallResult === 'PASS' || q.status === 'COMPLETED');
-    return !isSolved && q.status === 'NOT_STARTED';
+    return q.status === 'NOT_STARTED' || !q.status || q.status === 'NOT_ATTENDED';
   });
 
   const inProgressQuestions = filteredQuestions.filter((q) => {
-    const isSolved = (q.score !== undefined && q.score !== null ? q.score : 0) >= (q.passingMarks || 10) && (q.overallResult === 'PASS' || q.status === 'COMPLETED');
-    return !isSolved && q.status === 'IN_PROGRESS';
+    return q.status === 'IN_PROGRESS';
   });
 
   const pendingQuestions = filteredQuestions.filter((q) => {
-    const isSolved = (q.score !== undefined && q.score !== null ? q.score : 0) >= (q.passingMarks || 10) && (q.overallResult === 'PASS' || q.status === 'COMPLETED');
-    return !isSolved && ['PENDING', 'FAILED', 'SUSPENDED', 'PENDING_REATTEMPT', 'IN_PROGRESS'].includes(q.status);
+    return ['PENDING', 'FAILED', 'SUSPENDED', 'PENDING_REATTEMPT'].includes(q.status);
   });
 
   const renderQuestionsTable = (list: any[], isCompletedTable: boolean) => {
@@ -461,7 +480,7 @@ export default function TestsWorkspace() {
                     onClick={() => {
                       if (isSolved) {
                         handleViewQuestionAttempt(q);
-                      } else if (q.status === 'NOT_STARTED' || !q.status) {
+                      } else if (q.status === 'NOT_STARTED' || !q.status || q.status === 'NOT_ATTENDED' || q.status === 'IN_PROGRESS') {
                         if (!isSuspended) {
                           handleStartQuestionAttempt(q);
                         }
@@ -546,7 +565,7 @@ export default function TestsWorkspace() {
                             View Code
                           </button>
                         </div>
-                      ) : (q.status === 'NOT_STARTED' || !q.status) ? (
+                      ) : (q.status === 'NOT_STARTED' || !q.status || q.status === 'NOT_ATTENDED') ? (
                         <button
                           onClick={(e) => {
                             e.stopPropagation();
@@ -562,6 +581,23 @@ export default function TestsWorkspace() {
                           }`}
                         >
                           {isSuspended ? 'Suspended' : 'Write Test'}
+                        </button>
+                      ) : q.status === 'IN_PROGRESS' ? (
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            if (!isSuspended) {
+                              handleStartQuestionAttempt(q);
+                            }
+                          }}
+                          disabled={isSuspended}
+                          className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all select-none ${
+                            isSuspended
+                              ? 'bg-red-500/10 text-red-400 border border-red-500/10 cursor-not-allowed opacity-50'
+                              : 'bg-amber-500/10 hover:bg-amber-500/20 border border-amber-500/20 text-amber-400'
+                          }`}
+                        >
+                          {isSuspended ? 'Suspended' : 'Resume Test'}
                         </button>
                       ) : (() => {
                         const associatedTest = getAssociatedTest(q.subjectId);

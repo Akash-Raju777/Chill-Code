@@ -6,7 +6,7 @@ import { useTestStore } from '../../../../store/testStore';
 import { useAuthStore } from '../../../../store/authStore';
 import { useSecurityStore } from '../../../../store/securityStore';
 import { useExamSecurity } from '../../../../hooks/useExamSecurity';
-import { apiCall, API_BASE_URL } from '../../../../utils/api';
+import { apiCall, API_BASE_URL, smartCache } from '../../../../utils/api';
 import { toast } from '../../../../store/toastStore';
 import dynamic from 'next/dynamic';
 
@@ -423,19 +423,14 @@ function CodingWorkspaceInner() {
   // Fetch submissions history
   const currentQuestion = questions && questions[activeQuestionIndex];
   
-  // Handle implicit exit (navigating away or closing tab)
+  // Prevent accidental page refresh/close during active test without calling /exit
   useEffect(() => {
     const handleBeforeUnload = (e: BeforeUnloadEvent) => {
       const state = useTestStore.getState();
-      if (state.isSessionActive && !state.isViewMode && !isTestSuspended && !submittingExam) {
-        const token = typeof window !== 'undefined' ? sessionStorage.getItem('chill_token') || localStorage.getItem('token') : null;
-        if (token && currentQuestion) {
-          fetch(`${API_BASE_URL}/api/student/tests/${testId}/exit?questionId=${currentQuestion.id}`, {
-            method: 'POST',
-            headers: { 'Authorization': `Bearer ${token}` },
-            keepalive: true
-          }).catch(console.error);
-        }
+      if (state.isSessionActive && !state.isViewMode && !isTestSuspended && !submittingExam && !isExited && isSecurityStatusActive) {
+        e.preventDefault();
+        e.returnValue = 'Your exam session is active. Are you sure you want to leave?';
+        return e.returnValue;
       }
     };
 
@@ -444,7 +439,7 @@ function CodingWorkspaceInner() {
     return () => {
       window.removeEventListener('beforeunload', handleBeforeUnload);
     };
-  }, [testId, currentQuestion?.id, submittingExam, isTestSuspended]);
+  }, [testId, currentQuestion?.id, submittingExam, isTestSuspended, isExited, isSecurityStatusActive]);
 
   const fetchSubmissionsHistory = async () => {
     if (!currentQuestion || !activeStudentTestId) return;
@@ -468,7 +463,7 @@ function CodingWorkspaceInner() {
 
   useEffect(() => {
     fetchSubmissionsHistory();
-    if (mounted && currentQuestion && !isViewMode) {
+    if (mounted && currentQuestion && !isViewMode && !isExited && !submittingExam && !autoSubmittedRef.current) {
       apiCall(`/api/student/question/${currentQuestion.id}/status`).catch((err) =>
         console.error('Failed to update question status to IN_PROGRESS', err)
       );
@@ -510,7 +505,12 @@ function CodingWorkspaceInner() {
   const handleAutoSubmit = async () => {
     if (autoSubmittedRef.current) return;
     autoSubmittedRef.current = true;
-    
+
+    timerFrozenRef.current = true;
+    const timeTaken = useTestStore.getState().totalSeconds || 3600;
+    frozenElapsedSecondsRef.current = timeTaken;
+
+    setIsExited(true);
     setSubmittingExam(true);
     try {
       const currentStore = useTestStore.getState();
@@ -518,21 +518,62 @@ function CodingWorkspaceInner() {
       const currentLanguages = currentStore.languages;
 
       const questionCodes: Record<string, { code: string; language: string }> = {};
-      Object.keys(currentCodes).forEach((qId) => {
-        questionCodes[qId] = {
-          code: currentCodes[Number(qId)] ?? '',
-          language: currentLanguages[Number(qId)] || 'java',
+      if (currentQuestion) {
+        questionCodes[String(currentQuestion.id)] = {
+          code: currentCodes[currentQuestion.id] ?? '',
+          language: currentLanguages[currentQuestion.id] || 'java',
         };
-      });
+      } else {
+        Object.keys(currentCodes).forEach((qId) => {
+          questionCodes[qId] = {
+            code: currentCodes[Number(qId)] ?? '',
+            language: currentLanguages[Number(qId)] || 'java',
+          };
+        });
+      }
 
-      const timeTaken = useTestStore.getState().totalSeconds || 3600;
-      await apiCall(`/api/student/tests/${testId}/submit?isAutoSubmitted=true&timeTakenSeconds=${timeTaken}`, {
-        method: 'POST',
-        body: JSON.stringify(questionCodes),
-      });
-      
+      const requestId = (typeof crypto !== 'undefined' && crypto.randomUUID)
+        ? crypto.randomUUID()
+        : `sub_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`;
+
+      const submitRes = await apiCall(
+        `/api/student/tests/${testId}/submit?questionId=${currentQuestion?.id || ''}&isAutoSubmitted=true&timeTakenSeconds=${timeTaken}&requestId=${encodeURIComponent(requestId)}`,
+        {
+          method: 'POST',
+          body: JSON.stringify(questionCodes),
+        }
+      );
+
+      if (currentQuestion) {
+        const realSubId = submitRes?.submissionId ?? -Date.now();
+        const evaluatingStub = {
+          id: realSubId,
+          submissionId: submitRes?.submissionId ?? null,
+          questionId: currentQuestion.id,
+          questionName: currentQuestion.title || 'Coding Challenge',
+          subjectName: currentQuestion.subject?.name || 'Coding',
+          language: currentLanguages[currentQuestion.id] || 'java',
+          status: 'EVALUATING',
+          overallResult: 'PENDING',
+          timeTakenSeconds: timeTaken,
+          createdAt: new Date().toISOString(),
+          attempts: submitRes?.attemptCount ?? ((currentQuestion.attemptCount ?? 0) + 1),
+          passedTests: 0,
+          totalTests: 1,
+          score: 0,
+        };
+        try { sessionStorage.setItem('chill_pending_evaluation', JSON.stringify(evaluatingStub)); } catch (_) {}
+      }
+
+      try {
+        smartCache.deleteKey(smartCache.getCacheKey('/api/student/questions'));
+        smartCache.invalidateTag('student-tests');
+        smartCache.invalidateTag('student-submissions');
+        smartCache.invalidateTag('student-dashboard');
+      } catch (_) {}
+
       toast.warning('Time is up! Your exam attempt has been auto-submitted.');
-      
+
       if (user?.id) {
         Object.keys(codes).forEach((qId) => {
           localStorage.removeItem(`chillcode_code_backup_${user.id}_${qId}`);
@@ -547,6 +588,8 @@ function CodingWorkspaceInner() {
     } catch (e: any) {
       console.error('Auto submit failed', e);
       autoSubmittedRef.current = false; // Allow manual retry
+      setIsExited(false);
+      timerFrozenRef.current = false;
       toast.error(e.message || 'Time is up! Auto-submission encountered an error. Please click Submit manually.');
     } finally {
       setSubmittingExam(false);
@@ -574,18 +617,63 @@ function CodingWorkspaceInner() {
           const currentStore = useTestStore.getState();
           const questionCodes: Record<string, { code: string; language: string }> = {};
           
-          Object.keys(currentStore.codes).forEach((qId) => {
-            const numQId = Number(qId);
-            questionCodes[qId] = {
-              code: currentStore.codes[numQId] || '',
-              language: currentStore.languages[numQId] || 'java',
+          if (currentQuestion) {
+            questionCodes[String(currentQuestion.id)] = {
+              code: currentStore.codes[currentQuestion.id] || '',
+              language: currentStore.languages[currentQuestion.id] || 'java',
             };
-          });
+          } else {
+            Object.keys(currentStore.codes).forEach((qId) => {
+              const numQId = Number(qId);
+              questionCodes[qId] = {
+                code: currentStore.codes[numQId] || '',
+                language: currentStore.languages[numQId] || 'java',
+              };
+            });
+          }
 
-          await apiCall(`/api/student/tests/${testId}/submit?timeTakenSeconds=${timeTaken}`, {
-            method: 'POST',
-            body: JSON.stringify(questionCodes),
-          });
+          const requestId = (typeof crypto !== 'undefined' && crypto.randomUUID)
+            ? crypto.randomUUID()
+            : `sub_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`;
+
+          // Wait for lightweight DB acknowledgement (PENDING row saved & async Judge0 queued)
+          const submitRes = await apiCall(
+            `/api/student/tests/${testId}/submit?questionId=${currentQuestion?.id || ''}&timeTakenSeconds=${timeTaken}&requestId=${encodeURIComponent(requestId)}`,
+            {
+              method: 'POST',
+              body: JSON.stringify(questionCodes),
+            }
+          );
+
+          // Store evaluating stub keyed with the exact backend submissionId (prevents duplicate cards)
+          if (currentQuestion) {
+            const realSubId = submitRes?.submissionId ?? -Date.now();
+            const evaluatingStub = {
+              id: realSubId,
+              submissionId: submitRes?.submissionId ?? null,
+              questionId: currentQuestion.id,
+              questionName: currentQuestion.title || 'Coding Challenge',
+              subjectName: currentQuestion.subject?.name || 'Coding',
+              language: currentStore.languages[currentQuestion.id] || 'java',
+              status: 'EVALUATING',
+              overallResult: 'PENDING',
+              timeTakenSeconds: timeTaken,
+              createdAt: new Date().toISOString(),
+              attempts: submitRes?.attemptCount ?? ((currentQuestion.attemptCount ?? 0) + 1),
+              passedTests: 0,
+              totalTests: 1,
+              score: 0,
+            };
+            try { sessionStorage.setItem('chill_pending_evaluation', JSON.stringify(evaluatingStub)); } catch (_) {}
+          }
+
+          try {
+            smartCache.deleteKey(smartCache.getCacheKey('/api/student/questions'));
+            smartCache.invalidateTag('student-tests');
+            smartCache.invalidateTag('student-submissions');
+            smartCache.invalidateTag('student-dashboard');
+          } catch (_) {}
+
           if (user?.id) {
             Object.keys(currentStore.codes).forEach((qId) => {
               localStorage.removeItem(`chillcode_code_backup_${user.id}_${qId}`);
@@ -613,8 +701,11 @@ function CodingWorkspaceInner() {
     setConfirmDialog({
       isOpen: true,
       title: 'Exit Test',
-      message: 'Are you sure you want to exit? Your attempt will be recorded as PENDING/EXITED and you will lose access until re-assigned.',
+      message: 'Are you sure you want to exit? Your code progress will be saved.',
       onConfirm: async () => {
+        if (autoSubmittedRef.current) return;
+        autoSubmittedRef.current = true;
+
         // FREEZE timer immediately upon confirmation
         timerFrozenRef.current = true;
         const timeTaken = Math.max(1, useTestStore.getState().totalSeconds - useTestStore.getState().timeLeftSeconds);
@@ -628,27 +719,65 @@ function CodingWorkspaceInner() {
         const currentCodes = currentStore.codes;
         const currentLanguages = currentStore.languages;
         const questionCodes: Record<string, { code: string; language: string }> = {};
-        Object.keys(currentCodes).forEach((qId) => {
-          questionCodes[qId] = {
-            code: currentCodes[Number(qId)] ?? '',
-            language: currentLanguages[Number(qId)] || 'java',
-          };
-        });
 
-        // Trigger background exit request with keepalive so it completes without blocking navigation
+        const exitQuestionId = currentQuestion?.id || (questionIdParam ? Number(questionIdParam) : '');
+
+        if (currentQuestion) {
+          questionCodes[String(currentQuestion.id)] = {
+            code: currentCodes[currentQuestion.id] ?? '',
+            language: currentLanguages[currentQuestion.id] || 'java',
+          };
+        } else if (exitQuestionId) {
+          questionCodes[String(exitQuestionId)] = {
+            code: currentCodes[Number(exitQuestionId)] ?? '',
+            language: currentLanguages[Number(exitQuestionId)] || 'java',
+          };
+        } else {
+          Object.keys(currentCodes).forEach((qId) => {
+            questionCodes[qId] = {
+              code: currentCodes[Number(qId)] ?? '',
+              language: currentLanguages[Number(qId)] || 'java',
+            };
+          });
+        }
+
+        // Immediately write an EXITED stub to sessionStorage so the Results page
+        // renders "EXITED (FAIL)" cleanly while refreshing from backend.
+        if (currentQuestion) {
+          const exitedStub = {
+            id: -Date.now(),
+            questionId: currentQuestion.id,
+            questionName: currentQuestion.title || 'Coding Challenge',
+            subjectName: (currentQuestion as any).subject?.name || 'Coding',
+            language: currentLanguages[currentQuestion.id] || 'java',
+            status: 'EXITED',
+            overallResult: 'FAIL',
+            timeTakenSeconds: timeTaken,
+            createdAt: new Date().toISOString(),
+            attempts: (currentQuestion.attemptCount ?? 0) + 1,
+            passedTests: 0,
+            totalTests: 1,
+            score: 0,
+          };
+          try { sessionStorage.setItem('chill_pending_evaluation', JSON.stringify(exitedStub)); } catch (_) {}
+        }
+
+        // Persist exit event on backend before navigating so Practice & Results reflect PENDING + EXITED immediately
         try {
-          const token = sessionStorage.getItem('chill_token') || localStorage.getItem('token');
-          if (token) {
-            fetch(`${API_BASE_URL}/api/student/tests/${testId}/exit?questionId=${currentQuestion?.id || ''}&timeTakenSeconds=${timeTaken}`, {
-              method: 'POST',
-              headers: {
-                'Authorization': `Bearer ${token}`,
-                'Content-Type': 'application/json',
-              },
-              body: JSON.stringify(questionCodes),
-              keepalive: true,
-            }).catch((err) => console.warn('Background exit request:', err));
-          }
+          await apiCall(`/api/student/tests/${testId}/exit?questionId=${exitQuestionId}&timeTakenSeconds=${timeTaken}`, {
+            method: 'POST',
+            body: JSON.stringify(questionCodes),
+          });
+        } catch (err) {
+          console.warn('Exit request error:', err);
+        }
+
+        // Purge cached questions & test lists so Practice page never flashes stale IN_PROGRESS state
+        try {
+          smartCache.deleteKey(smartCache.getCacheKey('/api/student/questions'));
+          smartCache.invalidateTag('student-tests');
+          smartCache.invalidateTag('student-submissions');
+          smartCache.invalidateTag('student-dashboard');
         } catch (_) {}
 
         if (user?.id) {
@@ -661,7 +790,7 @@ function CodingWorkspaceInner() {
         }
         clearTestSession();
         resetWarnings();
-        toast.info('Test session exited and recorded.');
+        toast.info('Test session exited.');
         router.push('/student/results');
       }
     });
@@ -734,7 +863,7 @@ function CodingWorkspaceInner() {
   };
 
   const handleRunCode = async () => {
-    if (executing || !currentQuestion) return;
+    if (executing || isExited || submittingExam || !currentQuestion) return;
 
     const sampleTestcases = currentQuestion.testCases?.filter((tc: any) => !tc.isHidden) || [];
     let curInput1 = customInput;
@@ -904,13 +1033,52 @@ function CodingWorkspaceInner() {
           <p className="text-sm text-gray-400">
             This coding examination is locked inside full-screen view. You must return to fullscreen to resume writing your solution.
           </p>
-          <button
-            onClick={handleToggleFullscreen}
-            className="px-6 py-2.5 bg-[#7c3aed] hover:bg-[#8b5cf6] rounded-xl text-sm w-full text-white font-bold tracking-wider shadow-lg"
-          >
-            Re-enter Fullscreen
-          </button>
+          <div className="space-y-3">
+            <button
+              onClick={handleToggleFullscreen}
+              className="px-6 py-2.5 bg-[#7c3aed] hover:bg-[#8b5cf6] rounded-xl text-sm w-full text-white font-bold tracking-wider shadow-lg transition-all"
+            >
+              Re-enter Fullscreen
+            </button>
+            <button
+              onClick={handleExitTest}
+              disabled={submittingExam || isExited}
+              className="px-6 py-2.5 bg-white/5 hover:bg-white/10 border border-white/10 rounded-xl text-sm w-full text-gray-300 font-semibold tracking-wider transition-all disabled:opacity-50"
+            >
+              Exit Test
+            </button>
+          </div>
         </div>
+        {confirmDialog.isOpen && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-fadeIn text-left">
+            <div className="bg-[#11131c] border border-white/10 rounded-2xl max-w-md w-full p-6 space-y-6 shadow-2xl">
+              <div className="space-y-2">
+                <h3 className="text-base font-bold text-white tracking-wide">{confirmDialog.title}</h3>
+                <p className="text-xs text-gray-400 leading-relaxed">{confirmDialog.message}</p>
+              </div>
+              <div className="flex justify-end gap-3 pt-2">
+                <button
+                  onClick={() => {
+                    timerFrozenRef.current = false;
+                    setConfirmDialog(prev => ({ ...prev, isOpen: false }));
+                  }}
+                  className="px-4 py-2 rounded-xl text-xs font-bold text-gray-400 hover:text-white bg-white/5 hover:bg-white/10 border border-white/5 transition-all select-none"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={async () => {
+                    setConfirmDialog(prev => ({ ...prev, isOpen: false }));
+                    await confirmDialog.onConfirm();
+                  }}
+                  className="px-4 py-2 rounded-xl text-xs font-bold text-white bg-indigo-600 hover:bg-indigo-500 shadow-lg shadow-indigo-600/20 transition-all select-none"
+                >
+                  Confirm
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     );
   }
@@ -1693,7 +1861,7 @@ function CodingWorkspaceInner() {
                 <div className="flex items-center gap-3 w-full sm:w-auto justify-end">
                   <button 
                     onClick={handleRunCode} 
-                    disabled={executing}
+                    disabled={executing || isExited || submittingExam}
                     className="flex-1 sm:flex-none px-4 py-2.5 sm:py-2 rounded-xl bg-white/5 hover:bg-white/10 text-gray-300 font-semibold text-xs tracking-wider transition-all disabled:opacity-50 flex items-center justify-center gap-1.5"
                   >
                     {executing && <Loader2 className="w-3.5 h-3.5 animate-spin" />}

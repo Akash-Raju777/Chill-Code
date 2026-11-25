@@ -31,6 +31,8 @@ public class StudentTestDto {
     private Integer testCasesPassed;
     private Integer totalTestCases;
     private Long remainingTimeSeconds;
+    private Long submissionId;
+    private Integer attemptCount;
 
     public StudentTestDto(Long id, String status, Integer score, Integer warningsCount, Boolean isSuspended, TestDetailsDto test) {
         this.id = id;

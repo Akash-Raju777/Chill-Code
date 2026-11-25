@@ -148,6 +148,7 @@ public class QuestionService {
         return solved;
     }
 
+    @Transactional(readOnly = true)
     public List<QuestionDto> getAllQuestions() {
         log.info("Repository Call: Load all questions from database");
         com.chillcode.assessment.entity.User student = getCurrentUserEntity();
@@ -173,6 +174,7 @@ public class QuestionService {
                 .collect(Collectors.toList());
     }
 
+    @Transactional(readOnly = true)
     public List<QuestionDto> getQuestionsBySubject(Long subjectId) {
         log.info("Repository Call: Load questions for subject ID: {} from database", subjectId);
         com.chillcode.assessment.entity.User student = getCurrentUserEntity();
@@ -201,6 +203,7 @@ public class QuestionService {
                 .collect(Collectors.toList());
     }
 
+    @Transactional(readOnly = true)
     public QuestionDto getQuestionById(Long id) {
         log.info("Repository Call: Load question by ID: {} from database", id);
         Long adminId = com.chillcode.assessment.security.SecurityUtils.getCurrentAdminId();

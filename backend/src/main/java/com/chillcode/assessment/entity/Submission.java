@@ -99,6 +99,7 @@ public class Submission {
     private String judge0Token;
 
     @OneToMany(mappedBy = "submission")
+    @com.fasterxml.jackson.annotation.JsonIgnore
     private java.util.List<SubmissionTestCase> submissionTestCases;
 
     @Column(name = "active")

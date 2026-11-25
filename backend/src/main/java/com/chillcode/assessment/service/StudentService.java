@@ -38,6 +38,8 @@ public class StudentService {
     @Autowired
     private com.chillcode.assessment.repository.TestRepository testRepository;
 
+    private final java.util.Map<Long, Long> lastAssignedTimestampMap = new java.util.concurrent.ConcurrentHashMap<>();
+
     @Autowired
     private com.chillcode.assessment.repository.QuestionRepository questionRepository;
 
@@ -64,11 +66,16 @@ public class StudentService {
 
     @Transactional
     public Map<String, Object> getStudentDashboardStats(Long studentId) {
-        // Fast one-pass native insert for any newly added tests
-        try {
-            studentTestRepository.assignMissingTestsForStudent(studentId);
-        } catch (Exception e) {
-            log.warn("Auto-assignment query skipped or already executed concurrently: {}", e.getMessage());
+        // Fast one-pass native insert for any newly added tests (throttled to at most once per 60s per student)
+        long currentTime = System.currentTimeMillis();
+        Long lastRun = lastAssignedTimestampMap.get(studentId);
+        if (lastRun == null || (currentTime - lastRun) > 60_000L) {
+            try {
+                studentTestRepository.assignMissingTestsForStudent(studentId);
+                lastAssignedTimestampMap.put(studentId, currentTime);
+            } catch (Exception e) {
+                log.warn("Auto-assignment query skipped or already executed concurrently: {}", e.getMessage());
+            }
         }
 
         // Fetch student tests with eagerness for tests and questions

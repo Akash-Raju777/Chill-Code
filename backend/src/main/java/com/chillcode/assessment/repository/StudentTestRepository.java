@@ -21,6 +21,9 @@ public interface StudentTestRepository extends JpaRepository<StudentTest, Long> 
     @Query("SELECT st FROM StudentTest st JOIN FETCH st.test t LEFT JOIN FETCH t.subject LEFT JOIN FETCH st.student WHERE st.student.id = :studentId AND st.test.id = :testId")
     Optional<StudentTest> findByStudentIdAndTestIdWithTestAndStudent(@org.springframework.data.repository.query.Param("studentId") Long studentId, @org.springframework.data.repository.query.Param("testId") Long testId);
 
+    @Query("SELECT DISTINCT st FROM StudentTest st JOIN FETCH st.test t LEFT JOIN FETCH t.subject LEFT JOIN FETCH t.admin LEFT JOIN FETCH st.student WHERE st.student.id IN :studentIds")
+    List<StudentTest> findByStudentIdInWithTestAndStudent(@org.springframework.data.repository.query.Param("studentIds") java.util.Collection<Long> studentIds);
+
     Optional<StudentTest> findByStudentIdAndTestId(Long studentId, Long testId);
     boolean existsByStudentIdAndTestId(Long studentId, Long testId);
     long countByStatus(String status);

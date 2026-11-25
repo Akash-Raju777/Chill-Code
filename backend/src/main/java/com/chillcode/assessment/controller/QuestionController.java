@@ -48,18 +48,21 @@ public class QuestionController {
 
     // Both Admin and Student can get questions list of a subject
     @GetMapping({"/admin/subjects/{subjectId}/questions", "/student/subjects/{subjectId}/questions"})
+    @org.springframework.transaction.annotation.Transactional(readOnly = true)
     public ResponseEntity<List<QuestionDto>> getQuestionsBySubject(@PathVariable("subjectId") Long subjectId) {
         log.info("API Request: Load questions for subject ID: {}", subjectId);
         return ResponseEntity.ok(questionService.getQuestionsBySubject(subjectId));
     }
 
     @GetMapping({"/admin/questions", "/student/questions"})
+    @org.springframework.transaction.annotation.Transactional(readOnly = true)
     public ResponseEntity<List<QuestionDto>> getAllQuestions() {
         log.info("API Request: Load all questions");
         return ResponseEntity.ok(questionService.getAllQuestions());
     }
 
     @GetMapping({"/admin/questions/{id}", "/student/questions/{id}"})
+    @org.springframework.transaction.annotation.Transactional(readOnly = true)
     public ResponseEntity<QuestionDto> getQuestionById(@PathVariable("id") Long id) {
         log.info("API Request: Get question ID: {}", id);
         return ResponseEntity.ok(questionService.getQuestionById(id));

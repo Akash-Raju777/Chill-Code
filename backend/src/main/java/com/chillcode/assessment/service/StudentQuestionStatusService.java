@@ -127,14 +127,17 @@ public class StudentQuestionStatusService {
             long actualSubCount = submissionRepository.countByStudentIdAndQuestionId(student.getId(), question.getId());
             status.setAttemptCount((int) Math.max(1, actualSubCount));
 
-            if ("ACCEPTED".equals(submission.getStatus()) || "PASS".equals(submission.getOverallResult())) {
+            if ("PENDING".equals(submission.getStatus()) || "EVALUATING".equals(submission.getStatus())) {
+                // While evaluation is running, status MUST remain IN_PROGRESS
+                status.setStatus("IN_PROGRESS");
+            } else if ("ACCEPTED".equals(submission.getStatus()) || "PASS".equals(submission.getOverallResult())) {
                 status.setStatus("COMPLETED");
                 if (status.getCompletedAt() == null) {
                     status.setCompletedAt(LocalDateTime.now());
                 }
             } else {
                 if (!"COMPLETED".equals(status.getStatus())) {
-                    status.setStatus("FAILED");
+                    status.setStatus("PENDING");
                 }
             }
         }

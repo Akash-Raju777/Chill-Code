@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useEffect, useState } from 'react';
-import { apiCall } from '../../../utils/api';
+import { apiCall, smartCache } from '../../../utils/api';
 import { useAuthStore } from '../../../store/authStore';
 import { Timer, Award, Bell, CheckSquare, Loader2, Sparkles, BookOpen, User as UserIcon, RefreshCw } from 'lucide-react';
 
@@ -29,14 +29,22 @@ interface Stats {
 }
 
 export default function StudentDashboard() {
-  const [stats, setStats] = useState<Stats | null>(null);
-  const [loading, setLoading] = useState(true);
+  const [stats, setStats] = useState<Stats | null>(() => {
+    try {
+      const c = smartCache.get('/api/student/dashboard/stats');
+      return c.data || null;
+    } catch (_) { return null; }
+  });
+  const [loading, setLoading] = useState<boolean>(() => {
+    const c = smartCache.get('/api/student/dashboard/stats');
+    return !c || !c.data;
+  });
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState('');
   const { user } = useAuthStore();
 
   const fetchDashboardData = async (isSilent = false, isRefresh = false) => {
-    if (!isSilent && !isRefresh) setLoading(true);
+    if (!isSilent && !isRefresh && !stats) setLoading(true);
     if (isRefresh) setRefreshing(true);
     try {
       const statsRes = await apiCall('/api/student/dashboard/stats', { skipLocalCache: isRefresh });
@@ -45,7 +53,7 @@ export default function StudentDashboard() {
     } catch (err: any) {
       if (!isSilent) setError('Failed to load dashboard metrics');
     } finally {
-      if (!isSilent && !isRefresh) setLoading(false);
+      setLoading(false);
       setRefreshing(false);
     }
   };

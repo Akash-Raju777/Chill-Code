@@ -21,6 +21,8 @@ interface Question {
   testCases: TestCase[];
   attemptCount?: number;
   timer?: number;
+  subject?: { id?: number; name?: string };
+  subjectName?: string;
 }
 
 interface TestState {

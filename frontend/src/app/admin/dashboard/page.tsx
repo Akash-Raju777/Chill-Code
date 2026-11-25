@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useEffect, useState, useRef } from 'react';
-import { apiCall, formatISTDateTime } from '../../../utils/api';
+import { apiCall, formatISTDateTime, smartCache } from '../../../utils/api';
 import { toast } from '../../../store/toastStore';
 import { 
   Users, 
@@ -29,9 +29,23 @@ interface DashboardData {
 }
 
 export default function AdminDashboard() {
-  const [data, setData] = useState<DashboardData | null>(null);
-  const [reattemptRequests, setReattemptRequests] = useState<any[]>([]);
-  const [loading, setLoading] = useState(true);
+  // Instant SWR initial state: read cached metrics and reattempt requests immediately
+  const [data, setData] = useState<DashboardData | null>(() => {
+    try {
+      const c = smartCache.get('/api/admin/dashboard');
+      return c.data || null;
+    } catch (_) { return null; }
+  });
+  const [reattemptRequests, setReattemptRequests] = useState<any[]>(() => {
+    try {
+      const c = smartCache.get('/api/admin/tests/reattempt-requests');
+      return Array.isArray(c.data) ? c.data : [];
+    } catch (_) { return []; }
+  });
+  const [loading, setLoading] = useState<boolean>(() => {
+    const c = smartCache.get('/api/admin/dashboard');
+    return !c || !c.data;
+  });
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState('');
 
@@ -62,15 +76,15 @@ export default function AdminDashboard() {
   const fetchMetrics = async (isInitial = false) => {
     if (fetchingRef.current) return;
     fetchingRef.current = true;
-    if (isInitial) {
+    if (isInitial && !data) {
       setLoading(true);
     } else {
       setRefreshing(true);
     }
     try {
       const [response, reattempts] = await Promise.all([
-        apiCall(`/api/admin/dashboard?t=${Date.now()}`, { skipLocalCache: !isInitial }),
-        apiCall(`/api/admin/tests/reattempt-requests?t=${Date.now()}`, { skipLocalCache: !isInitial })
+        apiCall('/api/admin/dashboard', { skipLocalCache: true }),
+        apiCall('/api/admin/tests/reattempt-requests', { skipLocalCache: true })
       ]);
 
       // Filter out activities of forgiven students
@@ -274,10 +288,10 @@ export default function AdminDashboard() {
   });
 
   useEffect(() => {
-    fetchMetricsRef.current(true);
+    fetchMetricsRef.current(false);
     const interval = setInterval(() => {
       fetchMetricsRef.current(false);
-    }, 4000);
+    }, 2000);
     return () => clearInterval(interval);
   }, []);
 

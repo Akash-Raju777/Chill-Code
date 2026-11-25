@@ -88,6 +88,7 @@ public class CodeExecutionService {
     }
 
     private static final org.slf4j.Logger log = org.slf4j.LoggerFactory.getLogger(CodeExecutionService.class);
+    private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
 
     private final HttpClient httpClient = HttpClient.newBuilder()
             .version(HttpClient.Version.HTTP_1_1)
@@ -226,6 +227,10 @@ public class CodeExecutionService {
     }
 
     public SubmissionResultDto evaluateCode(SubmitRequest request, Question question, List<TestCase> testCases, StudentTest studentTest) {
+        return evaluateCode(request, question, testCases, studentTest, true);
+    }
+
+    public SubmissionResultDto evaluateCode(SubmitRequest request, Question question, List<TestCase> testCases, StudentTest studentTest, boolean includeAiHint) {
         String lang = request.getLanguage().toLowerCase();
         int languageId = getJudge0LanguageId(lang);
 
@@ -329,8 +334,8 @@ public class CodeExecutionService {
         resultDto.setActualOutput(firstFailedActual);
         resultDto.setJudge0Status(firstFailedJudge0Status);
 
-        // Fetch Grok explanation if not ACCEPTED
-        if (!"ACCEPTED".equals(overallVerdict)) {
+        // Fetch Grok explanation only when requested (Compile & Run); background exam evaluation skips unused external AI call
+        if (includeAiHint && !"ACCEPTED".equals(overallVerdict)) {
             String runStderr = resultDto.getStderr() != null ? resultDto.getStderr() : "";
             String explanation = getGrokExplanation(overallVerdict, request.getCode(), resultDto.getCompileError(), runStderr, lang, "", firstFailedExpected, firstFailedActual, studentTest, question);
             resultDto.setAiExplanation(explanation);
@@ -370,14 +375,27 @@ public class CodeExecutionService {
     public void evaluateExistingSubmission(Long submissionId, SubmitRequest request) {
         Submission sub = submissionRepository.findById(submissionId).orElse(null);
         if (sub == null) return;
+        // Idempotency guard: only evaluate submissions that are currently PENDING or EVALUATING
+        if (!"PENDING".equals(sub.getStatus()) && !"EVALUATING".equals(sub.getStatus())) {
+            log.info("[Evaluate] Submission {} already finalized with status {}, skipping duplicate evaluation", submissionId, sub.getStatus());
+            return;
+        }
 
         Question question = sub.getQuestion();
         if (question == null) return;
 
         StudentTest studentTest = sub.getStudentTest();
         List<TestCase> allTestCases = testCaseRepository.findByQuestionId(question.getId());
+        Map<Long, TestCase> testCaseById = new HashMap<>();
+        if (allTestCases != null) {
+            for (TestCase tc : allTestCases) {
+                if (tc.getId() != null) {
+                    testCaseById.put(tc.getId(), tc);
+                }
+            }
+        }
 
-        SubmissionResultDto resultDto = evaluateCode(request, question, allTestCases, studentTest);
+        SubmissionResultDto resultDto = evaluateCode(request, question, allTestCases, studentTest, false);
 
         sub.setStatus(resultDto.getStatus());
         sub.setScore(resultDto.getScore());
@@ -402,7 +420,7 @@ public class CodeExecutionService {
             List<SubmissionTestCase> subTcList = new ArrayList<>();
             for (TestCaseResultDto tcRes : resultDto.getTestCaseResults()) {
                 if (tcRes.getTestCaseId() != null) {
-                    TestCase tc = testCaseRepository.findById(tcRes.getTestCaseId()).orElse(null);
+                    TestCase tc = testCaseById.get(tcRes.getTestCaseId());
                     if (tc != null) {
                         String msg = tcRes.getMessage();
                         if (msg != null && msg.length() > 1000) {
@@ -490,6 +508,17 @@ public class CodeExecutionService {
     }
 
     private List<TcExecutionResult> executeJudge0BatchOrConcurrent(String sourceCode, int languageId, List<TestCase> testCases) {
+        if (testCases != null && testCases.size() > 1) {
+            try {
+                List<TcExecutionResult> batchResults = executeJudge0BatchNative(sourceCode, languageId, testCases);
+                if (batchResults != null && batchResults.size() == testCases.size()) {
+                    return batchResults;
+                }
+            } catch (Exception batchEx) {
+                log.debug("Judge0 batch endpoint fallback to concurrent wait=true: {}", batchEx.getMessage());
+            }
+        }
+
         List<CompletableFuture<TcExecutionResult>> futures = new ArrayList<>();
         for (int i = 0; i < testCases.size(); i++) {
             final int tcIdx = i;
@@ -516,6 +545,89 @@ public class CodeExecutionService {
         }
         results.sort(Comparator.comparingInt(a -> a.index));
         return results;
+    }
+
+    private List<TcExecutionResult> executeJudge0BatchNative(String sourceCode, int languageId, List<TestCase> testCases) throws Exception {
+        String base64Source = Base64.getEncoder().encodeToString(sourceCode.getBytes(StandardCharsets.UTF_8));
+        List<Map<String, Object>> submissionsPayload = new ArrayList<>(testCases.size());
+        for (TestCase tc : testCases) {
+            Map<String, Object> item = new HashMap<>();
+            item.put("source_code", base64Source);
+            item.put("language_id", languageId);
+            if (tc.getInputData() != null) {
+                item.put("stdin", Base64.getEncoder().encodeToString(tc.getInputData().getBytes(StandardCharsets.UTF_8)));
+            }
+            submissionsPayload.add(item);
+        }
+        Map<String, Object> batchBody = Collections.singletonMap("submissions", submissionsPayload);
+        String jsonPayload = OBJECT_MAPPER.writeValueAsString(batchBody);
+
+        HttpRequest createReq = HttpRequest.newBuilder()
+                .uri(URI.create(judge0ApiUrl + "/submissions/batch?base64_encoded=true"))
+                .header("Content-Type", "application/json")
+                .timeout(java.time.Duration.ofSeconds(6))
+                .POST(HttpRequest.BodyPublishers.ofString(jsonPayload))
+                .build();
+
+        HttpResponse<String> createResp = httpClient.send(createReq, HttpResponse.BodyHandlers.ofString());
+        if (createResp.statusCode() != 201 && createResp.statusCode() != 200) {
+            throw new RuntimeException("Judge0 batch submit failed with status " + createResp.statusCode());
+        }
+
+        JsonNode tokensArray = OBJECT_MAPPER.readTree(createResp.body());
+        if (!tokensArray.isArray() || tokensArray.size() != testCases.size()) {
+            throw new RuntimeException("Unexpected Judge0 batch token response");
+        }
+
+        List<String> tokens = new ArrayList<>(testCases.size());
+        for (JsonNode n : tokensArray) {
+            String tok = n.path("token").asText("");
+            if (tok.isEmpty()) throw new RuntimeException("Missing token in Judge0 batch response");
+            tokens.add(tok);
+        }
+
+        String joinedTokens = String.join(",", tokens);
+        String pollUrl = judge0ApiUrl + "/submissions/batch?tokens=" + joinedTokens +
+                "&base64_encoded=true&fields=token,stdout,stderr,compile_output,status,time,memory";
+
+        long deadlineMs = System.currentTimeMillis() + 15000L;
+        long[] intervalsMs = {120L, 180L, 250L, 350L};
+        int pollAttempt = 0;
+
+        while (System.currentTimeMillis() < deadlineMs) {
+            long waitMs = intervalsMs[Math.min(pollAttempt++, intervalsMs.length - 1)];
+            Thread.sleep(waitMs);
+
+            HttpRequest pollReq = HttpRequest.newBuilder()
+                    .uri(URI.create(pollUrl))
+                    .timeout(java.time.Duration.ofSeconds(5))
+                    .GET()
+                    .build();
+            HttpResponse<String> pollResp = httpClient.send(pollReq, HttpResponse.BodyHandlers.ofString());
+            if (pollResp.statusCode() != 200) continue;
+
+            JsonNode root = OBJECT_MAPPER.readTree(pollResp.body());
+            JsonNode subsNode = root.path("submissions");
+            if (!subsNode.isArray() || subsNode.size() != testCases.size()) continue;
+
+            boolean allDone = true;
+            for (JsonNode subNode : subsNode) {
+                int sid = subNode.path("status").path("id").asInt(0);
+                if (sid == 1 || sid == 2 || sid == 0) {
+                    allDone = false;
+                    break;
+                }
+            }
+
+            if (allDone) {
+                List<TcExecutionResult> results = new ArrayList<>(testCases.size());
+                for (int i = 0; i < testCases.size(); i++) {
+                    results.add(mapJsonNodeToTcResult(subsNode.get(i), testCases.get(i), i));
+                }
+                return results;
+            }
+        }
+        throw new RuntimeException("Judge0 batch polling timed out");
     }
 
     private TcExecutionResult mapJsonNodeToTcResult(JsonNode res, TestCase tc, int tcIdx) {
@@ -1035,7 +1147,6 @@ public class CodeExecutionService {
             return executeLocallyFallback(code, languageId, stdin, expectedOutput);
         }
         try {
-            ObjectMapper mapper = new ObjectMapper();
             Map<String, Object> payload = new HashMap<>();
             
             String base64Source = Base64.getEncoder().encodeToString(code.getBytes(StandardCharsets.UTF_8));
@@ -1049,7 +1160,7 @@ public class CodeExecutionService {
                 payload.put("expected_output", Base64.getEncoder().encodeToString(expectedOutput.getBytes(StandardCharsets.UTF_8)));
             }
             
-            String jsonPayload = mapper.writeValueAsString(payload);
+            String jsonPayload = OBJECT_MAPPER.writeValueAsString(payload);
             
             HttpRequest httpRequest = HttpRequest.newBuilder()
                     .uri(URI.create(judge0ApiUrl + "/submissions?base64_encoded=true&wait=true"))
@@ -1064,7 +1175,31 @@ public class CodeExecutionService {
                 throw new RuntimeException("Judge0 API returned status code " + httpResponse.statusCode() + ": " + httpResponse.body());
             }
             
-            return mapper.readTree(httpResponse.body());
+            JsonNode resultNode = OBJECT_MAPPER.readTree(httpResponse.body());
+            int statusId = resultNode.path("status").path("id").asInt(0);
+            String token = resultNode.path("token").asText("");
+            if ((statusId == 1 || statusId == 2 || statusId == 0) && !token.isEmpty()) {
+                long deadlineMs = System.currentTimeMillis() + 10000L;
+                long[] intervalsMs = {120L, 200L, 300L};
+                int pollCount = 0;
+                while (System.currentTimeMillis() < deadlineMs) {
+                    Thread.sleep(intervalsMs[Math.min(pollCount++, intervalsMs.length - 1)]);
+                    HttpRequest pollReq = HttpRequest.newBuilder()
+                            .uri(URI.create(judge0ApiUrl + "/submissions/" + token + "?base64_encoded=true"))
+                            .timeout(java.time.Duration.ofSeconds(4))
+                            .GET()
+                            .build();
+                    HttpResponse<String> pollResp = httpClient.send(pollReq, HttpResponse.BodyHandlers.ofString());
+                    if (pollResp.statusCode() == 200) {
+                        JsonNode polled = OBJECT_MAPPER.readTree(pollResp.body());
+                        int polledSid = polled.path("status").path("id").asInt(0);
+                        if (polledSid >= 3) {
+                            return polled;
+                        }
+                    }
+                }
+            }
+            return resultNode;
         } catch (Exception e) {
             System.err.println("Judge0 execution failed, invoking local compilation fallback: " + e.getMessage());
             return executeLocallyFallback(code, languageId, stdin, expectedOutput);
@@ -1785,12 +1920,15 @@ public class CodeExecutionService {
             achievementRepository.save(badge);
         }
 
-        // Dynamically recalculate badges for this test, which handles standalone question badges
-        try {
-            if (test != null) {
-                badgeSetService.allocateBadgesForTest(test.getId());
-            }
-        } catch (Exception ignored) {}
+        // Dynamically recalculate badges asynchronously so it does not block saving evaluation results
+        if (test != null && test.getId() != null) {
+            final Long badgeTestId = test.getId();
+            CompletableFuture.runAsync(() -> {
+                try {
+                    badgeSetService.allocateBadgesForTest(badgeTestId);
+                } catch (Exception ignored) {}
+            });
+        }
     }
 
     private Submission saveSubmissionRecord(StudentTest studentTest, Question question, SubmitRequest request, SubmissionResultDto result) {
