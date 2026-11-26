@@ -138,6 +138,10 @@ const ROUTE_CACHE_PROFILES: Array<{ prefix: string; config: CacheConfig }> = [
     prefix: '/api/super-admin/results',
     config: { freshDurationMs: 25_000, staleDurationMs: 300_000, tag: 'super-admin-results' },
   },
+  {
+    prefix: '/api/super-admin/instructions',
+    config: { freshDurationMs: 20_000, staleDurationMs: 300_000, tag: 'super-admin-instructions' },
+  },
 ];
 
 const DEFAULT_CACHE_CONFIG: CacheConfig = {
@@ -505,6 +509,7 @@ class SmartCacheManager {
       this.invalidateTag('super-admin-students');
       this.invalidateTag('super-admin-assessments');
       this.invalidateTag('super-admin-results');
+      this.invalidateTag('super-admin-instructions');
       return;
     }
 

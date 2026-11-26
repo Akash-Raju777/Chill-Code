@@ -38,6 +38,7 @@ interface StudentOption {
   id: number;
   name: string;
   registerNumber: string;
+  email?: string;
   department?: string;
 }
 
@@ -71,33 +72,42 @@ export default function SuperAdminInstructionsPage() {
   const [loadingHistory, setLoadingHistory] = useState(false);
   const [activeViewNotice, setActiveViewNotice] = useState<SentInstruction | null>(null);
 
-  // Load recipient candidate lists on demand
-  useEffect(() => {
-    const fetchRecipients = async () => {
-      setLoadingRecipients(true);
-      try {
-        if (targetRole === 'STUDENT' && students.length === 0) {
-          const data = await apiCall('/api/super-admin/students');
-          if (Array.isArray(data)) setStudents(data);
-        } else if (targetRole === 'ADMIN' && staffList.length === 0) {
-          const data = await apiCall('/api/super-admin/staff');
-          if (Array.isArray(data)) setStaffList(data);
-        }
-      } catch (err: any) {
-        console.error('Failed to load candidate list', err);
-      } finally {
-        setLoadingRecipients(false);
+  // Load both student and staff recipient lists once using the lightweight recipients endpoint
+  const fetchRecipients = async (skipCache = false) => {
+    setLoadingRecipients(true);
+    try {
+      const data = await apiCall('/api/super-admin/instructions/recipients', { skipLocalCache: skipCache });
+      if (data && (Array.isArray(data.students) || Array.isArray(data.staff))) {
+        if (Array.isArray(data.students)) setStudents(data.students);
+        if (Array.isArray(data.staff)) setStaffList(data.staff);
+        return;
       }
-    };
+    } catch {
+      // Fallback to legacy endpoints if lightweight endpoint is unavailable
+      const [studentsRes, staffRes] = await Promise.allSettled([
+        apiCall('/api/super-admin/students', { skipLocalCache: skipCache }),
+        apiCall('/api/super-admin/staff', { skipLocalCache: skipCache }),
+      ]);
+      if (studentsRes.status === 'fulfilled' && Array.isArray(studentsRes.value)) {
+        setStudents(studentsRes.value);
+      }
+      if (staffRes.status === 'fulfilled' && Array.isArray(staffRes.value)) {
+        setStaffList(staffRes.value);
+      }
+    } finally {
+      setLoadingRecipients(false);
+    }
+  };
 
+  useEffect(() => {
     fetchRecipients();
-  }, [targetRole]);
+  }, []);
 
   // Load History
-  const fetchHistory = async () => {
+  const fetchHistory = async (isRefresh = false) => {
     setLoadingHistory(true);
     try {
-      const data = await apiCall('/api/super-admin/instructions');
+      const data = await apiCall('/api/super-admin/instructions', { skipLocalCache: isRefresh });
       if (Array.isArray(data)) {
         setHistory(data);
       }
@@ -110,7 +120,7 @@ export default function SuperAdminInstructionsPage() {
 
   useEffect(() => {
     if (activeTab === 'history') {
-      fetchHistory();
+      fetchHistory(true);
     }
   }, [activeTab]);
 
@@ -146,17 +156,19 @@ export default function SuperAdminInstructionsPage() {
       if (!q) return students;
       return students.filter(
         (s) =>
-          s.name.toLowerCase().includes(q) ||
+          (s.name || '').toLowerCase().includes(q) ||
           (s.registerNumber && s.registerNumber.toLowerCase().includes(q)) ||
-          (s.department && s.department.toLowerCase().includes(q))
+          (s.department && s.department.toLowerCase().includes(q)) ||
+          (s.email && s.email.toLowerCase().includes(q))
       );
     } else {
       if (!q) return staffList;
       return staffList.filter(
         (st) =>
-          st.name.toLowerCase().includes(q) ||
+          (st.name || '').toLowerCase().includes(q) ||
           (st.email && st.email.toLowerCase().includes(q)) ||
-          (st.staffId && st.staffId.toLowerCase().includes(q))
+          (st.staffId && st.staffId.toLowerCase().includes(q)) ||
+          (st.department && st.department.toLowerCase().includes(q))
       );
     }
   }, [targetRole, students, staffList, recipientSearch]);
@@ -525,7 +537,7 @@ export default function SuperAdminInstructionsPage() {
               Showing total <span className="text-white font-bold">{history.length}</span> broadcast records
             </span>
             <button
-              onClick={fetchHistory}
+              onClick={() => fetchHistory(true)}
               disabled={loadingHistory}
               className="flex items-center gap-2 px-3 py-1.5 bg-white/5 hover:bg-white/10 rounded-xl text-xs text-white transition-all cursor-pointer"
             >

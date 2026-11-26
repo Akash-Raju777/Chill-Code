@@ -23,7 +23,7 @@ export default function StudentNotifications() {
     if (!isRefresh) setLoading(true);
     if (isRefresh) setRefreshing(true);
     try {
-      const data = await apiCall('/api/student/notifications', { skipLocalCache: isRefresh });
+      const data = await apiCall('/api/student/notifications', { skipLocalCache: true });
       setNotifications(data || []);
       setError('');
     } catch (err: any) {

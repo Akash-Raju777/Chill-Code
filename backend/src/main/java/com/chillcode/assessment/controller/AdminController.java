@@ -273,6 +273,7 @@ public class AdminController {
     private com.chillcode.assessment.repository.NotificationRepository notificationRepository;
 
     @GetMapping("/instructions/inbox")
+    @org.springframework.transaction.annotation.Transactional(readOnly = true)
     public ResponseEntity<List<java.util.Map<String, Object>>> getAdminInstructions() {
         User currentAdmin = com.chillcode.assessment.security.SecurityUtils.getCurrentUser();
         if (currentAdmin == null) {

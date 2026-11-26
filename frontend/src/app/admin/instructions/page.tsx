@@ -11,7 +11,8 @@ import {
   Shield,
   Clock,
   Eye,
-  CheckCheck
+  CheckCheck,
+  RefreshCw
 } from 'lucide-react';
 
 interface AdminNotice {
@@ -38,25 +39,25 @@ export default function SendInstructions() {
   const [loadingInbox, setLoadingInbox] = useState(false);
   const [inboxError, setInboxError] = useState('');
 
-  const fetchInbox = async () => {
-    setLoadingInbox(true);
+  const fetchInbox = async (showLoader = true) => {
+    if (showLoader) setLoadingInbox(true);
     setInboxError('');
     try {
-      const data = await apiCall('/api/admin/instructions/inbox');
+      const data = await apiCall('/api/admin/instructions/inbox', { skipLocalCache: true });
       if (Array.isArray(data)) {
         setInbox(data);
       }
     } catch (err: any) {
-      setInboxError(err.message || 'Failed to load admin instructions inbox.');
+      if (showLoader) {
+        setInboxError(err.message || 'Failed to load admin instructions inbox.');
+      }
     } finally {
-      setLoadingInbox(false);
+      if (showLoader) setLoadingInbox(false);
     }
   };
 
   useEffect(() => {
-    if (activeTab === 'inbox') {
-      fetchInbox();
-    }
+    fetchInbox(activeTab === 'inbox');
   }, [activeTab]);
 
   const handleMarkRead = async (id: number) => {
@@ -201,6 +202,17 @@ export default function SendInstructions() {
       {/* TAB 2: Admin Notices Inbox */}
       {activeTab === 'inbox' && (
         <div className="max-w-3xl space-y-4">
+          <div className="flex justify-end">
+            <button
+              type="button"
+              onClick={() => fetchInbox(true)}
+              disabled={loadingInbox}
+              className="flex items-center gap-2 px-3 py-1.5 bg-white/5 hover:bg-white/10 border border-white/10 rounded-xl text-xs font-semibold text-gray-300 hover:text-white transition-all disabled:opacity-50 cursor-pointer"
+            >
+              <RefreshCw className={`w-3.5 h-3.5 ${loadingInbox ? 'animate-spin text-purple-400' : ''}`} />
+              <span>{loadingInbox ? 'Refreshing...' : 'Refresh'}</span>
+            </button>
+          </div>
           {inboxError && (
             <div className="p-3 bg-red-500/10 border border-red-500/20 text-red-400 rounded-xl text-xs flex items-center gap-2">
               <AlertCircle className="w-4 h-4" />

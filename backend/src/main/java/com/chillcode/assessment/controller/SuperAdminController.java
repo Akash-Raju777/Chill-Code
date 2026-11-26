@@ -1473,6 +1473,42 @@ public class SuperAdminController {
         return ResponseEntity.ok(result);
     }
 
+    @GetMapping("/instructions/recipients")
+    @org.springframework.transaction.annotation.Transactional(readOnly = true)
+    public ResponseEntity<Map<String, Object>> getInstructionRecipients() {
+        List<User> students = userRepository.findByRole(Role.STUDENT);
+        List<User> staffMembers = userRepository.findByRole(Role.ADMIN);
+
+        List<Map<String, Object>> studentList = new ArrayList<>();
+        for (User s : students) {
+            Map<String, Object> m = new HashMap<>();
+            m.put("id", s.getId());
+            m.put("name", s.getName());
+            m.put("registerNumber", s.getRegisterNumber() != null ? s.getRegisterNumber() : s.getUsername());
+            m.put("email", s.getEmail());
+            m.put("department", s.getDepartment() != null ? s.getDepartment() : "General");
+            m.put("status", s.getStatus() != null ? s.getStatus().name() : "ACTIVE");
+            studentList.add(m);
+        }
+
+        List<Map<String, Object>> staffList = new ArrayList<>();
+        for (User st : staffMembers) {
+            Map<String, Object> m = new HashMap<>();
+            m.put("id", st.getId());
+            m.put("name", st.getName());
+            m.put("staffId", st.getUsername() != null ? st.getUsername() : st.getRegisterNumber());
+            m.put("email", st.getEmail());
+            m.put("department", st.getDepartment() != null ? st.getDepartment() : "General");
+            m.put("status", st.getStatus() != null ? st.getStatus().name() : "ACTIVE");
+            staffList.add(m);
+        }
+
+        Map<String, Object> response = new HashMap<>();
+        response.put("students", studentList);
+        response.put("staff", staffList);
+        return ResponseEntity.ok(response);
+    }
+
     @PostMapping("/instructions")
     @org.springframework.transaction.annotation.Transactional
     public ResponseEntity<?> sendInstructions(@RequestBody Map<String, Object> payload) {
@@ -1520,6 +1556,7 @@ public class SuperAdminController {
         }
 
         String notifType = "ADMIN".equalsIgnoreCase(targetRole) ? "ADMIN_INSTRUCTION" : "INSTRUCTION";
+        List<Notification> notificationsToSave = new ArrayList<>();
         for (User r : recipients) {
             Notification n = Notification.builder()
                     .user(r)
@@ -1530,8 +1567,9 @@ public class SuperAdminController {
                     .isRead(false)
                     .createdAt(LocalDateTime.now())
                     .build();
-            notificationRepository.save(n);
+            notificationsToSave.add(n);
         }
+        notificationRepository.saveAll(notificationsToSave);
 
         return ResponseEntity.ok(Map.of(
                 "message", "Instruction sent successfully to " + recipients.size() + " recipient(s).",
@@ -1542,10 +1580,8 @@ public class SuperAdminController {
     @GetMapping("/instructions")
     @org.springframework.transaction.annotation.Transactional(readOnly = true)
     public ResponseEntity<List<Map<String, Object>>> getSentInstructions() {
-        List<Notification> all = notificationRepository.findAll();
-        List<Notification> instructions = all.stream()
-                .filter(n -> "INSTRUCTION".equals(n.getType()) || "ADMIN_INSTRUCTION".equals(n.getType()))
-                .collect(Collectors.toList());
+        List<Notification> instructions = notificationRepository.findInstructionsWithUsers(
+                Arrays.asList("INSTRUCTION", "ADMIN_INSTRUCTION"));
 
         Map<String, List<Notification>> grouped = instructions.stream()
                 .collect(Collectors.groupingBy(n -> {
