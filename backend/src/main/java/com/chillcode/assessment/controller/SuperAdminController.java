@@ -662,10 +662,10 @@ public class SuperAdminController {
     }
 
     @GetMapping("/staff-performance")
+    @org.springframework.transaction.annotation.Transactional(readOnly = true)
     public ResponseEntity<Map<String, Object>> getStaffPerformance() {
         List<User> staffMembers = userRepository.findByRole(Role.ADMIN);
-        List<Test> allTests = testRepository.findAll();
-        List<StudentTest> studentTests = studentTestRepository.findAll();
+        List<Test> allTests = testRepository.findAllWithSubjectAndStaff();
 
         // Use application configured timezone (Asia/Kolkata)
         java.time.ZoneId zoneId = java.time.ZoneId.of("Asia/Kolkata");
@@ -677,12 +677,15 @@ public class SuperAdminController {
 
         String formattedTodayDate = nowZoned.format(java.time.format.DateTimeFormatter.ofPattern("EEEE, MMM dd, yyyy"));
 
-        // Precompute students assigned per test
-        Map<Long, Long> studentsCountByTest = studentTests.stream()
-                .filter(st -> st.getTest() != null)
-                .collect(Collectors.groupingBy(st -> st.getTest().getId(), Collectors.counting()));
+        // Precompute students assigned per test via grouped aggregate query
+        Map<Long, Long> studentsCountByTest = new HashMap<>();
+        for (Object[] row : studentTestRepository.countStudentTestsGroupedByTestId()) {
+            if (row != null && row.length >= 2 && row[0] != null && row[1] != null) {
+                studentsCountByTest.put(((Number) row[0]).longValue(), ((Number) row[1]).longValue());
+            }
+        }
 
-        // Filter to actual tests created through the Admin panel (excluding practice arena containers & auto-generated wrappers)
+        // Filter to actual tests created through the Admin panel (excluding auto-generated Practice Arena containers)
         List<Test> actualAdminTests = new ArrayList<>();
         Set<String> seenTestKeys = new HashSet<>();
 
@@ -697,15 +700,7 @@ public class SuperAdminController {
                 continue;
             }
 
-            // 2. Exclude auto-generated question test wrappers (created with 10-year end time)
-            if (t.getStartTime() != null && t.getEndTime() != null) {
-                long daysBetween = java.time.temporal.ChronoUnit.DAYS.between(t.getStartTime(), t.getEndTime());
-                if (daysBetween > 365) {
-                    continue;
-                }
-            }
-
-            // 3. Deduplicate repeated timetable entries for the same test
+            // 2. Deduplicate repeated timetable entries for the same test
             String uniqueKey;
             if (t.getTestCode() != null && !t.getTestCode().trim().isEmpty() && !t.getTestCode().trim().startsWith("TEST-")) {
                 uniqueKey = t.getTestCode().trim().toUpperCase();
