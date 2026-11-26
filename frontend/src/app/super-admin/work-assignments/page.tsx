@@ -3,6 +3,7 @@
 import React, { useEffect, useState } from 'react';
 import { apiCall } from '@/utils/api';
 import { toast } from '@/store/toastStore';
+import ConfirmModal from '@/components/ConfirmModal';
 import {
   ClipboardList, User, Plus, Edit2, Trash2, Search, Clock,
   AlertTriangle, CheckCircle, ChevronRight, ArrowRight
@@ -35,6 +36,7 @@ export default function WorkAssignments() {
   const [formData, setFormData] = useState({
     title: '', description: '', assignedToId: '', priority: 'MEDIUM', dueDate: ''
   });
+  const [deleteConfirmId, setDeleteConfirmId] = useState<number | null>(null);
 
   const fetchAssignments = async () => {
     try {
@@ -92,8 +94,14 @@ export default function WorkAssignments() {
     }
   };
 
-  const handleDelete = async (id: number) => {
-    if (!confirm('Delete this assignment?')) return;
+  const handleDelete = (id: number) => {
+    setDeleteConfirmId(id);
+  };
+
+  const confirmDelete = async () => {
+    if (deleteConfirmId === null) return;
+    const id = deleteConfirmId;
+    setDeleteConfirmId(null);
     try {
       await apiCall(`/api/super-admin/work-assignments/${id}`, { method: 'DELETE' });
       toast.success('Assignment deleted');
@@ -287,6 +295,16 @@ export default function WorkAssignments() {
           </div>
         </div>
       )}
+
+      <ConfirmModal
+        isOpen={deleteConfirmId !== null}
+        title="Delete Assignment"
+        message="Are you sure you want to delete this assignment?"
+        confirmText="Delete"
+        variant="danger"
+        onConfirm={confirmDelete}
+        onCancel={() => setDeleteConfirmId(null)}
+      />
     </div>
   );
 }

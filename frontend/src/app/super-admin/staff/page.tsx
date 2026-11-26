@@ -3,9 +3,10 @@
 import React, { useEffect, useState } from 'react';
 import { apiCall } from '@/utils/api';
 import { toast } from '@/store/toastStore';
+import ConfirmModal from '@/components/ConfirmModal';
 import {
   Users, User, Plus, Edit2, Trash2, Eye, Search, Filter,
-  AlertTriangle, CheckCircle, Clock, ChevronRight
+  AlertTriangle, CheckCircle, Clock, ChevronRight, RefreshCw
 } from 'lucide-react';
 
 interface StaffMember {
@@ -23,6 +24,8 @@ interface StaffMember {
 export default function StaffManagement() {
   const [staff, setStaff] = useState<StaffMember[]>([]);
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+  const [saving, setSaving] = useState(false);
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('ALL');
   const [openModal, setOpenModal] = useState(false);
@@ -31,16 +34,33 @@ export default function StaffManagement() {
   const [formData, setFormData] = useState({
     name: '', email: '', username: '', password: '', department: '', phone: '', status: 'ACTIVE'
   });
+  const [confirmModal, setConfirmModal] = useState<{
+    isOpen: boolean;
+    title: string;
+    message: string;
+    confirmText: string;
+    variant: 'danger' | 'warning' | 'info';
+    onConfirm: () => void;
+  }>({
+    isOpen: false,
+    title: '',
+    message: '',
+    confirmText: 'Confirm',
+    variant: 'danger',
+    onConfirm: () => {},
+  });
 
-  const fetchStaff = async (skipCache = false) => {
+  const fetchStaff = async (skipCache = false, showRefreshing = skipCache) => {
     try {
-      if (staff.length === 0) setLoading(true);
+      if (showRefreshing) setRefreshing(true);
+      else if (staff.length === 0) setLoading(true);
       const data = await apiCall('/api/super-admin/staff', { skipLocalCache: skipCache });
       setStaff(data || []);
     } catch (err: any) {
       toast.error(err.message || 'Failed to load staff');
     } finally {
       setLoading(false);
+      if (showRefreshing) setRefreshing(false);
     }
   };
 
@@ -49,59 +69,133 @@ export default function StaffManagement() {
   }, []);
 
   const filteredStaff = staff.filter(s => {
-    const matchesSearch = s.name.toLowerCase().includes(search.toLowerCase()) ||
-      s.staffId.toLowerCase().includes(search.toLowerCase()) ||
-      s.email.toLowerCase().includes(search.toLowerCase()) ||
-      s.department.toLowerCase().includes(search.toLowerCase());
+    const matchesSearch = (s.name || '').toLowerCase().includes(search.toLowerCase()) ||
+      (s.staffId || '').toLowerCase().includes(search.toLowerCase()) ||
+      (s.email || '').toLowerCase().includes(search.toLowerCase()) ||
+      (s.department || '').toLowerCase().includes(search.toLowerCase());
     const matchesStatus = statusFilter === 'ALL' || s.status === statusFilter;
     return matchesSearch && matchesStatus;
   });
 
-  const handleStatusChange = async (id: number, newStatus: string) => {
-    if (!confirm(`Are you sure you want to change status to ${newStatus}?`)) return;
-    try {
-      await apiCall(`/api/super-admin/staff/${id}/status`, {
-        method: 'PATCH',
-        body: JSON.stringify({ status: newStatus }),
-      });
-      toast.success('Staff status updated');
-      fetchStaff();
-    } catch (err: any) {
-      toast.error(err.message || 'Failed to update status');
-    }
+  const handleStatusChange = (id: number, newStatus: string) => {
+    setConfirmModal({
+      isOpen: true,
+      title: newStatus === 'SUSPENDED' ? 'Suspend Staff Member' : 'Activate Staff Member',
+      message: `Are you sure you want to change status to ${newStatus}?`,
+      confirmText: newStatus === 'SUSPENDED' ? 'Suspend' : 'Activate',
+      variant: newStatus === 'SUSPENDED' ? 'warning' : 'info',
+      onConfirm: async () => {
+        setConfirmModal(prev => ({ ...prev, isOpen: false }));
+        const previousStaff = staff;
+        // Instant optimistic update
+        setStaff(prev => prev.map(s => (s.id === id ? { ...s, status: newStatus } : s)));
+        try {
+          await apiCall(`/api/super-admin/staff/${id}/status`, {
+            method: 'PATCH',
+            body: JSON.stringify({ status: newStatus }),
+          });
+          toast.success('Staff status updated');
+          fetchStaff(true, false);
+        } catch (err: any) {
+          setStaff(previousStaff);
+          toast.error(err.message || 'Failed to update status');
+        }
+      },
+    });
   };
 
-  const handleDelete = async (id: number) => {
-    if (!confirm('Are you sure you want to delete this staff member?')) return;
-    try {
-      await apiCall(`/api/super-admin/staff/${id}`, { method: 'DELETE' });
-      toast.success('Staff deleted');
-      fetchStaff();
-    } catch (err: any) {
-      toast.error(err.message || 'Failed to delete staff');
-    }
+  const handleDelete = (id: number) => {
+    setConfirmModal({
+      isOpen: true,
+      title: 'Delete Staff Member',
+      message: 'Are you sure you want to delete this staff member? This action cannot be undone.',
+      confirmText: 'Delete',
+      variant: 'danger',
+      onConfirm: async () => {
+        setConfirmModal(prev => ({ ...prev, isOpen: false }));
+        const previousStaff = staff;
+        // Instant optimistic removal
+        setStaff(prev => prev.filter(s => s.id !== id));
+        try {
+          await apiCall(`/api/super-admin/staff/${id}`, { method: 'DELETE' });
+          toast.success('Staff deleted');
+          fetchStaff(true, false);
+        } catch (err: any) {
+          setStaff(previousStaff);
+          toast.error(err.message || 'Failed to delete staff');
+        }
+      },
+    });
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    try {
-      if (modalMode === 'ADD') {
-        await apiCall('/api/super-admin/staff', {
-          method: 'POST',
-          body: JSON.stringify(formData),
-        });
-      } else {
-        await apiCall(`/api/super-admin/staff/${editingId}`, {
+    const currentMode = modalMode;
+    const targetId = editingId;
+    const payload = { ...formData };
+
+    if (currentMode === 'EDIT' && targetId !== null) {
+      const previousStaff = staff;
+      // Instant optimistic update & close modal immediately
+      setStaff(prev =>
+        prev.map(s =>
+          s.id === targetId
+            ? {
+                ...s,
+                name: payload.name,
+                email: payload.email,
+                staffId: payload.username,
+                department: payload.department,
+                phone: payload.phone,
+                status: payload.status,
+              }
+            : s
+        )
+      );
+      setOpenModal(false);
+      setFormData({ name: '', email: '', username: '', password: '', department: '', phone: '', status: 'ACTIVE' });
+      try {
+        await apiCall(`/api/super-admin/staff/${targetId}`, {
           method: 'PUT',
-          body: JSON.stringify(formData),
+          body: JSON.stringify(payload),
         });
+        toast.success('Staff updated successfully');
+        fetchStaff(true, false);
+      } catch (err: any) {
+        setStaff(previousStaff);
+        toast.error(err.message || 'Failed to save staff');
+      }
+      return;
+    }
+
+    setSaving(true);
+    try {
+      const created = await apiCall('/api/super-admin/staff', {
+        method: 'POST',
+        body: JSON.stringify(payload),
+      });
+      if (created && created.id) {
+        const newStaff: StaffMember = {
+          id: created.id,
+          staffId: created.username || payload.username,
+          name: created.name || payload.name,
+          email: created.email || payload.email,
+          phone: created.phone || payload.phone,
+          department: created.department || payload.department,
+          status: created.status || payload.status || 'ACTIVE',
+          dateJoined: created.createdAt || new Date().toISOString(),
+          lastActive: created.updatedAt || new Date().toISOString(),
+        };
+        setStaff(prev => [...prev, newStaff]);
       }
       setOpenModal(false);
       setFormData({ name: '', email: '', username: '', password: '', department: '', phone: '', status: 'ACTIVE' });
-      toast.success(`Staff ${modalMode === 'ADD' ? 'created' : 'updated'} successfully`);
-      fetchStaff();
+      toast.success('Staff created successfully');
+      fetchStaff(true, false);
     } catch (err: any) {
       toast.error(err.message || 'Failed to save staff');
+    } finally {
+      setSaving(false);
     }
   };
 
@@ -109,7 +203,7 @@ export default function StaffManagement() {
     setEditingId(s.id);
     setModalMode('EDIT');
     setFormData({
-      name: s.name, email: s.email, username: s.staffId, password: '', department: s.department, phone: s.phone, status: s.status
+      name: s.name || '', email: s.email || '', username: s.staffId || '', password: '', department: s.department || '', phone: s.phone || '', status: s.status || 'ACTIVE'
     });
     setOpenModal(true);
   };
@@ -135,12 +229,22 @@ export default function StaffManagement() {
           <h1 className="text-2xl font-bold text-white">Staff Management</h1>
           <p className="text-sm text-gray-400">Manage administrator accounts and staff access.</p>
         </div>
-        <button
-          onClick={handleAdd}
-          className="flex items-center gap-2 px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl text-sm font-semibold transition-all"
-        >
-          <Plus className="w-4 h-4" /> Add Staff
-        </button>
+        <div className="flex items-center gap-3">
+          <button
+            onClick={() => fetchStaff(true)}
+            disabled={refreshing || loading}
+            className="flex items-center gap-2 px-4 py-2 bg-white/5 hover:bg-white/10 border border-white/10 rounded-xl text-sm font-medium text-white transition-all shadow-sm disabled:opacity-50"
+          >
+            <RefreshCw className={`w-4 h-4 ${refreshing ? 'animate-spin text-indigo-400' : ''}`} />
+            {refreshing ? 'Reloading...' : 'Reload'}
+          </button>
+          <button
+            onClick={handleAdd}
+            className="flex items-center gap-2 px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl text-sm font-semibold transition-all"
+          >
+            <Plus className="w-4 h-4" /> Add Staff
+          </button>
+        </div>
       </div>
 
       <div className="glass-panel p-6 rounded-xl overflow-x-auto">
@@ -170,38 +274,38 @@ export default function StaffManagement() {
         <table className="w-full text-left border-collapse">
           <thead>
             <tr className="border-b border-white/5 text-xs font-semibold text-gray-400 uppercase">
-              <th className="pb-3">Staff Name</th>
-              <th className="pb-3">Staff ID</th>
-              <th className="pb-3">Email</th>
-              <th className="pb-3">Department</th>
-              <th className="pb-3">Status</th>
-              <th className="pb-3">Joined</th>
-              <th className="pb-3 text-right">Actions</th>
+              <th className="px-4 pb-3 whitespace-nowrap">Staff Name</th>
+              <th className="px-4 pb-3 whitespace-nowrap">Staff ID</th>
+              <th className="px-4 pb-3 whitespace-nowrap">Email</th>
+              <th className="px-4 pb-3 whitespace-nowrap">Department</th>
+              <th className="px-4 pb-3 whitespace-nowrap">Status</th>
+              <th className="px-4 pb-3 whitespace-nowrap">Joined</th>
+              <th className="px-4 pb-3 text-right whitespace-nowrap">Actions</th>
             </tr>
           </thead>
           <tbody>
             {loading ? (
               [...Array(5)].map((_, i) => (
                 <tr key={i} className="border-b border-white/5 animate-pulse">
-                  <td className="py-4">
+                  <td className="px-4 py-4">
                     <div className="h-4 w-32 bg-white/10 rounded" />
                   </td>
-                  <td className="py-4">
+                  <td className="px-4 py-4">
                     <div className="h-4 w-20 bg-white/5 rounded font-mono" />
                   </td>
-                  <td className="py-4">
+                  <td className="px-4 py-4">
                     <div className="h-4 w-40 bg-white/5 rounded" />
                   </td>
-                  <td className="py-4">
+                  <td className="px-4 py-4">
                     <div className="h-4 w-24 bg-white/5 rounded" />
                   </td>
-                  <td className="py-4">
+                  <td className="px-4 py-4">
                     <div className="h-5 w-16 bg-white/10 rounded-full" />
                   </td>
-                  <td className="py-4">
+                  <td className="px-4 py-4">
                     <div className="h-4 w-20 bg-white/5 rounded" />
                   </td>
-                  <td className="py-4 text-right">
+                  <td className="px-4 py-4 text-right">
                     <div className="h-8 w-20 bg-white/5 rounded-lg ml-auto" />
                   </td>
                 </tr>
@@ -215,17 +319,25 @@ export default function StaffManagement() {
             ) : (
               filteredStaff.map((s) => (
                 <tr key={s.id} className="border-b border-white/5 hover:bg-white/5 transition-colors">
-                  <td className="py-4 text-sm font-medium text-white">{s.name}</td>
-                  <td className="py-4 text-sm text-gray-300 font-mono">{s.staffId}</td>
-                  <td className="py-4 text-sm text-gray-300">{s.email}</td>
-                  <td className="py-4 text-sm text-gray-300">{s.department || 'N/A'}</td>
-                  <td className="py-4">
+                  <td className="px-4 py-4 text-sm font-medium text-white whitespace-nowrap max-w-[180px]">
+                    <span className="block truncate" title={s.name}>{s.name}</span>
+                  </td>
+                  <td className="px-4 py-4 text-sm text-gray-300 font-mono whitespace-nowrap max-w-[150px]">
+                    <span className="block truncate" title={s.staffId}>{s.staffId}</span>
+                  </td>
+                  <td className="px-4 py-4 text-sm text-gray-300 whitespace-nowrap max-w-[180px]">
+                    <span className="block truncate" title={s.email}>{s.email}</span>
+                  </td>
+                  <td className="px-4 py-4 text-sm text-gray-300 whitespace-nowrap max-w-[150px]">
+                    <span className="block truncate" title={s.department || 'N/A'}>{s.department || 'N/A'}</span>
+                  </td>
+                  <td className="px-4 py-4 whitespace-nowrap">
                     <span className={`px-2 py-0.5 rounded-full text-xs font-bold border ${statusColors[s.status] || statusColors.ACTIVE}`}>
                       {s.status}
                     </span>
                   </td>
-                  <td className="py-4 text-sm text-gray-400">{new Date(s.dateJoined).toLocaleDateString()}</td>
-                  <td className="py-4 text-right">
+                  <td className="px-4 py-4 text-sm text-gray-400 whitespace-nowrap">{new Date(s.dateJoined).toLocaleDateString()}</td>
+                  <td className="px-4 py-4 text-right whitespace-nowrap">
                     <div className="flex items-center justify-end gap-2">
                       <button
                         onClick={() => handleEdit(s)}
@@ -342,15 +454,26 @@ export default function StaffManagement() {
                 </button>
                 <button
                   type="submit"
-                  className="px-4 py-2 text-sm font-semibold text-white bg-indigo-600 hover:bg-indigo-500 rounded-xl transition-all"
+                  disabled={saving}
+                  className="px-4 py-2 text-sm font-semibold text-white bg-indigo-600 hover:bg-indigo-500 rounded-xl transition-all disabled:opacity-50"
                 >
-                  {modalMode === 'ADD' ? 'Create Staff' : 'Save Changes'}
+                  {saving ? 'Creating...' : modalMode === 'ADD' ? 'Create Staff' : 'Save Changes'}
                 </button>
               </div>
             </form>
           </div>
         </div>
       )}
+
+      <ConfirmModal
+        isOpen={confirmModal.isOpen}
+        title={confirmModal.title}
+        message={confirmModal.message}
+        confirmText={confirmModal.confirmText}
+        variant={confirmModal.variant}
+        onConfirm={confirmModal.onConfirm}
+        onCancel={() => setConfirmModal(prev => ({ ...prev, isOpen: false }))}
+      />
     </div>
   );
 }

@@ -10,6 +10,7 @@ import {
   API_BASE_URL
 } from '../../../utils/api';
 import { useAuthStore } from '../../../store/authStore';
+import { toast } from '../../../store/toastStore';
 import { 
   Trophy, 
   Download, 
@@ -125,7 +126,7 @@ export default function AdminLeaderboardPage() {
       a.click();
       a.remove();
     } catch (err: any) {
-      alert('Failed to export leaderboard.');
+      toast.error('Failed to export leaderboard.');
     }
   };
 

@@ -26,6 +26,7 @@ import {
 } from 'lucide-react';
 import BrandedLoader from '../../../components/BrandedLoader';
 import { useAuthStore } from '../../../store/authStore';
+import { toast } from '../../../store/toastStore';
 
 interface Subject {
   id: number;
@@ -174,7 +175,7 @@ export default function SubjectManagement() {
       a.remove();
       URL.revokeObjectURL(url);
     } catch (e: any) {
-      alert(e.message || 'Failed to download report');
+      toast.error(e.message || 'Failed to download report');
     }
   };
 

@@ -3,6 +3,7 @@
 import React, { useEffect, useState, useMemo } from 'react';
 import { apiCall, API_BASE_URL } from '@/utils/api';
 import { useAuthStore } from '@/store/authStore';
+import { toast } from '@/store/toastStore';
 import {
   ArrowLeft,
   RefreshCw,
@@ -90,7 +91,7 @@ export default function SubjectTrackerReport({
       window.URL.revokeObjectURL(url);
       document.body.removeChild(a);
     } catch (err: any) {
-      alert(err.message || 'Error downloading report');
+      toast.error(err.message || 'Error downloading report');
     }
   };
 
